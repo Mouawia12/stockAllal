@@ -137,7 +137,7 @@ class Handler(BaseHTTPRequestHandler):
             ts = now()
             # remplace tout le stock de la branche : les articles absents ont ete supprimes dans Gescomm
             STOCK[b["id"]] = {it["code"]: {"code": it["code"], "designation": it.get("designation"),
-                                           "stock": it.get("stock"), "updated_at": ts} for it in items}
+                                           "stock": it.get("stock"), "price": it.get("price"), "updated_at": ts} for it in items}
             b.update(last_sync=ts, db_file_mtime=d.get("db_file_mtime"), agent_version=d.get("agent_version"))
             print(f"[sync] '{b['name']}' : {len(items)} articles")
             return self.reply(200, {"ok": True, "count": len(items)})
@@ -163,7 +163,7 @@ class Handler(BaseHTTPRequestHandler):
             rows = STOCK.setdefault(b["id"], {})
             for it in d.get("items") or []:
                 rows[it["code"]] = {"code": it["code"], "designation": it.get("designation"),
-                                    "stock": it.get("stock"), "updated_at": j["answered"]}
+                                    "stock": it.get("stock"), "price": it.get("price"), "updated_at": j["answered"]}
             print(f"[result] '{b['name']}' demande {j['id']} '{j['code']}' -> {j['status']} {d.get('items')}")
             return self.reply(200, {"ok": True})
 
@@ -208,10 +208,10 @@ class Handler(BaseHTTPRequestHandler):
             base = {"branch": b["name"], "last_seen": b["last_seen"],
                     "refresh_status": job["status"] if job else None}
             if rows:
-                out += [dict(base, code=r["code"], designation=r["designation"], stock=r["stock"],
+                out += [dict(base, code=r["code"], designation=r["designation"], stock=r["stock"], price=r.get("price"),
                              updated_at=r["updated_at"]) for r in rows]
             else:
-                out.append(dict(base, code=None, designation=None, stock=None, updated_at=None))
+                out.append(dict(base, code=None, designation=None, stock=None, price=None, updated_at=None))
         out.sort(key=lambda r: (r["stock"] is None, -(r["stock"] or 0)))
         return self.reply(200, {"code": k, "branches": out})
 

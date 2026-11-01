@@ -6,7 +6,7 @@ use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
-#[Fillable(['branch_id', 'code_raw', 'code_key', 'designation', 'stock', 'seen_at', 'updated_at'])]
+#[Fillable(['branch_id', 'code_raw', 'code_key', 'designation', 'stock', 'price', 'seen_at', 'updated_at'])]
 class BranchStock extends Model
 {
     protected $table = 'branch_stock';
@@ -18,6 +18,7 @@ class BranchStock extends Model
     {
         return [
             'stock' => 'float',
+            'price' => 'float',
             'seen_at' => 'datetime',
             'updated_at' => 'datetime',
         ];

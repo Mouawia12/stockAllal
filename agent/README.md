@@ -89,7 +89,7 @@ SELECT CODEA, DESIGNATIONF2, STOCKREEL FROM GC003;                          -- �
 SELECT CODEA, DESIGNATIONF2, STOCKREEL FROM GC003 WHERE UPPER(CODEA) = UPPER('…');  -- تحديث الآن
 ```
 
-- **لا يُرسل أي سعر.**
+- **السعر:** الوكيل 1.0.4 لا يرسل أي سعر. إضافة سعر البيع (حقل `price`) مهمة مفتوحة، تفاصيلها في `agent/PRICES-TASK.md`.
 - **الـAPI يرسل للوكيل كود منتج فقط، وأبداً SQL.** الوكيل يقبل الكود فقط إذا:
   - طوله من 1 إلى 15 حرفاً.
   - لا يحتوي حروف تحكّم ولا `;`.
@@ -132,9 +132,10 @@ SELECT CODEA, DESIGNATIONF2, STOCKREEL FROM GC003 WHERE UPPER(CODEA) = UPPER('�
   "agent_version": "1.0.0",
   "hostname": "DESKTOP-9H7CGGI",
   "db_file_mtime": "2026-11-01T14:42:20+01:00",
-  "items": [ { "code": "820AC", "designation": "BOULLON ACIER  EX  8*20  (G3)", "stock": 164.11 } ]
+  "items": [ { "code": "820AC", "designation": "BOULLON ACIER  EX  8*20  (G3)", "stock": 164.11, "price": 45.00 } ]
 }
 ```
+- **`price`:** سعر البيع في Gescomm الفرع. اختياري: الوكيل قبل 1.0.5 لا يرسله، واللوحة تحفظه `null` (غير معروف).
 - **التحديث:** upsert على `(branch_id, code_raw)`.
 - **السلع الغائبة عن الإرسال:** **تُحذف** من مخزون ذلك الفرع، لأنها حُذفت من Gescomm الفرع.
 - **أوقات الفرع:** يُحدَّث `last_sync_at`، ويُحفظ `db_file_mtime`. إذا لم يتبدّل `db_file_mtime` طوال يوم عمل، فالقاعدة الحيّة ربما استُبدلت بعد restore → **تنبيه**.
@@ -155,7 +156,7 @@ SELECT CODEA, DESIGNATIONF2, STOCKREEL FROM GC003 WHERE UPPER(CODEA) = UPPER('�
 ### `POST /agent/result`
 ```json
 { "job_id": 41, "code": "820AC", "found": true,
-  "items": [ { "code": "820AC", "designation": "…", "stock": 164.11 } ],
+  "items": [ { "code": "820AC", "designation": "…", "stock": 164.11, "price": 45.00 } ],
   "error": null, "read_at": "2026-11-01T14:45:28+01:00" }
 ```
 - **قيمة `error`:** إما `null`، أو `invalid_code`، أو `db_error`.
@@ -163,12 +164,13 @@ SELECT CODEA, DESIGNATIONF2, STOCKREEL FROM GC003 WHERE UPPER(CODEA) = UPPER('�
 - **عند الاستلام:** حدّث `branch_stock` بهذه القيم، وضع حالة الطلب: `done` أو `not_found` أو `error`.
 
 ### من جهة اللوحة
-- **`POST /refresh {code}`:** ينشئ طلباً لكل فرع نشط بالكود `code_key`.
+- **`POST /refresh {code}`:** ينشئ طلباً لكل فرع نشط بالكود `code_key`. للكود المدموج: طلب لكل فرع ولكل كود في مجموعته، والوكيل يقرأ دائماً كوداً واحداً في كل طلب.
 - **عرض النتيجة:** اللوحة تسأل كل ثانيتين. الفرع الذي لا يرد خلال **30 ثانية** يظهر «لم يرد»، مع آخر قيمة معروفة.
-- **مفتاح التجميع:** `code_key = UPPER(TRIM(code))`. لا شيء آخر: `820-AC` يبقى منتجاً مستقلاً.
-- **البحث:** سطر واحد لكل `code_key`.
-- **المعاينة:** كل الفروع، ويظهر «غير موجود» للفرع الذي ليس عنده المنتج.
-- **مرجع جاهز:** `tools/mock_api.py` ينفّذ هذا كله: الدوال `search` و`product` و`refresh`.
+- **مفتاح التجميع:** `code_key = UPPER(TRIM(code))`. لا شيء آخر: `820-AC` يبقى منتجاً مستقلاً، إلا إذا دمجه المدير مع `820AC` في صفحة «دمج الأصناف» (جدولا `product_groups` و`product_group_codes`).
+- **البحث:** سطر واحد لكل `code_key`، أو لكل مجموعة مدموجة.
+- **المعاينة:** كل الفروع، ويظهر «غير موجود» للفرع الذي ليس عنده المنتج. للمجموعة: كل أكوادها في كل فرع. مع سعر كل فرع، والسعر المختلف عن الفرع الرئيسي يظهر بلون التنبيه.
+- **الفرع الرئيسي:** يحدّده المدير في صفحة الفروع (`branches.is_main`، واحد فقط). سعره يظهر في سطر كل صنف في البحث، مع «سعر مختلف» إذا كان فرع آخر يبيع بسعر آخر.
+- **مرجع جاهز:** `tools/mock_api.py` ينفّذ هذا كله، ما عدا الدمج والفرع الرئيسي: الدوال `search` و`product` و`refresh`.
 
 ---
 

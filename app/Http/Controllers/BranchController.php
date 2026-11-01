@@ -8,6 +8,7 @@ use App\Models\RefreshJob;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 use Illuminate\View\View;
 
@@ -38,6 +39,25 @@ class BranchController extends Controller
         $branch->update($data);
 
         return back()->with('status', 'تم الحفظ');
+    }
+
+    /**
+     * Branche principale = reference des prix : son prix s'affiche dans la recherche, et la fenetre "معاينة"
+     * signale les branches dont le prix differe. Une seule a la fois ; un second clic retire le statut.
+     */
+    public function main(Branch $branch): RedirectResponse
+    {
+        $makeMain = ! $branch->is_main;
+        DB::transaction(function () use ($branch, $makeMain) {
+            Branch::where('is_main', true)->update(['is_main' => false]);
+            if ($makeMain) {
+                $branch->forceFill(['is_main' => true])->save();
+            }
+        });
+
+        return back()->with('status', $makeMain
+            ? "«{$branch->name}» هو الفرع الرئيسي الآن: سعره يظهر في البحث"
+            : "«{$branch->name}» لم يعد الفرع الرئيسي");
     }
 
     public function destroy(Branch $branch): RedirectResponse

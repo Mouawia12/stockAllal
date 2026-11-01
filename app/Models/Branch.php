@@ -7,6 +7,7 @@ use Illuminate\Database\Eloquent\Attributes\Hidden;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 
+// is_main hors Fillable : il ne change que par BranchController::main (une seule branche principale)
 #[Fillable(['name', 'hostname', 'token_hash', 'active', 'agent_version', 'last_seen_at', 'last_sync_at', 'db_file_mtime', 'items_count'])]
 #[Hidden(['token_hash'])]
 class Branch extends Model
@@ -18,6 +19,7 @@ class Branch extends Model
     {
         return [
             'active' => 'boolean',
+            'is_main' => 'boolean',
             'last_seen_at' => 'datetime',
             'last_sync_at' => 'datetime',
             'db_file_mtime' => 'datetime',
@@ -33,6 +35,12 @@ class Branch extends Model
     public function isOnline(): bool
     {
         return $this->last_seen_at !== null && $this->last_seen_at->gt(now()->subSeconds(self::ONLINE_SECONDS));
+    }
+
+    /** Branche de reference des prix, si elle est active. */
+    public static function main(): ?self
+    {
+        return self::where('is_main', true)->where('active', true)->first();
     }
 
     public static function hashToken(string $token): string

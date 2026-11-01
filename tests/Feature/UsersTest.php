@@ -95,10 +95,13 @@ class UsersTest extends TestCase
         $checked = 'name="is_admin" value="1" checked';
 
         // case decochee + nom deja pris : la page revient avec la case decochee, pas avec l'ancienne valeur
+        // (pas d'assertSessionHasErrors ici : il redemarre la session de test et les erreurs ne passent plus a la page suivante)
         $this->actingAs($admin)->from("/users/{$other->id}/edit")
             ->put("/users/{$other->id}", ['name' => 'Samir', 'username' => 'boss'])
-            ->assertSessionHasErrors('username');
-        $this->actingAs($admin)->get("/users/{$other->id}/edit")->assertOk()->assertDontSee($checked, false);
+            ->assertRedirect("/users/{$other->id}/edit");
+        $this->actingAs($admin)->get("/users/{$other->id}/edit")->assertOk()
+            ->assertSee('اسم المستخدم مستعمل من حساب آخر')
+            ->assertDontSee($checked, false);
         $this->assertTrue($other->fresh()->is_admin);
 
         // sans erreur : la valeur enregistree

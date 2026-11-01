@@ -1,5 +1,8 @@
 # GescomStock
 
+> **Open task:** `agent/PRICES-TASK.md`: the agent must also send the selling price. It needs a PC with Gescomm to find the
+> price column in `GC003`. If you are on such a PC (Windows, InterBase, `C:\ProgramData\GescomAgent\config.json`), do it first.
+
 Central dashboard for the stock of several branches that each run **Gescomm** (a Delphi app on **InterBase 7.5**).
 A PowerShell agent on each branch server reads the stock (read-only) and pushes it to this Laravel app; the dashboard
 searches products across branches and can ask every branch for a live quantity.
@@ -18,21 +21,23 @@ For an already deployed server, use the "التحديثات لاحقاً" sectio
 |---|---|
 | `app/Http/Controllers/Api/AgentController.php` | Agent API: `agents/register`, `agent/ping`, `agent/sync`, `agent/pending`, `agent/result` |
 | `app/Http/Middleware/AuthenticateAgent.php` | Branch identified by `Authorization: Bearer <token>` (sha256 stored, never the token) |
-| `app/Http/Controllers/StockController.php` | Search (one row per `code_key`), product modal JSON, "refresh now" |
-| `app/Http/Controllers/BranchController.php` | Branches page, one-time install codes, rename / disable / delete, "sync now" (job type `sync`) |
+| `app/Http/Controllers/StockController.php` | Search (one row per `code_key` or per merged group), product modal JSON, "refresh now", and the "دمج الأصناف" page (same view, `$merge`) |
+| `app/Http/Controllers/ProductGroupController.php` + `app/Models/ProductGroup.php` | Admin merges of codes that are the same product (`820AC` + `820-AC`). `ProductGroup::codesOf()` / `expand()` give the codes a key stands for |
+| `app/Http/Controllers/BranchController.php` | Branches page, one-time install codes, rename / disable / delete, "sync now" (job type `sync`), main branch (`is_main`, price reference shown in search) |
 | `app/Http/Controllers/AgentDownloadController.php` | Agent zip download (built on the fly, needs PHP `zip`) and the PDF guide |
 | `agent/guide/` | `guide.html` = source of `agent/GescomAgent-Guide.pdf`; rebuild with `agent/guide/build-pdf.ps1` (headless Edge) after editing it |
 | `resources/views/partials/theme*.blade.php` | Day / night / auto theme (CSS variables + toggle saved in localStorage) |
 | `app/Http/Controllers/AccountController.php` | "حسابي": change display name, username (login is by username) and password |
 | `app/Http/Controllers/UserController.php` | Accounts page (admins only): create workers, edit, tick "مدير" to promote, delete. `users.is_admin` |
-| `app/Http/Middleware/EnsureAdmin.php` | `admin` middleware: branches, agent download/guide, accounts. Workers (`is_admin = false`) only get search, product modal, "تحديث الآن" and their own account |
+| `app/Http/Middleware/EnsureAdmin.php` | `admin` middleware: branches, merge page, agent download/guide, accounts. Workers (`is_admin = false`) only get search, product modal, "تحديث الآن" and their own account |
 | `routes/console.php` | `user:create`, `agent:install-code`, daily cleanup schedule |
 | `resources/views/` | Blade, Arabic RTL, plain CSS + vanilla JS (no Node / Vite build) |
 | `agent/` | Branch agent (PowerShell 5.1) + `install.ps1` / `uninstall.ps1` + `tools/mock_api.py`. Its `README.md` holds the API contract |
 
 ## Rules that matter
 
-- **Grouping key:** `code_key = UPPER(TRIM(code))`, nothing more. `820-AC` and `820AC` are different products on purpose.
+- **Grouping key:** `code_key = UPPER(TRIM(code))`, nothing more. `820-AC` and `820AC` are different products on purpose,
+  until an admin merges them on "دمج الأصناف". Never merge codes automatically; search, modal and refresh go through `ProductGroup`.
 - **API contract:** `agent/README.md` and `AgentController` must stay in sync. The server only ever sends the agent a product code, never SQL.
 - **Agent scripts:** must stay ASCII-only (PowerShell 5.1 reads BOM-less files as ANSI) and read-only on the Gescomm DB
   (every isql script starts with `SET TRANSACTION READ ONLY`).

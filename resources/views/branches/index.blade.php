@@ -11,8 +11,8 @@
     .rename { display: flex; gap: 6px; }
     .rename input { width: 170px; padding: 5px 8px; }
     .rename button { padding: 5px 10px; }
-    .actions { display: flex; gap: 6px; }
-    .actions button { padding: 5px 10px; }
+    .actions { display: flex; flex-wrap: wrap; gap: 6px; }
+    .actions button { padding: 5px 10px; white-space: nowrap; }
     .sync { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
     .sync button { padding: 3px 10px; font-size: 13px; white-space: nowrap; }
     .sync-msg { font-size: 12px; }
@@ -72,6 +72,9 @@
                         </form>
                     </td>
                     <td>
+                        @if ($b->is_main)
+                            <span class="pill ok" title="أسعاره هي التي تظهر في البحث">رئيسي</span>
+                        @endif
                         @if (! $b->active)
                             <span class="pill">معطّل</span>
                         @elseif ($b->isOnline())
@@ -101,6 +104,12 @@
                     <td class="hide-sm small muted"><span class="ltr">{{ $b->hostname }}</span>@if ($b->agent_version)<br><span class="ltr">v{{ $b->agent_version }}</span>@endif</td>
                     <td>
                         <div class="actions">
+                            <form method="post" action="{{ route('branches.main', $b) }}">
+                                @csrf
+                                <button type="submit" title="أسعار الفرع الرئيسي تظهر في البحث، والمعاينة تُبرز الفروع التي سعرها مختلف">
+                                    {{ $b->is_main ? 'إلغاء الرئيسي' : 'اجعله رئيسياً' }}
+                                </button>
+                            </form>
                             <form method="post" action="{{ route('branches.update', $b) }}">
                                 @csrf @method('patch')
                                 <input type="hidden" name="active" value="{{ $b->active ? 0 : 1 }}">
@@ -121,6 +130,7 @@
             «مزامنة الآن» = يطلب من وكيل الفرع إرسال كل المخزون فوراً، بدل انتظار المزامنة التلقائية (كل 5 دقائق). يحتاج الوكيل 1.0.4 أو أحدث.
             «آخر كتابة للقاعدة» = آخر تعديل لملف قاعدة Gescomm في الفرع. إذا تجاوز يوماً كاملاً في أيام العمل، ربما يعمل البرنامج على ملف آخر (بعد استرجاع نسخة) — تحقّق من مسار القاعدة في إعداد الوكيل.
             الفرع المعطّل يُرفض وكيله ولا يظهر في البحث.
+            «الفرع الرئيسي» = مرجع الأسعار: سعره يظهر في سطر كل صنف في البحث، والمعاينة تعرض سعر كل فرع وتُبرز المختلف عنه. يحتاج الوكيل 1.0.5 أو أحدث (الأسعار).
         </p>
     @endif
 </div>

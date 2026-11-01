@@ -84,7 +84,7 @@ class AgentController extends Controller
 
         DB::transaction(function () use ($branch, $rows, $now, $request) {
             foreach (array_chunk(array_values($rows), 500) as $chunk) {
-                BranchStock::upsert($chunk, ['branch_id', 'code_raw'], ['code_key', 'designation', 'stock', 'seen_at', 'updated_at']);
+                BranchStock::upsert($chunk, ['branch_id', 'code_raw'], ['code_key', 'designation', 'stock', 'price', 'seen_at', 'updated_at']);
             }
             BranchStock::where('branch_id', $branch->id)->where('seen_at', '<', $now)->delete();
 
@@ -148,7 +148,7 @@ class AgentController extends Controller
         DB::transaction(function () use ($branch, $job, $items, $status, $now, $request) {
             if ($status === 'done') {
                 $rows = array_values(array_filter(array_map(fn ($item) => $this->stockRow($branch, $item, $now), $items)));
-                BranchStock::upsert($rows, ['branch_id', 'code_raw'], ['code_key', 'designation', 'stock', 'seen_at', 'updated_at']);
+                BranchStock::upsert($rows, ['branch_id', 'code_raw'], ['code_key', 'designation', 'stock', 'price', 'seen_at', 'updated_at']);
             } elseif ($status === 'not_found') {
                 // l'article n'existe plus dans le Gescomm de la branche : la lecture en direct fait foi
                 BranchStock::where('branch_id', $branch->id)->where('code_key', $job->code_key)->delete();
@@ -180,6 +180,8 @@ class AgentController extends Controller
         }
         $designation = trim((string) ($item['designation'] ?? ''));
         $stock = $item['stock'] ?? null;
+        // prix de vente : envoye a partir de l'agent 1.0.5, absent avant (null = inconnu)
+        $price = $item['price'] ?? null;
 
         return [
             'branch_id' => $branch->id,
@@ -187,6 +189,7 @@ class AgentController extends Controller
             'code_key' => BranchStock::keyFor($code),
             'designation' => $designation === '' ? null : mb_substr($designation, 0, 200),
             'stock' => is_numeric($stock) ? $stock : null,
+            'price' => is_numeric($price) ? $price : null,
             'seen_at' => $now,
             'updated_at' => $now,
         ];
