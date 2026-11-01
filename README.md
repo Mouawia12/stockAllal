@@ -25,7 +25,7 @@
 ## المستندات
 | الملف | لمن |
 |---|---|
-| [DEPLOY.md](DEPLOY.md) | النشر على السيرفر (Ubuntu + nginx + MySQL + HTTPS) |
+| [DEPLOY.md](DEPLOY.md) | النشر على السيرفر: `stockallal.souftech.com` على HestiaCP، مع MySQL وHTTPS |
 | [agent/README.md](agent/README.md) | تركيب الوكيل على فرع، أوامره، و**عقد الـAPI** |
 | [CLAUDE.md](CLAUDE.md) | ملاحظات لكلود كود: البنية، والقواعد المهمة |
 
@@ -34,9 +34,11 @@
 composer install
 cp .env.example .env && php artisan key:generate
 php artisan migrate
-php artisan user:create admin@local.test --name=Admin
+php artisan user:create admin --name=Admin      # يسأل عن كلمة السر
 php artisan serve
 ```
+
+**الدخول باسم المستخدم:** الاسم وكلمة السر يتغيّران من صفحة «حسابي»، بالضغط على الاسم أعلى الصفحة.
 
 - **الاختبارات:** `php artisan test`
 - **ربط وكيل محلي:**

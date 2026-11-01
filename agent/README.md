@@ -24,7 +24,10 @@
    ```
    powershell -ExecutionPolicy Bypass -File .\install.ps1
    ```
-4. **أجب على الأسئلة:** عنوان الـAPI، **اسم الفرع**، كود التركيب.
+4. **أجب على الأسئلة:**
+   - عنوان الـAPI: اضغط Enter لقبول `https://stockallal.souftech.com/api`.
+   - **اسم الفرع**.
+   - كود التركيب.
 
 **ماذا يفعل `install.ps1`:**
 1. ينشئ `C:\ProgramData\GescomAgent`، ولا يقرؤه إلا SYSTEM والأدمين، لأن فيه التوكن وكلمة سر القاعدة.

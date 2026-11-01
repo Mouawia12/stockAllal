@@ -18,19 +18,20 @@ class LoginController extends Controller
     public function login(Request $request): RedirectResponse
     {
         $credentials = $request->validate([
-            'email' => ['required', 'email'],
-            'password' => ['required'],
+            'username' => ['required', 'string', 'max:50'],
+            'password' => ['required', 'string'],
         ], [
-            'email.required' => 'البريد الإلكتروني مطلوب',
-            'email.email' => 'البريد الإلكتروني غير صالح',
+            'username.required' => 'اسم المستخدم مطلوب',
             'password.required' => 'كلمة السر مطلوبة',
         ]);
 
         if (! Auth::attempt($credentials, $request->boolean('remember'))) {
-            return back()->withErrors(['email' => 'البريد أو كلمة السر غير صحيحة'])->onlyInput('email');
+            return back()->withErrors(['username' => 'اسم المستخدم أو كلمة السر غير صحيحة'])->onlyInput('username');
         }
 
         $request->session()->regenerate();
+        // rappel affiche tant que le mot de passe initial (= nom d'utilisateur) n'a pas ete change
+        $request->session()->put('weak_password', $credentials['password'] === $credentials['username']);
 
         return redirect()->intended(route('stock.index'));
     }

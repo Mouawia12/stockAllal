@@ -6,7 +6,7 @@ use App\Models\User;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\Schedule;
 
-Artisan::command('user:create {email} {--name=} {--password=}', function (string $email) {
+Artisan::command('user:create {username} {--name=} {--password=}', function (string $username) {
     $password = $this->option('password') ?: $this->secret('Mot de passe (8 caracteres minimum)');
     if (strlen((string) $password) < 8) {
         $this->error('Mot de passe trop court (8 caracteres minimum).');
@@ -15,10 +15,10 @@ Artisan::command('user:create {email} {--name=} {--password=}', function (string
     }
 
     $user = User::updateOrCreate(
-        ['email' => $email],
-        ['name' => $this->option('name') ?: $email, 'password' => $password],
+        ['username' => $username],
+        ['name' => $this->option('name') ?: $username, 'password' => $password],
     );
-    $this->info("Utilisateur {$user->email} pret.");
+    $this->info("Utilisateur {$user->username} pret (modifiable ensuite dans la page حسابي).");
 })->purpose('Cree ou met a jour un utilisateur du tableau de bord');
 
 Artisan::command('agent:install-code', function () {

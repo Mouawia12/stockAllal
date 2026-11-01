@@ -64,11 +64,14 @@
             <a href="{{ route('stock.index') }}" class="{{ request()->routeIs('stock.*') ? 'on' : '' }}">البحث</a>
             <a href="{{ route('branches.index') }}" class="{{ request()->routeIs('branches.*') ? 'on' : '' }}">الفروع</a>
         </nav>
-        <span class="muted small hide-sm">{{ auth()->user()->name }}</span>
+        <a href="{{ route('account.edit') }}" class="small {{ request()->routeIs('account.*') ? '' : 'muted' }}">{{ auth()->user()->name }}</a>
         <form method="post" action="{{ route('logout') }}">@csrf<button class="link" type="submit">خروج</button></form>
     </div>
 </header>
 <main>
+    @if (session('weak_password'))
+        <div class="errors">كلمة السر الحالية تساوي اسم المستخدم. غيّرها من <a href="{{ route('account.edit') }}">حسابي</a>.</div>
+    @endif
     @if (session('status'))
         <div class="flash">{{ session('status') }}</div>
     @endif

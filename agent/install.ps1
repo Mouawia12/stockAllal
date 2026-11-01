@@ -22,6 +22,7 @@ param(
 )
 
 $ErrorActionPreference = 'Stop'
+$DefaultApiUrl = 'https://stockallal.souftech.com/api'
 $TaskName = 'GescomAgent'
 $Dir = Join-Path $env:ProgramData 'GescomAgent'
 $ConfigPath = Join-Path $Dir 'config.json'
@@ -61,7 +62,10 @@ if (Test-Path $ConfigPath) {
 
 # ---------- 1. informations ----------
 Step '1/6 Informations'
-if (-not $ApiUrl) { $ApiUrl = Read-Host 'Adresse de l''API (ex : https://stock.exemple.com/api)' }
+if (-not $ApiUrl) {
+    $ApiUrl = Read-Host "Adresse de l'API [Entree = $DefaultApiUrl]"
+    if (-not $ApiUrl.Trim()) { $ApiUrl = $DefaultApiUrl }
+}
 if (-not $BranchName) { $BranchName = Read-Host 'Nom de la branche' }
 if (-not $InstallCode) { $InstallCode = Read-Host 'Code d''installation (tableau de bord)' }
 $ApiUrl = $ApiUrl.Trim().TrimEnd('/')

@@ -1,5 +1,6 @@
 <?php
 
+use App\Http\Controllers\AccountController;
 use App\Http\Controllers\Auth\LoginController;
 use App\Http\Controllers\BranchController;
 use App\Http\Controllers\StockController;
@@ -12,6 +13,8 @@ Route::middleware('guest')->group(function () {
 
 Route::middleware('auth')->group(function () {
     Route::post('logout', [LoginController::class, 'logout'])->name('logout');
+    Route::get('account', [AccountController::class, 'edit'])->name('account.edit');
+    Route::put('account', [AccountController::class, 'update'])->name('account.update');
 
     Route::get('/', [StockController::class, 'index'])->name('stock.index');
     Route::get('product', [StockController::class, 'product'])->name('stock.product');

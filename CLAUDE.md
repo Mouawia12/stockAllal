@@ -6,8 +6,9 @@ searches products across branches and can ask every branch for a live quantity.
 
 ## Deploying to a server
 
-Follow **`DEPLOY.md`** step by step. Ask the user for the domain and the admin email first. HTTPS is mandatory
-(the agents refuse non-https API URLs). Do not edit application code on the server; report failures to the user.
+Production: **https://stockallal.souftech.com** on a **HestiaCP** server (`/home/user/web/stockallal.souftech.com/public_html`).
+Follow **`DEPLOY.md`** step by step. Ask the user for the admin username and password; the repo is public, so never write them to a file.
+HTTPS is mandatory (the agents refuse non-https API URLs). Do not edit application code on the server; report failures to the user.
 
 ## Layout
 
@@ -17,6 +18,7 @@ Follow **`DEPLOY.md`** step by step. Ask the user for the domain and the admin e
 | `app/Http/Middleware/AuthenticateAgent.php` | Branch identified by `Authorization: Bearer <token>` (sha256 stored, never the token) |
 | `app/Http/Controllers/StockController.php` | Search (one row per `code_key`), product modal JSON, "refresh now" |
 | `app/Http/Controllers/BranchController.php` | Branches page, one-time install codes, rename / disable / delete |
+| `app/Http/Controllers/AccountController.php` | "حسابي": change display name, username (login is by username) and password |
 | `routes/console.php` | `user:create`, `agent:install-code`, daily cleanup schedule |
 | `resources/views/` | Blade, Arabic RTL, plain CSS + vanilla JS (no Node / Vite build) |
 | `agent/` | Branch agent (PowerShell 5.1) + `install.ps1` / `uninstall.ps1` + `tools/mock_api.py`. Its `README.md` holds the API contract |
@@ -38,6 +40,6 @@ Follow **`DEPLOY.md`** step by step. Ask the user for the domain and the admin e
 composer install
 php artisan test                      # SQLite in memory
 php artisan serve                     # http://127.0.0.1:8000
-php artisan user:create a@b.c --name=Admin
+php artisan user:create <username> --name=Admin   # asks for the password
 php artisan agent:install-code        # one-time code for install.ps1 (24 h)
 ```

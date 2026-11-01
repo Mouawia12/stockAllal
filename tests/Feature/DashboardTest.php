@@ -46,13 +46,44 @@ class DashboardTest extends TestCase
         $this->get('/branches')->assertRedirect('/login');
     }
 
-    public function test_login(): void
+    public function test_login_with_username(): void
     {
-        $user = User::factory()->create(['password' => 'secret-123']);
+        $user = User::factory()->create(['username' => '0600000000', 'password' => 'secret-123']);
 
-        $this->post('/login', ['email' => $user->email, 'password' => 'mauvais'])->assertSessionHasErrors('email');
-        $this->post('/login', ['email' => $user->email, 'password' => 'secret-123'])->assertRedirect('/');
+        $this->post('/login', ['username' => '0600000000', 'password' => 'mauvais'])->assertSessionHasErrors('username');
+        $this->post('/login', ['username' => '0600000000', 'password' => 'secret-123'])
+            ->assertRedirect('/')->assertSessionHas('weak_password', false);
         $this->assertAuthenticatedAs($user);
+    }
+
+    public function test_password_equal_to_username_shows_a_reminder_until_changed(): void
+    {
+        $user = User::factory()->create(['username' => '0600000000', 'password' => '0600000000']);
+
+        $this->post('/login', ['username' => '0600000000', 'password' => '0600000000'])->assertSessionHas('weak_password', true);
+        $this->get('/')->assertSee('كلمة السر الحالية تساوي اسم المستخدم');
+
+        $this->put('/account', [
+            'name' => 'Admin', 'username' => 'admin', 'current_password' => '0600000000',
+            'password' => 'nouveau-123', 'password_confirmation' => 'nouveau-123',
+        ])->assertSessionHasNoErrors()->assertSessionHas('weak_password', false);
+
+        $user->refresh();
+        $this->assertSame('admin', $user->username);
+        $this->post('/logout');
+        $this->post('/login', ['username' => 'admin', 'password' => 'nouveau-123'])->assertRedirect('/');
+    }
+
+    public function test_account_update_requires_the_current_password(): void
+    {
+        $user = User::factory()->create(['username' => 'admin', 'password' => 'secret-123']);
+        User::factory()->create(['username' => 'pris']);
+
+        $this->actingAs($user)->put('/account', ['name' => 'X', 'username' => 'nouveau', 'current_password' => 'faux'])
+            ->assertSessionHasErrors('current_password');
+        $this->actingAs($user)->put('/account', ['name' => 'X', 'username' => 'pris', 'current_password' => 'secret-123'])
+            ->assertSessionHasErrors('username');
+        $this->assertSame('admin', $user->fresh()->username);
     }
 
     public function test_agent_polling_does_not_use_up_login_attempts_from_the_same_ip(): void
@@ -63,7 +94,7 @@ class DashboardTest extends TestCase
         }
         $user = User::factory()->create(['password' => 'secret-123']);
 
-        $this->withToken('')->post('/login', ['email' => $user->email, 'password' => 'secret-123'])->assertRedirect('/');
+        $this->withToken('')->post('/login', ['username' => $user->username, 'password' => 'secret-123'])->assertRedirect('/');
         $this->assertTrue($branch->fresh()->isOnline());
     }
 
