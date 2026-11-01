@@ -105,7 +105,7 @@ SESSION_SECURE_COOKIE=true
 
 ```bash
 sudo -u user /usr/bin/php8.4 artisan migrate --force
-sudo -u user /usr/bin/php8.4 artisan user:create <ADMIN_USERNAME> --name="Admin"   # يسأل عن كلمة السر بشكل مخفي
+sudo -u user /usr/bin/php8.4 artisan user:create <ADMIN_USERNAME> --name="Admin" --admin   # يسأل عن كلمة السر بشكل مخفي
 ```
 
 ## 5. جعل `public_html/public` هو الـdocroot (حاسم للأمان)

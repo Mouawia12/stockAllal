@@ -6,7 +6,7 @@ use App\Models\User;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\Schedule;
 
-Artisan::command('user:create {username} {--name=} {--password=}', function (string $username) {
+Artisan::command('user:create {username} {--name=} {--password=} {--admin : droits administrateur (branches, agent, comptes)}', function (string $username) {
     $password = $this->option('password') ?: $this->secret('Mot de passe (8 caracteres minimum)');
     if (strlen((string) $password) < 8) {
         $this->error('Mot de passe trop court (8 caracteres minimum).');
@@ -14,11 +14,13 @@ Artisan::command('user:create {username} {--name=} {--password=}', function (str
         return 1;
     }
 
-    $user = User::updateOrCreate(
-        ['username' => $username],
-        ['name' => $this->option('name') ?: $username, 'password' => $password],
-    );
-    $this->info("Utilisateur {$user->username} pret (modifiable ensuite dans la page حسابي).");
+    $user = User::firstOrNew(['username' => $username]);
+    $user->name = $this->option('name') ?: ($user->name ?: $username);
+    $user->password = $password;
+    // --admin donne les droits ; sans l'option, un compte existant garde les siens
+    $user->is_admin = $this->option('admin') || $user->is_admin;
+    $user->save();
+    $this->info(sprintf('Utilisateur %s pret (%s).', $user->username, $user->is_admin ? 'administrateur' : 'employe : stock seulement'));
 })->purpose('Cree ou met a jour un utilisateur du tableau de bord');
 
 Artisan::command('agent:install-code', function () {

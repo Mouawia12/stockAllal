@@ -13,7 +13,10 @@ return Application::configure(basePath: dirname(__DIR__))
         health: '/up',
     )
     ->withMiddleware(function (Middleware $middleware): void {
-        $middleware->alias(['agent' => \App\Http\Middleware\AuthenticateAgent::class]);
+        $middleware->alias([
+            'agent' => \App\Http\Middleware\AuthenticateAgent::class,
+            'admin' => \App\Http\Middleware\EnsureAdmin::class,
+        ]);
         $middleware->redirectGuestsTo(fn () => route('login'));
         $middleware->redirectUsersTo(fn () => route('stock.index'));
     })

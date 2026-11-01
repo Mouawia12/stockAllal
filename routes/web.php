@@ -5,6 +5,7 @@ use App\Http\Controllers\AgentDownloadController;
 use App\Http\Controllers\Auth\LoginController;
 use App\Http\Controllers\BranchController;
 use App\Http\Controllers\StockController;
+use App\Http\Controllers\UserController;
 use Illuminate\Support\Facades\Route;
 
 Route::middleware('guest')->group(function () {
@@ -12,6 +13,7 @@ Route::middleware('guest')->group(function () {
     Route::post('login', [LoginController::class, 'login'])->middleware('throttle:login');
 });
 
+// Tous les comptes (employes compris) : consulter le stock et gerer son propre compte.
 Route::middleware('auth')->group(function () {
     Route::post('logout', [LoginController::class, 'logout'])->name('logout');
     Route::get('account', [AccountController::class, 'edit'])->name('account.edit');
@@ -20,7 +22,10 @@ Route::middleware('auth')->group(function () {
     Route::get('/', [StockController::class, 'index'])->name('stock.index');
     Route::get('product', [StockController::class, 'product'])->name('stock.product');
     Route::post('refresh', [StockController::class, 'refresh'])->name('stock.refresh')->middleware('throttle:refresh');
+});
 
+// Administrateurs seulement : branches, agent et comptes.
+Route::middleware(['auth', 'admin'])->group(function () {
     Route::get('branches', [BranchController::class, 'index'])->name('branches.index');
     Route::post('branches/install-code', [BranchController::class, 'installCode'])->name('branches.install-code');
     Route::patch('branches/{branch}', [BranchController::class, 'update'])->name('branches.update');
@@ -30,4 +35,10 @@ Route::middleware('auth')->group(function () {
 
     Route::get('agent/download', [AgentDownloadController::class, 'zip'])->name('agent.download');
     Route::get('agent/guide', [AgentDownloadController::class, 'guide'])->name('agent.guide');
+
+    Route::get('users', [UserController::class, 'index'])->name('users.index');
+    Route::post('users', [UserController::class, 'store'])->name('users.store');
+    Route::get('users/{user}/edit', [UserController::class, 'edit'])->name('users.edit');
+    Route::put('users/{user}', [UserController::class, 'update'])->name('users.update');
+    Route::delete('users/{user}', [UserController::class, 'destroy'])->name('users.destroy');
 });

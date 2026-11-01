@@ -141,7 +141,7 @@ class AgentApiTest extends TestCase
     public function test_sync_now_button_round_trip(): void
     {
         [$token, $branch] = $this->registerBranch();
-        $user = User::factory()->create();
+        $user = User::factory()->admin()->create();
 
         $jobId = $this->actingAs($user)->postJson("/branches/{$branch->id}/sync")->assertOk()->json('job');
         $this->actingAs($user)->getJson("/branches/{$branch->id}/sync/{$jobId}")->assertJsonPath('status', 'pending');
@@ -163,7 +163,7 @@ class AgentApiTest extends TestCase
     {
         [$token, $branch] = $this->registerBranch();
         [, $other] = $this->registerBranch('Setif');
-        $user = User::factory()->create();
+        $user = User::factory()->admin()->create();
 
         $failed = $this->actingAs($user)->postJson("/branches/{$branch->id}/sync")->json('job');
         $this->withToken($token)->getJson('/api/agent/pending');

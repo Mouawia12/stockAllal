@@ -146,7 +146,7 @@ class DashboardTest extends TestCase
 
     public function test_agent_download_zip_and_guide(): void
     {
-        $user = User::factory()->create();
+        $user = User::factory()->admin()->create();
         $this->get('/agent/download')->assertRedirect('/login');
 
         $res = $this->actingAs($user)->get('/agent/download')->assertOk();
@@ -172,7 +172,7 @@ class DashboardTest extends TestCase
     public function test_branches_page_install_code_rename_and_disable(): void
     {
         [$oran] = $this->seedBranches();
-        $user = User::factory()->create();
+        $user = User::factory()->admin()->create();
 
         $this->actingAs($user)->post('/branches/install-code')->assertSessionHas('install_code');
         $code = session('install_code');

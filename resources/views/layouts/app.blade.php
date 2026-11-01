@@ -51,7 +51,10 @@
         <span class="brand">مخزون الفروع</span>
         <nav>
             <a href="{{ route('stock.index') }}" class="{{ request()->routeIs('stock.*') ? 'on' : '' }}">البحث</a>
-            <a href="{{ route('branches.index') }}" class="{{ request()->routeIs('branches.*') ? 'on' : '' }}">الفروع</a>
+            @if (auth()->user()->is_admin)
+                <a href="{{ route('branches.index') }}" class="{{ request()->routeIs('branches.*') ? 'on' : '' }}">الفروع</a>
+                <a href="{{ route('users.index') }}" class="{{ request()->routeIs('users.*') ? 'on' : '' }}">المستخدمون</a>
+            @endif
         </nav>
         @include('partials.theme-toggle')
         <a href="{{ route('account.edit') }}" class="small {{ request()->routeIs('account.*') ? '' : 'muted' }}">{{ auth()->user()->name }}</a>

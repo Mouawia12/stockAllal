@@ -24,6 +24,8 @@ For an already deployed server, use the "التحديثات لاحقاً" sectio
 | `agent/guide/` | `guide.html` = source of `agent/GescomAgent-Guide.pdf`; rebuild with `agent/guide/build-pdf.ps1` (headless Edge) after editing it |
 | `resources/views/partials/theme*.blade.php` | Day / night / auto theme (CSS variables + toggle saved in localStorage) |
 | `app/Http/Controllers/AccountController.php` | "حسابي": change display name, username (login is by username) and password |
+| `app/Http/Controllers/UserController.php` | Accounts page (admins only): create workers, edit, tick "مدير" to promote, delete. `users.is_admin` |
+| `app/Http/Middleware/EnsureAdmin.php` | `admin` middleware: branches, agent download/guide, accounts. Workers (`is_admin = false`) only get search, product modal, "تحديث الآن" and their own account |
 | `routes/console.php` | `user:create`, `agent:install-code`, daily cleanup schedule |
 | `resources/views/` | Blade, Arabic RTL, plain CSS + vanilla JS (no Node / Vite build) |
 | `agent/` | Branch agent (PowerShell 5.1) + `install.ps1` / `uninstall.ps1` + `tools/mock_api.py`. Its `README.md` holds the API contract |
@@ -45,6 +47,6 @@ For an already deployed server, use the "التحديثات لاحقاً" sectio
 composer install
 php artisan test                      # SQLite in memory
 php artisan serve                     # http://127.0.0.1:8000
-php artisan user:create <username> --name=Admin   # asks for the password
+php artisan user:create <username> --name=Admin --admin   # asks for the password; without --admin = worker (stock only)
 php artisan agent:install-code        # one-time code for install.ps1 (24 h)
 ```
