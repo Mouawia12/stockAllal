@@ -9,6 +9,8 @@ searches products across branches and can ask every branch for a live quantity.
 Production: **https://stockallal.souftech.com** on a **HestiaCP** server (`/home/user/web/stockallal.souftech.com/public_html`).
 Follow **`DEPLOY.md`** step by step. Ask the user for the admin username and password; the repo is public, so never write them to a file.
 HTTPS is mandatory (the agents refuse non-https API URLs). Do not edit application code on the server; report failures to the user.
+PHP **8.4** is required (the lock file pulls Symfony 8, which needs PHP >= 8.4.1); on the server always call `/usr/bin/php8.4`.
+For an already deployed server, use the "التحديثات لاحقاً" section at the end of `DEPLOY.md`.
 
 ## Layout
 
