@@ -22,7 +22,8 @@ param(
 )
 
 $ErrorActionPreference = 'Stop'
-$AgentVersion = '1.0.2'
+Add-Type -AssemblyName System.Net.Http
+$AgentVersion = '1.0.3'
 $Table = 'GC003'
 $Fields = @('CODEA', 'DESIGNATIONF2', 'STOCKREEL')
 $ReadOnlyTx = 'SET TRANSACTION READ ONLY NO WAIT ISOLATION LEVEL READ COMMITTED RECORD_VERSION;'
@@ -36,6 +37,7 @@ $TmpDir = Join-Path $Dir 'tmp'
 $OutboxDir = Join-Path $Dir 'outbox'
 $script:LastError = ''
 $script:LastErrorAt = [datetime]::MinValue
+$script:Http = $null
 
 # ---------- journal ----------
 
@@ -78,6 +80,7 @@ function Read-Config {
         db_password       = 'masterkey'
         poll_seconds      = 10
         full_sync_minutes = 5
+        http_timeout_seconds = 60
     }
     foreach ($p in $raw.PSObject.Properties) { $cfg[$p.Name] = $p.Value }
     return $cfg
@@ -188,43 +191,94 @@ function Assert-ApiUrl {
     }
 }
 
-function Invoke-Api([string]$Method, [string]$Path, $Body, [switch]$NoAuth) {
-    $params = @{
-        Method          = $Method
-        Uri             = ([string]$cfg.api_url).TrimEnd('/') + $Path
-        TimeoutSec      = 60
-        UseBasicParsing = $true
-        Headers         = @{ 'X-Agent-Version' = $AgentVersion; 'Accept' = 'application/json' }
-    }
-    if (-not $NoAuth) { $params.Headers['Authorization'] = 'Bearer ' + $cfg.token }
-    if ($null -ne $Body) {
-        # envoye en octets UTF-8 : PowerShell 5.1 abime les accents si on passe une chaine
-        $params.ContentType = 'application/json; charset=utf-8'
-        $params.Body = [Text.Encoding]::UTF8.GetBytes((ConvertTo-Json $Body -Depth 6 -Compress))
-    }
+# -NotIdempotent : requete a ne jamais rejouer si elle a pu atteindre le serveur (enregistrement : code a usage unique).
+# GET, synchro et resultat se rejouent sans effet de bord.
+function Invoke-Api([string]$Method, [string]$Path, $Body, [switch]$NoAuth, [switch]$NotIdempotent) {
+    $uri = ([string]$cfg.api_url).TrimEnd('/') + $Path
+    $bytes = $null
+    if ($null -ne $Body) { $bytes = [Text.Encoding]::UTF8.GetBytes((ConvertTo-Json $Body -Depth 6 -Compress)) }
     # connexion internet instable dans certaines branches (jusqu'a 1 connexion sur 2 qui echoue) : nouvel essai
     for ($attempt = 1; ; $attempt++) {
-        try { return Invoke-RestMethod @params }
+        try { return Send-ApiRequest $Method $uri $bytes (-not $NoAuth) }
         catch {
-            if ($attempt -ge 4 -or -not (Test-Retryable $_ $Method)) { throw }
+            if ($attempt -ge 4 -or -not (Test-Retryable $_ -NotIdempotent:$NotIdempotent)) { throw }
             Start-Sleep -Seconds (2 * $attempt)
         }
     }
 }
 
-# Pas de nouvel essai si le serveur a repondu (erreur HTTP = vraie reponse).
-# POST : seulement si la requete n'est jamais partie (connexion ou DNS), pour ne jamais l'envoyer deux fois.
-function Test-Retryable($ErrorRecord, [string]$Method) {
-    $ex = $ErrorRecord.Exception
-    if (-not ($ex -is [Net.WebException]) -or $ex.Response) { return $false }
-    if ($Method -eq 'GET') { return $true }
-    return @([Net.WebExceptionStatus]::ConnectFailure, [Net.WebExceptionStatus]::NameResolutionFailure) -contains $ex.Status
+# HttpClient plutot qu'Invoke-RestMethod : son Timeout borne TOUTE la requete (connexion, envoi, reponse).
+# Avec Invoke-RestMethod, un envoi bloque sur une ligne qui perd des paquets pouvait attendre 5 a 10 minutes.
+function Get-HttpClient {
+    if (-not $script:Http) {
+        $client = New-Object System.Net.Http.HttpClient
+        $client.Timeout = [TimeSpan]::FromSeconds([double]$cfg.http_timeout_seconds)
+        $client.DefaultRequestHeaders.Add('X-Agent-Version', $AgentVersion)
+        $client.DefaultRequestHeaders.Accept.Add((New-Object System.Net.Http.Headers.MediaTypeWithQualityHeaderValue('application/json')))
+        $script:Http = $client
+    }
+    $script:Http
 }
 
+function Send-ApiRequest([string]$Method, [string]$Uri, [byte[]]$Bytes, [bool]$Auth) {
+    $msg = New-Object System.Net.Http.HttpRequestMessage((New-Object System.Net.Http.HttpMethod($Method)), $Uri)
+    if ($Auth) { $msg.Headers.Authorization = New-Object System.Net.Http.Headers.AuthenticationHeaderValue('Bearer', [string]$cfg.token) }
+    if ($null -ne $Bytes) {
+        # octets UTF-8 : les designations et noms de branche gardent leurs accents / l'arabe
+        $msg.Content = New-Object System.Net.Http.ByteArrayContent(, $Bytes)
+        $msg.Content.Headers.ContentType = New-Object System.Net.Http.Headers.MediaTypeHeaderValue('application/json')
+        $msg.Content.Headers.ContentType.CharSet = 'utf-8'
+    }
+    $resp = $null
+    try {
+        $resp = (Get-HttpClient).SendAsync($msg).GetAwaiter().GetResult()
+        $text = $resp.Content.ReadAsStringAsync().GetAwaiter().GetResult()
+        if (-not $resp.IsSuccessStatusCode) {
+            $ex = New-Object System.Net.Http.HttpRequestException(('HTTP {0} : {1}' -f [int]$resp.StatusCode, $text))
+            $ex.Data['status'] = [int]$resp.StatusCode
+            throw $ex
+        }
+        if ($text) { return ($text | ConvertFrom-Json) }
+    } finally {
+        if ($resp) { $resp.Dispose() }
+        $msg.Dispose()
+    }
+}
+
+function Get-ExceptionChain($ErrorRecord) {
+    $e = $ErrorRecord.Exception
+    while ($e) { $e; $e = $e.InnerException }
+}
+
+# 0 = pas de reponse HTTP (reseau, delai depasse)
 function Get-HttpStatus($ErrorRecord) {
-    $resp = $ErrorRecord.Exception.Response
-    if ($resp -and $resp.StatusCode) { return [int]$resp.StatusCode }
+    foreach ($e in Get-ExceptionChain $ErrorRecord) {
+        if ($e.Data -and $e.Data.Contains('status')) { return [int]$e.Data['status'] }
+    }
     return 0
+}
+
+# Pas de nouvel essai si le serveur a repondu (erreur HTTP = vraie reponse).
+# Requete non idempotente : seulement si elle n'est jamais partie (connexion ou DNS).
+function Test-Retryable($ErrorRecord, [switch]$NotIdempotent) {
+    if ((Get-HttpStatus $ErrorRecord) -ne 0) { return $false }
+    if (-not $NotIdempotent) { return $true }
+    foreach ($e in Get-ExceptionChain $ErrorRecord) {
+        if ($e -is [Net.WebException] -and
+            @([Net.WebExceptionStatus]::ConnectFailure, [Net.WebExceptionStatus]::NameResolutionFailure) -contains $e.Status) { return $true }
+    }
+    return $false
+}
+
+# Message lisible pour le journal (sans "Exception lors de l'appel de GetResult...")
+function Get-ErrorText($ErrorRecord) {
+    $chain = @(Get-ExceptionChain $ErrorRecord)
+    if ($chain | Where-Object { $_ -is [Threading.Tasks.TaskCanceledException] }) {
+        return ('API : pas de reponse en {0} s (connexion lente ou coupee)' -f $cfg.http_timeout_seconds)
+    }
+    $web = $chain | Where-Object { $_ -is [Net.WebException] } | Select-Object -First 1
+    if ($web) { return "API : $($web.Message)" }
+    return $chain[-1].Message
 }
 
 function Get-Now { (Get-Date).ToString('yyyy-MM-ddTHH:mm:sszzz') }
@@ -266,7 +320,7 @@ function Invoke-PendingJobs {
                 $result.found = ($items.Count -gt 0)
             } catch {
                 $result.error = 'db_error'
-                Write-Log ("demande {0} : {1}" -f $job.id, $_.Exception.Message) -IsError
+                Write-Log ("demande {0} : {1}" -f $job.id, (Get-ErrorText $_)) -IsError
             }
         }
         $result.read_at = Get-Now
@@ -312,7 +366,7 @@ function Start-AgentLoop {
                 Write-Log 'token refuse par l''API (401) : branche desactivee ou config.json incorrect' -IsError
                 $sleep = 300
             } else {
-                Write-Log $_.Exception.Message -IsError
+                Write-Log (Get-ErrorText $_) -IsError
             }
         }
         if ((Get-Date) -ge $nextClean) { Remove-OldFiles; $nextClean = (Get-Date).AddHours(6) }
@@ -340,7 +394,7 @@ try {
         if (-not $BranchName -or -not $InstallCode) { throw '-BranchName et -InstallCode sont obligatoires' }
         Assert-ApiUrl
         $body = [ordered]@{ install_code = $InstallCode; branch_name = $BranchName; hostname = $env:COMPUTERNAME; agent_version = $AgentVersion }
-        $r = Invoke-Api 'POST' '/agents/register' $body -NoAuth
+        $r = Invoke-Api 'POST' '/agents/register' $body -NoAuth -NotIdempotent
         if (-not $r.token) { throw 'reponse de l''API sans token' }
         $cfg.token = [string]$r.token
         $cfg.branch_name = [string]$r.branch_name
@@ -375,8 +429,6 @@ try {
     }
     Start-AgentLoop
 } catch {
-    $status = Get-HttpStatus $_
-    if ($status) { Write-Log ("HTTP {0} : {1}" -f $status, $_.Exception.Message) -IsError }
-    else { Write-Log $_.Exception.Message -IsError }
+    Write-Log (Get-ErrorText $_) -IsError
     exit 1
 }
