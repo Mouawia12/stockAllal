@@ -170,5 +170,6 @@
     });
 })();
 </script>
+@include('partials.sw')
 </body>
 </html>

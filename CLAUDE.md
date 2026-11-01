@@ -49,6 +49,8 @@ For an already deployed server, use the "التحديثات لاحقاً" sectio
   `last_sync_at`. Keep it that way: rewriting ~4k rows per branch every 5 min is load the users feel.
 - **Flaky lines** (about half of new connections can drop, see the end of `DEPLOY.md`): browser calls go through `fetchRetry`;
   a POST that creates something carries a `newId()` key (`batch`) so a replayed request does not create it twice.
+  Page loads go through `public/sw.js`: it retries GET navigations and falls back to `public/offline.html`. It must never cache
+  app pages. To switch it off, ship a `sw.js` that calls `self.registration.unregister()`; never just delete the file.
 - **Never commit** `.env` or `database/*.sqlite`.
 
 ## Commands

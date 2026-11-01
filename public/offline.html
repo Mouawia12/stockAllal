@@ -1,0 +1,66 @@
+<!doctype html>
+<!-- Affichee par public/sw.js quand la page ne repond pas (ligne instable). Fichier statique : il doit marcher sans le serveur. -->
+<html lang="ar" dir="rtl">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>إعادة الاتصال — مخزون الفروع</title>
+    <style>
+        :root { color-scheme: light; --bg: #f4f3f6; --card: #fff; --text: #1f1d24; --muted: #6b6775; --border: #e4e1e8; --accent: #714b67; --on-accent: #fff; --soft: #efe6ee; }
+        @media (prefers-color-scheme: dark) {
+            :root:not([data-theme="light"]) { color-scheme: dark; --bg: #17161c; --card: #211f27; --text: #ebe8f0; --muted: #9c97a6; --border: #34313d; --accent: #c792bb; --on-accent: #1a1219; --soft: #2b2230; }
+        }
+        :root[data-theme="dark"] { color-scheme: dark; --bg: #17161c; --card: #211f27; --text: #ebe8f0; --muted: #9c97a6; --border: #34313d; --accent: #c792bb; --on-accent: #1a1219; --soft: #2b2230; }
+        * { box-sizing: border-box; }
+        body { margin: 0; min-height: 100vh; display: grid; place-items: center; padding: 16px; color: var(--text); font: 15px/1.6 "Segoe UI", Tahoma, "Noto Sans Arabic", Arial, sans-serif;
+            background: var(--bg) radial-gradient(700px 340px at 100% 0%, var(--soft), transparent 70%); }
+        .box { background: var(--card); border: 1px solid var(--border); border-radius: 16px; padding: 32px 28px; max-width: 440px; width: 100%; text-align: center; box-shadow: 0 8px 24px rgba(0, 0, 0, .12); }
+        .ring { width: 54px; height: 54px; margin: 0 auto 6px; border-radius: 50%; border: 4px solid var(--soft); border-top-color: var(--accent); animation: spin 1s linear infinite; }
+        @keyframes spin { to { transform: rotate(360deg); } }
+        h1 { font-size: 21px; margin: 14px 0 8px; }
+        p { color: var(--muted); margin: 0 0 22px; }
+        button { font: inherit; cursor: pointer; border: 0; border-radius: 10px; padding: 9px 22px; background: var(--accent); color: var(--on-accent); }
+        small { display: block; margin-top: 16px; color: var(--muted); }
+    </style>
+    <script>
+        try { var t = localStorage.getItem('theme'); if (t === 'light' || t === 'dark') document.documentElement.setAttribute('data-theme', t); } catch (e) {}
+    </script>
+</head>
+<body>
+<div class="box">
+    <div class="ring" aria-hidden="true"></div>
+    <h1>الاتصال بالسيرفر متقطع الآن</h1>
+    <p>هذا من خط الإنترنت، والبرنامج يعمل. نعيد المحاولة تلقائياً وتفتح الصفحة وحدها عند عودة الاتصال.</p>
+    <button type="button" id="retry">إعادة المحاولة الآن</button>
+    <small id="state">المحاولة التالية بعد لحظات…</small>
+</div>
+<script>
+(() => {
+    const state = document.getElementById('state');
+    let tries = 0, busy = false;
+    // le site repond-il ? /up est la sonde de Laravel (sans session ni base)
+    async function check() {
+        if (busy) return;
+        busy = true;
+        tries += 1;
+        state.textContent = 'محاولة رقم ' + tries + '…';
+        const ctrl = new AbortController();
+        const timer = setTimeout(() => ctrl.abort(), 6000);
+        try {
+            const res = await fetch('/up?t=' + Date.now(), {cache: 'no-store', signal: ctrl.signal});
+            if (res.ok) { state.textContent = 'عاد الاتصال، جارٍ فتح الصفحة…'; location.reload(); return; }
+        } catch (e) {
+        } finally {
+            clearTimeout(timer);
+            busy = false;
+        }
+        state.textContent = 'لم ينجح بعد. المحاولة التالية بعد 4 ثوانٍ…';
+    }
+    document.getElementById('retry').addEventListener('click', check);
+    window.addEventListener('online', check);
+    setInterval(check, 4000);
+    setTimeout(check, 1500);
+})();
+</script>
+</body>
+</html>

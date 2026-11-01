@@ -114,6 +114,16 @@ class ResilienceTest extends TestCase
             ->assertSessionMissing('_old_input.password');
     }
 
+    public function test_pages_register_the_reconnect_service_worker(): void
+    {
+        $this->assertFileExists(public_path('sw.js'));
+        $this->assertFileExists(public_path('offline.html'));
+        $this->assertStringContainsString("'/offline.html'", file_get_contents(public_path('sw.js')));
+
+        $this->get('/login')->assertOk()->assertSee('serviceWorker.register', false);
+        $this->actingAs(User::factory()->create())->get('/')->assertOk()->assertSee('serviceWorker.register', false);
+    }
+
     public function test_maintenance_and_server_errors_show_friendly_pages(): void
     {
         Route::get('/_down', fn () => abort(503));
