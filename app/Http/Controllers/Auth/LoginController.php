@@ -33,7 +33,7 @@ class LoginController extends Controller
         // rappel affiche tant que le mot de passe initial (= nom d'utilisateur) n'a pas ete change
         $request->session()->put('weak_password', $credentials['password'] === $credentials['username']);
 
-        return redirect()->intended(route('stock.index'));
+        return redirect()->intended(route('home'));
     }
 
     public function logout(Request $request): RedirectResponse

@@ -68,12 +68,12 @@ class PricesTest extends TestCase
         $admin = User::factory()->admin()->create();
 
         // sans branche principale : pas de colonne prix, un rappel pour l'administrateur
-        $this->actingAs($worker)->get('/?q=820')->assertOk()->assertDontSee('سعر مختلف')->assertDontSee('حدّد «الفرع الرئيسي»');
-        $this->actingAs($admin)->get('/?q=820')->assertSee('حدّد «الفرع الرئيسي»');
-        $this->assertNull($this->actingAs($worker)->get('/?q=820')->viewData('results')[0]->price);
+        $this->actingAs($worker)->get('/stock?q=820')->assertOk()->assertDontSee('سعر مختلف')->assertDontSee('حدّد «الفرع الرئيسي»');
+        $this->actingAs($admin)->get('/stock?q=820')->assertSee('حدّد «الفرع الرئيسي»');
+        $this->assertNull($this->actingAs($worker)->get('/stock?q=820')->viewData('results')[0]->price);
 
         $oran->forceFill(['is_main' => true])->save();
-        $results = $this->actingAs($worker)->get('/?q=article')->assertOk()->assertSee('45,00')->assertSee('سعر مختلف')
+        $results = $this->actingAs($worker)->get('/stock?q=article')->assertOk()->assertSee('45,00')->assertSee('سعر مختلف')
             ->viewData('results')->keyBy('code');
         $this->assertEquals(45, $results['820AC']->price);
         $this->assertTrue($results['820AC']->price_differs, 'Setif vend encore a 40');
@@ -82,7 +82,7 @@ class PricesTest extends TestCase
 
         // branche principale desactivee : plus de prix de reference
         $oran->update(['active' => false]);
-        $this->assertNull($this->actingAs($worker)->get('/?q=820')->viewData('results')[0]->price);
+        $this->assertNull($this->actingAs($worker)->get('/stock?q=820')->viewData('results')[0]->price);
     }
 
     public function test_preview_lists_every_branch_price_with_the_main_one(): void

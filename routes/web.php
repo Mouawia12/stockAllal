@@ -4,6 +4,7 @@ use App\Http\Controllers\AccountController;
 use App\Http\Controllers\AgentDownloadController;
 use App\Http\Controllers\Auth\LoginController;
 use App\Http\Controllers\BranchController;
+use App\Http\Controllers\HomeController;
 use App\Http\Controllers\ProductGroupController;
 use App\Http\Controllers\StockController;
 use App\Http\Controllers\UserController;
@@ -14,13 +15,14 @@ Route::middleware('guest')->group(function () {
     Route::post('login', [LoginController::class, 'login'])->middleware('throttle:login');
 });
 
-// Tous les comptes (employes compris) : consulter le stock et gerer son propre compte.
+// Tous les comptes (employes compris) : ecran des applications, consulter le stock et gerer son propre compte.
 Route::middleware('auth')->group(function () {
     Route::post('logout', [LoginController::class, 'logout'])->name('logout');
     Route::get('account', [AccountController::class, 'edit'])->name('account.edit');
     Route::put('account', [AccountController::class, 'update'])->name('account.update');
 
-    Route::get('/', [StockController::class, 'index'])->name('stock.index');
+    Route::get('/', [HomeController::class, 'index'])->name('home');
+    Route::get('stock', [StockController::class, 'index'])->name('stock.index');
     Route::get('product', [StockController::class, 'product'])->name('stock.product');
     Route::post('refresh', [StockController::class, 'refresh'])->name('stock.refresh')->middleware('throttle:refresh');
 });

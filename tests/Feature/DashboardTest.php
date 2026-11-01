@@ -126,7 +126,7 @@ class DashboardTest extends TestCase
         $this->seedBranches();
         $user = User::factory()->create();
 
-        $results = $this->actingAs($user)->get('/?q=820')->assertOk()->viewData('results')->keyBy('code');
+        $results = $this->actingAs($user)->get('/stock?q=820')->assertOk()->viewData('results')->keyBy('code');
 
         $this->assertSame(['820-AC', '820AC'], $results->keys()->sort()->values()->all());
         // 820ac (Oran) et 820AC (Setif) = un seul produit ; la branche desactivee est ignoree
@@ -142,13 +142,13 @@ class DashboardTest extends TestCase
         $this->seedBranches();
         $user = User::factory()->create();
 
-        $codes = $this->actingAs($user)->get('/?q=zinguee')->viewData('results')->pluck('code')->all();
+        $codes = $this->actingAs($user)->get('/stock?q=zinguee')->viewData('results')->pluck('code')->all();
         $this->assertSame(['612Z'], $codes);
 
-        $codes = $this->actingAs($user)->get('/?q=820AC')->viewData('results')->pluck('code')->all();
+        $codes = $this->actingAs($user)->get('/stock?q=820AC')->viewData('results')->pluck('code')->all();
         $this->assertSame('820AC', $codes[0]);
 
-        $this->actingAs($user)->get('/?q=%25')->assertOk()->assertViewHas('results', fn ($r) => $r->isEmpty());
+        $this->actingAs($user)->get('/stock?q=%25')->assertOk()->assertViewHas('results', fn ($r) => $r->isEmpty());
     }
 
     public function test_product_lists_every_active_branch(): void

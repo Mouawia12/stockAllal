@@ -4,13 +4,14 @@
     (() => {
         const btn = document.getElementById('theme-toggle');
         const order = ['auto', 'light', 'dark'];
-        const labels = {auto: '◐ تلقائي', light: '☀ نهاري', dark: '☾ ليلي'};
+        const labels = {auto: ['◐', 'تلقائي'], light: ['☀', 'نهاري'], dark: ['☾', 'ليلي']};
         const current = () => { try { return localStorage.getItem('theme') || 'auto'; } catch (e) { return 'auto'; } };
         const apply = (t) => {
             if (t === 'auto') document.documentElement.removeAttribute('data-theme');
             else document.documentElement.setAttribute('data-theme', t);
-            btn.textContent = labels[t];
-            btn.title = 'المظهر: ' + labels[t] + ' — اضغط للتغيير';
+            // le mot est masquable sur petit ecran (.theme-label), le symbole reste
+            btn.innerHTML = labels[t][0] + '<span class="theme-label"> ' + labels[t][1] + '</span>';
+            btn.title = 'المظهر: ' + labels[t][1] + ' — اضغط للتغيير';
         };
         apply(current());
         btn.addEventListener('click', () => {

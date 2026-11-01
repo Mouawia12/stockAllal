@@ -46,19 +46,19 @@ class ProductGroupsTest extends TestCase
         $worker = User::factory()->create();
         $admin = User::factory()->admin()->create();
 
-        $this->actingAs($worker)->get('/')->assertDontSee(route('merge.index'));
+        $this->actingAs($worker)->get('/stock')->assertDontSee(route('merge.index'));
         $this->actingAs($worker)->get('/merge?q=820')->assertForbidden();
         $this->actingAs($worker)->post('/merge', ['codes' => ['820AC', '820-AC']])->assertForbidden();
         $this->actingAs($worker)->delete('/merge', ['code' => '820AC'])->assertForbidden();
         $this->assertSame(0, ProductGroup::count());
 
-        $this->actingAs($admin)->get('/')->assertSee(route('merge.index'));
+        $this->actingAs($admin)->get('/stock')->assertSee(route('merge.index'));
         $this->actingAs($admin)->get('/merge?q=820')->assertOk()
             ->assertSee('دمج المحدد')
             ->assertSee('name="codes[]" value="820AC"', false)
             ->assertSee('name="codes[]" value="820-AC"', false);
         // la recherche normale n'a pas de cases a cocher
-        $this->actingAs($admin)->get('/?q=820')->assertOk()->assertDontSee('name="codes[]"', false);
+        $this->actingAs($admin)->get('/stock?q=820')->assertOk()->assertDontSee('name="codes[]"', false);
     }
 
     public function test_merged_codes_are_one_product_in_search_and_preview(): void
@@ -71,7 +71,7 @@ class ProductGroupsTest extends TestCase
             ->assertRedirect('/merge?q=820')->assertSessionHas('status', "تم الدمج: \u{2066}820-AC + 820AC\u{2069}");
 
         // une seule ligne, sous le premier code trouve par la recherche, avec les quantites des deux branches
-        $results = $this->actingAs($worker)->get('/?q=820')->assertOk()->assertSee('+ 820AC')->viewData('results');
+        $results = $this->actingAs($worker)->get('/stock?q=820')->assertOk()->assertSee('+ 820AC')->viewData('results');
         $this->assertCount(1, $results);
         $this->assertSame('820-AC', $results[0]->code);
         $this->assertSame(['820AC'], $results[0]->merged);
@@ -79,7 +79,7 @@ class ProductGroupsTest extends TestCase
         $this->assertSame(2, $results[0]->branches);
         $this->assertSame('BOULLON ACIER EX 8*20', $results[0]->designation);
 
-        $results = $this->actingAs($worker)->get('/?q=820AC')->viewData('results');
+        $results = $this->actingAs($worker)->get('/stock?q=820AC')->viewData('results');
         $this->assertSame('820AC', $results[0]->code, 'le code exact reste en tete');
         $this->assertSame(['820-AC'], $results[0]->merged);
         $this->assertEquals(174.11, $results[0]->total);
