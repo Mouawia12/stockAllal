@@ -22,7 +22,7 @@ param(
 )
 
 $ErrorActionPreference = 'Stop'
-$AgentVersion = '1.0.0'
+$AgentVersion = '1.0.1'
 $Table = 'GC003'
 $Fields = @('CODEA', 'DESIGNATIONF2', 'STOCKREEL')
 $ReadOnlyTx = 'SET TRANSACTION READ ONLY NO WAIT ISOLATION LEVEL READ COMMITTED RECORD_VERSION;'
@@ -202,7 +202,23 @@ function Invoke-Api([string]$Method, [string]$Path, $Body, [switch]$NoAuth) {
         $params.ContentType = 'application/json; charset=utf-8'
         $params.Body = [Text.Encoding]::UTF8.GetBytes((ConvertTo-Json $Body -Depth 6 -Compress))
     }
-    Invoke-RestMethod @params
+    # connexion internet instable dans certaines branches (jusqu'a 1 connexion sur 2 qui echoue) : nouvel essai
+    for ($attempt = 1; ; $attempt++) {
+        try { return Invoke-RestMethod @params }
+        catch {
+            if ($attempt -ge 4 -or -not (Test-Retryable $_ $Method)) { throw }
+            Start-Sleep -Seconds (2 * $attempt)
+        }
+    }
+}
+
+# Pas de nouvel essai si le serveur a repondu (erreur HTTP = vraie reponse).
+# POST : seulement si la requete n'est jamais partie (connexion ou DNS), pour ne jamais l'envoyer deux fois.
+function Test-Retryable($ErrorRecord, [string]$Method) {
+    $ex = $ErrorRecord.Exception
+    if (-not ($ex -is [Net.WebException]) -or $ex.Response) { return $false }
+    if ($Method -eq 'GET') { return $true }
+    return @([Net.WebExceptionStatus]::ConnectFailure, [Net.WebExceptionStatus]::NameResolutionFailure) -contains $ex.Status
 }
 
 function Get-HttpStatus($ErrorRecord) {
