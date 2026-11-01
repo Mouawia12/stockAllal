@@ -6,7 +6,18 @@
 @push('head')
 <style>
     .search { display: flex; gap: 8px; margin-bottom: 16px; }
+    .search .q-wrap { position: relative; flex: 1; display: flex; }
     .search input { flex: 1; font-size: 16px; padding: 10px 12px; }
+    .live-spin { display: none; position: absolute; left: 38px; top: 50%; width: 16px; height: 16px; margin-top: -8px;
+        border: 2px solid var(--muted); border-top-color: transparent; border-radius: 50%; animation: spin .8s linear infinite; }
+    .search.busy .live-spin { display: block; }
+    .search.offline input { border-color: var(--warn); }
+    .live-hint { margin: -8px 0 12px; }
+    kbd { font: 12px Consolas, monospace; border: 1px solid var(--border); border-bottom-width: 2px; border-radius: 5px; padding: 0 5px; background: var(--card); }
+    mark { background: var(--warn-bg); color: inherit; border-radius: 3px; padding: 0 1px; }
+    #results { transition: opacity .15s; }
+    #results[aria-busy="true"] { opacity: .6; }
+    #results tbody tr:focus-within { background: var(--row-hover); }
     .code { font-family: Consolas, "Courier New", monospace; font-weight: 600; }
     .total { font-weight: 600; }
     .empty { padding: 30px; text-align: center; color: var(--muted); }
@@ -43,88 +54,22 @@
     </p>
 @endif
 
-<form class="search" method="get" action="{{ route($merge ? 'merge.index' : 'stock.index') }}">
-    <input type="search" name="q" value="{{ $q }}" placeholder="كود المنتج أو جزء من التسمية — مثلاً 820AC" autofocus autocomplete="off">
+<form class="search" method="get" action="{{ route($merge ? 'merge.index' : 'stock.index') }}" data-title="{{ $merge ? 'دمج الأصناف — ' : '' }}مخزون الفروع">
+    <div class="q-wrap">
+        <input type="search" name="q" value="{{ $q }}" placeholder="كود المنتج أو كلمات من التسمية — مثلاً 820AC أو boulon 20" autofocus autocomplete="off" aria-controls="results">
+        <span class="live-spin" aria-hidden="true"></span>
+    </div>
     <button class="primary" type="submit">بحث</button>
 </form>
+<p class="live-hint muted small hide-sm">النتائج تتحدّث أثناء الكتابة. <kbd>↓</kbd> <kbd>↑</kbd> للتنقل، <kbd>Enter</kbd> للمعاينة، <kbd>/</kbd> للرجوع إلى البحث.</p>
 
 @if ($merge)
     <form id="merge-form" method="post" action="{{ route('merge.store') }}">@csrf</form>
     <form id="unmerge-form" method="post" action="{{ route('merge.destroy') }}">@csrf @method('delete')</form>
 @endif
 
-<div class="card">
-    @if ($q === '')
-        <div class="empty">
-            @if ($merge)
-                ابحث بجزء مشترك من الكود (مثلاً <span class="ltr">820</span>) لترى كل كتاباته في الفروع.
-            @else
-                اكتب كود منتج أو جزءاً من تسميته. النتيجة: سطر واحد لكل منتج، ومجموع كمياته في كل الفروع.
-            @endif
-        </div>
-    @elseif ($results->isEmpty())
-        <div class="empty">لا يوجد منتج يطابق «{{ $q }}» في أي فرع.</div>
-    @else
-        @if ($merge)
-            <div class="merge-bar">
-                <button class="primary" type="submit" form="merge-form" id="merge-btn" disabled>دمج المحدد</button>
-                <span class="muted small" id="merge-count">حدّد صنفين أو أكثر هما نفس المنتج.</span>
-            </div>
-        @endif
-        <table>
-            <thead>
-            <tr>
-                @if ($merge)<th></th>@endif
-                <th>الكود</th>
-                <th>التسمية</th>
-                <th>المجموع</th>
-                @if ($mainBranch)
-                    <th title="سعر الفرع الرئيسي «{{ $mainBranch->name }}»">السعر</th>
-                @endif
-                <th class="hide-sm">الفروع</th>
-                <th></th>
-            </tr>
-            </thead>
-            <tbody>
-            @foreach ($results as $r)
-                <tr>
-                    @if ($merge)
-                        <td class="pick"><input type="checkbox" name="codes[]" value="{{ $r->code }}" form="merge-form" aria-label="تحديد {{ $r->code }}"></td>
-                    @endif
-                    <td>
-                        <span class="codes">
-                            <span class="code ltr">{{ $r->code }}</span>
-                            @if ($merge && $r->merged)
-                                <button type="submit" class="link" form="unmerge-form" name="code" value="{{ $r->code }}" title="إخراج {{ $r->code }} من الدمج">✕</button>
-                            @endif
-                            @foreach ($r->merged as $other)
-                                <span class="pill ltr" title="مدمج مع {{ $r->code }}">+ {{ $other }}@if ($merge)<button type="submit" class="link" form="unmerge-form" name="code" value="{{ $other }}" title="إخراج {{ $other }} من الدمج">✕</button>@endif</span>
-                            @endforeach
-                        </span>
-                    </td>
-                    <td><bdi>{{ $r->designation }}</bdi></td>
-                    <td><span class="num total {{ $r->total < 0 ? 'neg' : '' }}">{{ number_format($r->total, 2, ',', ' ') }}</span></td>
-                    @if ($mainBranch)
-                        <td>
-                            <span class="num">{{ $r->price === null ? '—' : number_format($r->price, 2, ',', ' ') }}</span>
-                            @if ($r->price_differs)
-                                <span class="pill warn" title="فرع واحد على الأقل يبيع بسعر آخر — التفاصيل في «معاينة»">سعر مختلف</span>
-                            @endif
-                        </td>
-                    @endif
-                    <td class="hide-sm"><span class="pill">{{ $r->branches }} / {{ $branchesTotal }}</span></td>
-                    <td><button type="button" data-code="{{ $r->code }}" data-designation="{{ $r->designation }}">معاينة</button></td>
-                </tr>
-            @endforeach
-            </tbody>
-        </table>
-        @if ($results->count() >= 100)
-            <p class="muted small">تُعرض أول 100 نتيجة فقط — دقّق البحث.</p>
-        @endif
-        @if (! $mainBranch && auth()->user()->is_admin)
-            <p class="muted small">لعرض الأسعار في البحث: حدّد «الفرع الرئيسي» في صفحة <a href="{{ route('branches.index') }}">الفروع</a>.</p>
-        @endif
-    @endif
+<div class="card" id="results">
+    @include('stock._results')
 </div>
 
 <div class="modal-bg" id="modal-bg">
@@ -291,30 +236,144 @@
         stopPolling();
         current = null;
         bg.classList.remove('open');
+        // retour au bouton "معاينة" d'origine : le clavier reprend la ou il etait
+        if (lastPreview && results.contains(lastPreview)) lastPreview.focus();
     }
 
-    document.querySelectorAll('button[data-code]').forEach(btn =>
-        btn.addEventListener('click', () => open(btn.dataset.code, btn.dataset.designation)));
+    // ---------- resultats : evenements delegues, ils survivent au remplacement du bloc par la recherche ----------
+    const form = document.querySelector('form.search');
+    const input = form.querySelector('input[name=q]');
+    const results = document.getElementById('results');
+    const previewButtons = () => [...results.querySelectorAll('button[data-code]')];
+    let lastPreview = null;
+
+    results.addEventListener('click', e => {
+        const btn = e.target.closest('button[data-code]');
+        if (!btn) return;
+        lastPreview = btn;
+        open(btn.dataset.code, btn.dataset.designation);
+    });
+    // fleches : de la recherche aux boutons "معاينة" et entre eux ; Entree ouvre l'apercu (clic natif)
+    results.addEventListener('keydown', e => {
+        const btn = e.target.closest('button[data-code]');
+        if (!btn || (e.key !== 'ArrowDown' && e.key !== 'ArrowUp')) return;
+        e.preventDefault();
+        const list = previewButtons();
+        const i = list.indexOf(btn) + (e.key === 'ArrowDown' ? 1 : -1);
+        if (i < 0) input.focus();
+        else list[Math.min(i, list.length - 1)].focus();
+    });
     mRefresh.addEventListener('click', refresh);
     document.getElementById('m-close').addEventListener('click', close);
     bg.addEventListener('click', e => { if (e.target === bg) close(); });
-    document.addEventListener('keydown', e => { if (e.key === 'Escape' && current) close(); });
+    document.addEventListener('keydown', e => {
+        if (e.key === 'Escape' && current) { close(); return; }
+        // "/" : retour a la recherche depuis n'importe ou (sauf en saisie)
+        if (e.key === '/' && !current && !e.target.closest('input, textarea, select, [contenteditable]')) {
+            e.preventDefault();
+            input.focus();
+            input.select();
+        }
+    });
 
     @if ($merge)
-    // page "دمج الأصناف" : le bouton s'active a partir de deux cases cochees
-    const mergeBtn = document.getElementById('merge-btn');
-    if (mergeBtn) {
-        const boxes = [...document.querySelectorAll('input[name="codes[]"]')];
+    // page "دمج الأصناف" : la selection survit aux recherches successives (820AC, puis 820-AC) ; il faut deux codes
+    const picked = new Set();
+    const mergeForm = document.getElementById('merge-form');
+    function bindMerge() {
+        const btn = document.getElementById('merge-btn');
+        if (!btn) return;
         const count = document.getElementById('merge-count');
+        const boxes = [...results.querySelectorAll('input[name="codes[]"]')];
         const update = () => {
-            const n = boxes.filter(b => b.checked).length;
-            mergeBtn.disabled = n < 2;
-            count.textContent = n ? 'محدد: ' + n : 'حدّد صنفين أو أكثر هما نفس المنتج.';
+            btn.disabled = picked.size < 2;
+            count.textContent = picked.size
+                ? 'محدد: ' + [...picked].map(c => '\u2066' + c + '\u2069').join('، ')
+                : 'حدّد صنفين أو أكثر هما نفس المنتج.';
         };
-        boxes.forEach(b => b.addEventListener('change', update));
+        boxes.forEach(b => {
+            b.checked = picked.has(b.value);
+            b.addEventListener('change', () => { b.checked ? picked.add(b.value) : picked.delete(b.value); update(); });
+        });
         update();
     }
+    // les codes choisis dans une recherche precedente ne sont plus a l'ecran : ils partent en champs caches
+    mergeForm.addEventListener('submit', () => {
+        mergeForm.querySelectorAll('input[type=hidden][name="codes[]"]').forEach(i => i.remove());
+        picked.forEach(code => {
+            const i = document.createElement('input');
+            i.type = 'hidden';
+            i.name = 'codes[]';
+            i.value = code;
+            mergeForm.appendChild(i);
+        });
+    });
+    bindMerge();
     @endif
+
+    // ---------- recherche pendant la frappe ----------
+    // Pause de 220 ms apres la derniere touche ; la requete precedente est annulee, et une reponse arrivee
+    // en retard (seq) n'ecrase jamais une plus recente. Sans JavaScript, le formulaire marche comme avant.
+    const BASE_TITLE = form.dataset.title;
+    let typingTimer = null, inflight = null, seq = 0, shown = input.value.trim();
+
+    async function liveSearch(q, force = false) {
+        if (q === shown && !force) return;
+        const my = ++seq;
+        if (inflight) inflight.abort();
+        inflight = new AbortController();
+
+        const url = new URL(form.action, location.href);
+        if (q) url.searchParams.set('q', q);
+        history.replaceState(null, '', url);   // actualiser ou revenir garde la recherche
+        document.title = (q ? q + ' — ' : '') + BASE_TITLE;
+        url.searchParams.set('partial', '1');
+
+        form.classList.add('busy');
+        results.setAttribute('aria-busy', 'true');
+        try {
+            const res = await fetchRetry(url, {headers: {Accept: 'text/html'}, signal: inflight.signal}, 2, 8000);
+            if (!res.ok) throw new Error('HTTP ' + res.status);
+            const html = await res.text();
+            if (my !== seq) return;
+            results.innerHTML = html;
+            shown = q;
+            form.classList.remove('offline');
+            form.title = '';
+            @if ($merge) bindMerge(); @endif
+        } catch (e) {
+            if (my !== seq || e.name === 'AbortError') return;
+            // les resultats precedents restent ; la prochaine touche (ou Entree) reessaie
+            form.classList.add('offline');
+            form.title = 'الاتصال ضعيف: النتائج المعروضة قد لا تكون آخر بحث';
+        } finally {
+            if (my === seq) {
+                form.classList.remove('busy');
+                results.removeAttribute('aria-busy');
+            }
+        }
+    }
+
+    input.addEventListener('input', () => {
+        clearTimeout(typingTimer);
+        typingTimer = setTimeout(() => liveSearch(input.value.trim()), 220);
+    });
+    input.addEventListener('keydown', e => {
+        if (e.key === 'ArrowDown' && previewButtons().length) {
+            e.preventDefault();
+            previewButtons()[0].focus();
+        } else if (e.key === 'Escape' && input.value) {
+            e.preventDefault();
+            input.value = '';
+            clearTimeout(typingTimer);
+            liveSearch('');
+        }
+    });
+    form.addEventListener('submit', e => {
+        e.preventDefault();
+        clearTimeout(typingTimer);
+        liveSearch(input.value.trim(), true);
+    });
 })();
 </script>
 @endpush

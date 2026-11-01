@@ -101,18 +101,37 @@ class StockController extends Controller
         return response()->json(['batch' => $batch]);
     }
 
+    /**
+     * Page de recherche (ou "دمج الأصناف"). Avec ?partial=1 : seulement le bloc des resultats, pour la recherche
+     * pendant la frappe. Une URL a part (et pas un en-tete) : le cache du navigateur ne confond jamais les deux.
+     */
     private function page(Request $request, bool $merge): View
     {
         $q = trim((string) $request->query('q', ''));
+        $terms = $this->terms($q);
         $main = Branch::main();
 
-        return view('stock.index', [
+        return view($request->boolean('partial') ? 'stock._results' : 'stock.index', [
             'q' => $q,
+            'terms' => $terms,
             'merge' => $merge,
             'mainBranch' => $main,
-            'results' => $q === '' ? collect() : $this->search($q, $main),
+            'results' => $terms === [] ? collect() : $this->search($q, $terms, $main),
             'branchesTotal' => Branch::where('active', true)->count(),
         ]);
+    }
+
+    /**
+     * Mots de la recherche, en majuscules : "boulon 20" trouve "BOULON 8X20". Chaque mot doit se trouver
+     * dans le code ou la designation. 5 mots au plus.
+     *
+     * @return list<string>
+     */
+    private function terms(string $q): array
+    {
+        $words = preg_split('/\s+/u', mb_strtoupper(trim($q)), -1, PREG_SPLIT_NO_EMPTY) ?: [];
+
+        return array_slice($words, 0, 5);
     }
 
     /** Prix de la branche principale ; si le groupe y a plusieurs codes, celui de sa ligne la mieux stockee. */
@@ -140,22 +159,27 @@ class StockController extends Controller
         return 'not_found';
     }
 
-    private function search(string $q, ?Branch $main): Collection
+    /** @param  list<string>  $terms */
+    private function search(string $q, array $terms, ?Branch $main): Collection
     {
-        $upper = mb_strtoupper($q);
-        $contains = '%'.$this->escapeLike($upper).'%';
+        $upper = mb_strtoupper(trim($q));
         $prefix = $this->escapeLike($upper).'%';
+        $firstInCode = '%'.$this->escapeLike($terms[0]).'%';
 
         // ESCAPE '!' : meme syntaxe en MySQL et en SQLite (le backslash ne l'est pas)
-        $keys = BranchStock::query()
+        $query = BranchStock::query()
             ->join('branches', 'branches.id', '=', 'branch_stock.branch_id')
-            ->where('branches.active', true)
-            ->where(fn ($w) => $w
-                ->whereRaw("branch_stock.code_key LIKE ? ESCAPE '!'", [$contains])
-                ->orWhereRaw("UPPER(branch_stock.designation) LIKE ? ESCAPE '!'", [$contains]))
+            ->where('branches.active', true);
+        foreach ($terms as $term) {
+            $like = '%'.$this->escapeLike($term).'%';
+            $query->where(fn ($w) => $w
+                ->whereRaw("branch_stock.code_key LIKE ? ESCAPE '!'", [$like])
+                ->orWhereRaw("UPPER(branch_stock.designation) LIKE ? ESCAPE '!'", [$like]));
+        }
+        $keys = $query
             ->groupBy('branch_stock.code_key')
-            // code exact d'abord, puis les codes qui commencent par la recherche, puis le reste
-            ->orderByRaw("CASE WHEN branch_stock.code_key = ? THEN 0 WHEN branch_stock.code_key LIKE ? ESCAPE '!' THEN 1 ELSE 2 END", [$upper, $prefix])
+            // code exact, puis code qui commence par la recherche, puis code qui la contient, puis designation seule
+            ->orderByRaw("CASE WHEN branch_stock.code_key = ? THEN 0 WHEN branch_stock.code_key LIKE ? ESCAPE '!' THEN 1 WHEN branch_stock.code_key LIKE ? ESCAPE '!' THEN 2 ELSE 3 END", [$upper, $prefix, $firstInCode])
             ->orderBy('branch_stock.code_key')
             ->limit(self::MAX_RESULTS)
             ->pluck('branch_stock.code_key');

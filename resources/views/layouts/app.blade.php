@@ -114,19 +114,26 @@
 <script>
     // Lignes internet instables (jusqu'a une connexion sur deux perdue) : chaque appel a un delai et, sans reponse,
     // il est refait sur une nouvelle connexion. A reserver aux requetes qu'on peut rejouer sans effet de bord.
+    // options.signal (facultatif) : annulation par l'appelant, sans nouvel essai (ex. recherche remplacee par une plus recente).
     window.fetchRetry = async (url, options = {}, tries = 3, timeoutMs = 8000) => {
+        const outer = options.signal;
         for (let attempt = 1; ; attempt++) {
             const ctrl = new AbortController();
             const timer = setTimeout(() => ctrl.abort(), timeoutMs);
+            const cancel = () => ctrl.abort();
+            outer?.addEventListener('abort', cancel);
             try {
+                if (outer?.aborted) throw new DOMException('annule', 'AbortError');
                 const res = await fetch(url, {...options, signal: ctrl.signal});
                 if (res.status >= 502 && res.status <= 504 && attempt < tries) throw new Error('HTTP ' + res.status);
                 return res;
             } catch (e) {
+                if (outer?.aborted) throw new DOMException('annule', 'AbortError');
                 if (attempt >= tries) throw (e.name === 'AbortError' ? new Error('لا رد من السيرفر') : e);
                 await new Promise(r => setTimeout(r, 500 * attempt));
             } finally {
                 clearTimeout(timer);
+                outer?.removeEventListener('abort', cancel);
             }
         }
     };

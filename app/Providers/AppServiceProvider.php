@@ -32,5 +32,7 @@ class AppServiceProvider extends ServiceProvider
         RateLimiter::for('agent-register', fn (Request $request) => Limit::perMinute(10)->by('register|'.$request->ip()));
         RateLimiter::for('agent', fn (Request $request) => Limit::perMinute(120)->by('agent|'.sha1((string) $request->bearerToken())));
         RateLimiter::for('refresh', fn (Request $request) => Limit::perMinute(30)->by('refresh|'.($request->user()?->id ?? $request->ip())));
+        // recherche pendant la frappe : quelques requetes par mot tape, large pour un humain, borne un script
+        RateLimiter::for('search', fn (Request $request) => Limit::perMinute(240)->by('search|'.($request->user()?->id ?? $request->ip())));
     }
 }

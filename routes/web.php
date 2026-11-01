@@ -22,7 +22,7 @@ Route::middleware('auth')->group(function () {
     Route::put('account', [AccountController::class, 'update'])->name('account.update');
 
     Route::get('/', [HomeController::class, 'index'])->name('home');
-    Route::get('stock', [StockController::class, 'index'])->name('stock.index');
+    Route::get('stock', [StockController::class, 'index'])->name('stock.index')->middleware('throttle:search');
     Route::get('product', [StockController::class, 'product'])->name('stock.product');
     Route::post('refresh', [StockController::class, 'refresh'])->name('stock.refresh')->middleware('throttle:refresh');
 });
@@ -37,7 +37,7 @@ Route::middleware(['auth', 'admin'])->group(function () {
     Route::post('branches/{branch}/sync', [BranchController::class, 'sync'])->name('branches.sync')->middleware('throttle:refresh');
     Route::get('branches/{branch}/sync/{job}', [BranchController::class, 'syncStatus'])->name('branches.sync-status');
 
-    Route::get('merge', [StockController::class, 'merge'])->name('merge.index');
+    Route::get('merge', [StockController::class, 'merge'])->name('merge.index')->middleware('throttle:search');
     Route::post('merge', [ProductGroupController::class, 'store'])->name('merge.store');
     Route::delete('merge', [ProductGroupController::class, 'destroy'])->name('merge.destroy');
 
