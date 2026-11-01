@@ -1,0 +1,134 @@
+<?php
+
+namespace Tests\Feature;
+
+use App\Models\Branch;
+use App\Models\BranchStock;
+use App\Models\User;
+use Illuminate\Foundation\Testing\RefreshDatabase;
+use Tests\TestCase;
+
+class DashboardTest extends TestCase
+{
+    use RefreshDatabase;
+
+    private function stock(Branch $branch, string $code, ?string $designation, ?float $stock): void
+    {
+        BranchStock::create([
+            'branch_id' => $branch->id,
+            'code_raw' => $code,
+            'code_key' => BranchStock::keyFor($code),
+            'designation' => $designation,
+            'stock' => $stock,
+            'seen_at' => now(),
+            'updated_at' => now(),
+        ]);
+    }
+
+    private function seedBranches(): array
+    {
+        $oran = Branch::create(['name' => 'Oran', 'active' => true]);
+        $setif = Branch::create(['name' => 'Setif', 'active' => true]);
+        $off = Branch::create(['name' => 'Ancienne', 'active' => false]);
+        $this->stock($oran, '820ac', 'BOULON 8X20', 10);
+        $this->stock($oran, '820-AC', 'BOULON 8*20 autre ecriture', 1);
+        $this->stock($setif, '820AC', 'BOULLON ACIER EX 8*20 (G3)', 164.11);
+        $this->stock($setif, '612Z', 'BOULLON ZINGUEE 6*12', -3);
+        $this->stock($off, '820AC', 'BRANCHE DESACTIVEE', 1000);
+
+        return [$oran, $setif, $off];
+    }
+
+    public function test_guests_are_sent_to_login(): void
+    {
+        $this->get('/')->assertRedirect('/login');
+        $this->getJson('/product?code=X')->assertUnauthorized();
+        $this->get('/branches')->assertRedirect('/login');
+    }
+
+    public function test_login(): void
+    {
+        $user = User::factory()->create(['password' => 'secret-123']);
+
+        $this->post('/login', ['email' => $user->email, 'password' => 'mauvais'])->assertSessionHasErrors('email');
+        $this->post('/login', ['email' => $user->email, 'password' => 'secret-123'])->assertRedirect('/');
+        $this->assertAuthenticatedAs($user);
+    }
+
+    public function test_agent_polling_does_not_use_up_login_attempts_from_the_same_ip(): void
+    {
+        $branch = Branch::create(['name' => 'Oran', 'active' => true, 'token_hash' => Branch::hashToken('tok')]);
+        for ($i = 0; $i < 10; $i++) {
+            $this->withToken('tok')->getJson('/api/agent/pending')->assertOk();
+        }
+        $user = User::factory()->create(['password' => 'secret-123']);
+
+        $this->withToken('')->post('/login', ['email' => $user->email, 'password' => 'secret-123'])->assertRedirect('/');
+        $this->assertTrue($branch->fresh()->isOnline());
+    }
+
+    public function test_search_returns_one_line_per_code_key(): void
+    {
+        $this->seedBranches();
+        $user = User::factory()->create();
+
+        $results = $this->actingAs($user)->get('/?q=820')->assertOk()->viewData('results')->keyBy('code');
+
+        $this->assertSame(['820-AC', '820AC'], $results->keys()->sort()->values()->all());
+        // 820ac (Oran) et 820AC (Setif) = un seul produit ; la branche desactivee est ignoree
+        $this->assertEquals(174.11, $results['820AC']->total);
+        $this->assertSame(2, $results['820AC']->branches);
+        $this->assertSame('BOULLON ACIER EX 8*20 (G3)', $results['820AC']->designation, 'designation de la branche la mieux stockee');
+        // autre ecriture du code = autre ligne, affichee telle quelle
+        $this->assertEquals(1, $results['820-AC']->total);
+    }
+
+    public function test_search_by_designation_and_exact_code_first(): void
+    {
+        $this->seedBranches();
+        $user = User::factory()->create();
+
+        $codes = $this->actingAs($user)->get('/?q=zinguee')->viewData('results')->pluck('code')->all();
+        $this->assertSame(['612Z'], $codes);
+
+        $codes = $this->actingAs($user)->get('/?q=820AC')->viewData('results')->pluck('code')->all();
+        $this->assertSame('820AC', $codes[0]);
+
+        $this->actingAs($user)->get('/?q=%25')->assertOk()->assertViewHas('results', fn ($r) => $r->isEmpty());
+    }
+
+    public function test_product_lists_every_active_branch(): void
+    {
+        [$oran] = $this->seedBranches();
+        $oran->update(['last_seen_at' => now()]);
+        $user = User::factory()->create();
+
+        $data = $this->actingAs($user)->getJson('/product?code=612z')->assertOk()->json();
+
+        $this->assertSame('612Z', $data['code']);
+        $this->assertSame(['Setif', 'Oran'], array_column($data['branches'], 'branch'), 'tri par quantite, les absents a la fin');
+        $this->assertEquals(-3, $data['branches'][0]['rows'][0]['stock']);
+        $this->assertSame([], $data['branches'][1]['rows']);
+        $this->assertTrue($data['branches'][1]['online']);
+        $this->assertFalse($data['done']);
+    }
+
+    public function test_branches_page_install_code_rename_and_disable(): void
+    {
+        [$oran] = $this->seedBranches();
+        $user = User::factory()->create();
+
+        $this->actingAs($user)->post('/branches/install-code')->assertSessionHas('install_code');
+        $code = session('install_code');
+        $this->assertMatchesRegularExpression('/^[A-Z2-9]{3}-[A-Z2-9]{3}-[A-Z2-9]{3}$/', $code);
+        $this->actingAs($user)->withSession(['install_code' => $code])->get('/branches')->assertOk()->assertSee($code);
+
+        $this->actingAs($user)->patch("/branches/{$oran->id}", ['name' => 'فرع وهران'])->assertSessionHas('status');
+        $this->actingAs($user)->patch("/branches/{$oran->id}", ['active' => 0]);
+        $this->assertSame('فرع وهران', $oran->fresh()->name);
+        $this->assertFalse($oran->fresh()->active);
+
+        $this->actingAs($user)->delete("/branches/{$oran->id}");
+        $this->assertSame(0, BranchStock::where('branch_id', $oran->id)->count());
+    }
+}

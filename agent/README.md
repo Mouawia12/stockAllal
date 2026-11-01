@@ -1,0 +1,189 @@
+# GescomAgent — وكيل المخزون لكل فرع
+
+وكيل صغير يشتغل على **سيرفر Gescomm في كل فرع**:
+- يقرأ مخزون الفرع من قاعدة InterBase 7.5 (**قراءة فقط**).
+- يرسله إلى الـAPI المركزي **كل 5 دقائق**.
+- يجاوب على طلبات **«تحديث الآن»** خلال 10 ثوانٍ تقريباً.
+
+مكتوب بـ PowerShell 5.1 ويستعمل `isql.exe` الموجود مع InterBase، فلا يحتاج تثبيت أي برنامج.
+
+| الملف | الدور |
+|---|---|
+| `agent.ps1` | الوكيل نفسه |
+| `install.ps1` | التركيب على فرع (مرة واحدة، كأدمين) |
+| `uninstall.ps1` | الإزالة |
+| `tools/mock_api.py` | سيرفر API وهمي للتجربة المحلية قبل وجود Laravel |
+
+---
+
+## التركيب على فرع
+
+1. **في لوحة التحكم:** أنشئ **كود تركيب**. يُستعمل مرة واحدة فقط.
+2. **انسخ المجلد** `agent` من هذا المستودع إلى سيرفر الفرع، مثلاً عبر USB أو AnyDesk. لا حاجة لـ Git على الفرع.
+3. **شغّل التركيب** في PowerShell **كأدمين**، من داخل المجلد:
+   ```
+   powershell -ExecutionPolicy Bypass -File .\install.ps1
+   ```
+4. **أجب على الأسئلة:** عنوان الـAPI، **اسم الفرع**، كود التركيب.
+
+**ماذا يفعل `install.ps1`:**
+1. ينشئ `C:\ProgramData\GescomAgent`، ولا يقرؤه إلا SYSTEM والأدمين، لأن فيه التوكن وكلمة سر القاعدة.
+2. يختبر القاعدة والجدول `GC003` **قبل** استهلاك كود التركيب.
+3. يسجّل الفرع في الـAPI، فيرجّع المركز **توكناً دائماً** خاصاً بهذا الفرع.
+4. يختبر القاعدة والـAPI معاً.
+5. ينشئ المهمة المجدولة `GescomAgent`، وهي تشتغل بحساب SYSTEM:
+   - عند تشغيل الجهاز (بعد دقيقة).
+   - ومراقبة كل 5 دقائق: إذا توقّف الوكيل يعاد تشغيله، وإذا كان يشتغل لا يحدث شيء.
+
+**إعدادات اختيارية:**
+- `-Database 'localhost:D:\...\AUTRE.IB'` إذا كانت القاعدة في مسار آخر.
+- `-DbPassword '...'` إذا كانت كلمة سر `SYSDBA` ليست `masterkey`.
+
+## أوامر مفيدة على الفرع (كأدمين)
+
+| الأمر | ماذا يفعل |
+|---|---|
+| `powershell -ExecutionPolicy Bypass -File C:\ProgramData\GescomAgent\agent.ps1 -TestCode 820AC` | يقرأ كمية منتج الآن |
+| `... agent.ps1 -SelfTest` | يفحص القاعدة والجدول والـAPI |
+| `... agent.ps1 -Once -DryRun` | مزامنة واحدة تُكتب في `outbox\` بدل الإرسال |
+| `Get-ScheduledTask GescomAgent` | حالة المهمة |
+| `Get-Content C:\ProgramData\GescomAgent\logs\agent-YYYYMMDD.log -Tail 30` | آخر سطور السجل |
+| `.\install.ps1 -UpdateOnly` | تحديث `agent.ps1` وإعادة تشغيله، دون إعادة التسجيل |
+| `.\uninstall.ps1` | إزالة المهمة والمجلد. ثم **عطّل الفرع في اللوحة** |
+
+**السجل:** سطر عن كل مزامنة وكل طلب. نفس الخطأ المتكرر (مثلاً انقطاع الأنترنت) يُكتب مرة كل 10 دقائق فقط. الملفات الأقدم من 14 يوماً تُحذف تلقائياً.
+
+## `config.json`
+
+```json
+{
+  "api_url": "https://stock.exemple.com/api",
+  "token": "<يكتبه install.ps1>",
+  "branch_name": "فرع وهران",
+  "database": "localhost:D:\\Gescomm\\LABASEN.IB",
+  "isql": "C:\\Program Files (x86)\\Borland\\InterBase\\bin\\isql.exe",
+  "db_user": "SYSDBA",
+  "db_password": "masterkey",
+  "poll_seconds": 10,
+  "full_sync_minutes": 5
+}
+```
+
+- `api_url` يجب أن يبدأ بـ `https://`، و`http://` مقبول فقط لـ `localhost` في التجربة.
+- `poll_seconds`: كل كم ثانية يسأل الوكيل الـAPI «هل عندك طلب لي؟».
+- `full_sync_minutes`: كل كم دقيقة يرسل المخزون كاملاً.
+
+## ما يقرؤه الوكيل
+
+```sql
+SET TRANSACTION READ ONLY NO WAIT ISOLATION LEVEL READ COMMITTED RECORD_VERSION;
+SELECT CODEA, DESIGNATIONF2, STOCKREEL FROM GC003;                          -- المزامنة الكاملة
+SELECT CODEA, DESIGNATIONF2, STOCKREEL FROM GC003 WHERE UPPER(CODEA) = UPPER('…');  -- تحديث الآن
+```
+
+- **لا يُرسل أي سعر.**
+- **الـAPI يرسل للوكيل كود منتج فقط، وأبداً SQL.** الوكيل يقبل الكود فقط إذا:
+  - طوله من 1 إلى 15 حرفاً.
+  - لا يحتوي حروف تحكّم ولا `;`.
+  - يُكتب بترميز Windows-1252.
+- **الفواصل `'` في الكود:** تُضاعَف قبل الاستعلام.
+
+---
+
+## عقد الـAPI
+
+هذا العقد منفَّذ في تطبيق Laravel نفسه، في `app/Http/Controllers/Api/AgentController.php`. أي تعديل هنا يجب أن يقابله تعديل هناك، والعكس.
+
+**الطلبات:**
+- كل طلبات الوكيل تحمل `X-Agent-Version` و`Accept: application/json`.
+- كل الطلبات تحت `/agent/` تحمل `Authorization: Bearer <token>`.
+
+**ردود الخطأ التي يفهمها الوكيل:**
+- `401`: توكن خاطئ أو فرع معطّل. الوكيل ينتظر 5 دقائق ثم يعيد المحاولة.
+- `422`: كود تركيب غير صالح.
+
+### `POST /agents/register` (بدون توكن)
+```json
+// الطلب
+{ "install_code": "K7P-4QX-92M", "branch_name": "فرع وهران", "hostname": "DESKTOP-9H7CGGI", "agent_version": "1.0.0" }
+// الرد 201
+{ "branch_id": 3, "branch_name": "فرع وهران", "token": "<توكن طويل عشوائي>" }
+```
+- **كود التركيب:** يُستعمل **مرة واحدة**، وينتهي بعد 24 ساعة.
+- **التوكن:** يُحفظ في القاعدة **مشفّراً** (`sha256`)، ولا يُعرض مرة ثانية.
+
+### `GET /agent/ping`
+```json
+{ "ok": true, "branch_id": 3, "branch_name": "فرع وهران" }
+```
+
+### `POST /agent/sync`: المخزون كاملاً، كل 5 دقائق
+```json
+{
+  "generated_at": "2026-11-01T14:45:18+01:00",
+  "agent_version": "1.0.0",
+  "hostname": "DESKTOP-9H7CGGI",
+  "db_file_mtime": "2026-11-01T14:42:20+01:00",
+  "items": [ { "code": "820AC", "designation": "BOULLON ACIER  EX  8*20  (G3)", "stock": 164.11 } ]
+}
+```
+- **التحديث:** upsert على `(branch_id, code_raw)`.
+- **السلع الغائبة عن الإرسال:** **تُحذف** من مخزون ذلك الفرع، لأنها حُذفت من Gescomm الفرع.
+- **أوقات الفرع:** يُحدَّث `last_sync_at`، ويُحفظ `db_file_mtime`. إذا لم يتبدّل `db_file_mtime` طوال يوم عمل، فالقاعدة الحيّة ربما استُبدلت بعد restore → **تنبيه**.
+- **الرد:** `{ "ok": true, "count": 4115 }`.
+
+### `GET /agent/pending`: كل 10 ثوانٍ
+```json
+{ "jobs": [ { "id": 41, "code": "820AC" } ] }
+```
+- **حالة الطلبات:** تتحوّل إلى `taken` عند تسليمها.
+- **علامة الحياة:** كل نداء يحدّث `last_seen_at` للفرع، وهذا يعني أن الوكيل حيّ.
+
+### `POST /agent/result`
+```json
+{ "job_id": 41, "code": "820AC", "found": true,
+  "items": [ { "code": "820AC", "designation": "…", "stock": 164.11 } ],
+  "error": null, "read_at": "2026-11-01T14:45:28+01:00" }
+```
+- **قيمة `error`:** إما `null`، أو `invalid_code`، أو `db_error`.
+- **`items`:** قد تحتوي أكثر من سطر، إذا كان الكود موجوداً بحروف كبيرة وصغيرة في نفس الفرع.
+- **عند الاستلام:** حدّث `branch_stock` بهذه القيم، وضع حالة الطلب: `done` أو `not_found` أو `error`.
+
+### من جهة اللوحة
+- **`POST /refresh {code}`:** ينشئ طلباً لكل فرع نشط بالكود `code_key`.
+- **عرض النتيجة:** اللوحة تسأل كل ثانيتين. الفرع الذي لا يرد خلال **30 ثانية** يظهر «لم يرد»، مع آخر قيمة معروفة.
+- **مفتاح التجميع:** `code_key = UPPER(TRIM(code))`. لا شيء آخر: `820-AC` يبقى منتجاً مستقلاً.
+- **البحث:** سطر واحد لكل `code_key`.
+- **المعاينة:** كل الفروع، ويظهر «غير موجود» للفرع الذي ليس عنده المنتج.
+- **مرجع جاهز:** `tools/mock_api.py` ينفّذ هذا كله: الدوال `search` و`product` و`refresh`.
+
+---
+
+## التجربة المحلية بدون Laravel
+
+الطريقة الأسهل: شغّل التطبيق محلياً بـ `php artisan serve`، ثم أنشئ كود تركيب بـ `php artisan agent:install-code`. أما إذا لم يتوفر PHP:
+
+```
+python -I tools\mock_api.py                      # http://127.0.0.1:8085/api ، كود التركيب: TEST-1234
+```
+
+بعدها:
+1. أنشئ `config.json` تجريبياً فيه `"api_url": "http://127.0.0.1:8085/api"`.
+2. شغّل `agent.ps1 -ConfigPath <المسار> -Register -BranchName "تجربة" -InstallCode TEST-1234`.
+3. شغّل الوكيل بنفس `-ConfigPath`.
+4. اضغط «تحديث» برسالة إلى الـAPI:
+   ```
+   Invoke-RestMethod -Method Post http://127.0.0.1:8085/api/refresh -ContentType 'application/json' -Body '{"code":"820AC"}'
+   Invoke-RestMethod http://127.0.0.1:8085/api/product?code=820AC
+   ```
+
+## ملاحظات عن بيانات هذا الفرع (01/11/2026)
+
+- **عدد السلع:** 4115 في `GC003`. المزامنة الكاملة تأخذ حوالي ثانية، وحجم الإرسال (JSON بدون فراغات) حوالي 340 KB.
+- **أكواد بأشكال خاصة:**
+  - فيها فراغات: `R A` و`10100 SF`.
+  - فيها رموز: `" * + - . /`.
+  - كود فيه `¨`: `TP¨PA`.
+  - 9 أكواد تنتهي بفراغ.
+- **كميات سالبة:** موجودة، مثلاً `820Z = -112.56`، فالبرنامج يسمح بها. اللوحة يجب أن تعرضها كما هي.
+- **التسمية:** موجودة في `DESIGNATIONF2`، أما `DESIGNATIONF` فهو فارغ.
