@@ -6,6 +6,8 @@ use App\Models\Branch;
 use App\Models\BranchStock;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\DB;
 use Tests\TestCase;
 
 class DashboardTest extends TestCase
@@ -84,6 +86,27 @@ class DashboardTest extends TestCase
         $this->actingAs($user)->put('/account', ['name' => 'X', 'username' => 'pris', 'current_password' => 'secret-123'])
             ->assertSessionHasErrors('username');
         $this->assertSame('admin', $user->fresh()->username);
+    }
+
+    public function test_new_password_on_account_page_closes_the_other_sessions(): void
+    {
+        config(['session.driver' => 'database']);
+        $user = User::factory()->create(['username' => 'karim', 'password' => 'secret-123', 'remember_token' => 'ancien-jeton']);
+        DB::table('sessions')->insert(['id' => 'tel-karim', 'user_id' => $user->id, 'payload' => '', 'last_activity' => time()]);
+        $recaller = Auth::guard()->getRecallerName();
+        $form = ['name' => 'Karim', 'username' => 'karim', 'current_password' => 'secret-123'];
+
+        // sans nouveau mot de passe : rien ne change
+        $this->actingAs($user)->put('/account', $form)->assertSessionHasNoErrors()->assertCookieMissing($recaller);
+        $this->assertSame('ancien-jeton', $user->fresh()->remember_token);
+        $this->assertTrue(DB::table('sessions')->where('id', 'tel-karim')->exists());
+
+        // connecte avec "تذكّرني" : le telephone est deconnecte, ce navigateur recoit un cookie avec la nouvelle cle
+        $this->actingAs($user)->withCookie($recaller, 'ancien-cookie')
+            ->put('/account', $form + ['password' => 'nouveau-mdp', 'password_confirmation' => 'nouveau-mdp'])
+            ->assertSessionHasNoErrors()->assertCookie($recaller);
+        $this->assertNotSame('ancien-jeton', $user->fresh()->remember_token);
+        $this->assertFalse(DB::table('sessions')->where('id', 'tel-karim')->exists());
     }
 
     public function test_agent_polling_does_not_use_up_login_attempts_from_the_same_ip(): void

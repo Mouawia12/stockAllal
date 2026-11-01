@@ -33,14 +33,19 @@ class AccountController extends Controller
             'password.confirmed' => 'تأكيد كلمة السر الجديدة غير مطابق',
         ]);
 
+        $passwordChanged = ! empty($data['password']);
         $user->name = $data['name'];
         $user->username = $data['username'];
-        if (! empty($data['password'])) {
+        if ($passwordChanged) {
             $user->password = $data['password'];
         }
         $user->save();
 
-        $password = ! empty($data['password']) ? $data['password'] : $data['current_password'];
+        if ($passwordChanged) {
+            $this->closeOtherSessions($request, $user);
+        }
+
+        $password = $passwordChanged ? $data['password'] : $data['current_password'];
         $request->session()->put('weak_password', $password === $user->username);
 
         return back()->with('status', 'تم حفظ الحساب');

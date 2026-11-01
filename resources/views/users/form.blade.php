@@ -16,7 +16,8 @@
         </span>
     </label>
     <label class="check">
-        <input type="checkbox" name="is_admin" value="1" @checked(old('is_admin', $user?->is_admin))>
+        {{-- apres une erreur, une case decochee n'est pas dans old() : sans ce test elle reviendrait cochee pour un administrateur --}}
+        <input type="checkbox" name="is_admin" value="1" @checked($errors->any() ? old('is_admin') : $user?->is_admin)>
         <span><b>مدير</b> — صلاحيات كاملة: الفروع، تنزيل الوكيل، والحسابات. بدونها يرى الحساب المخزون فقط.</span>
     </label>
 </div>

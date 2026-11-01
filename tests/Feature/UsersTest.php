@@ -5,6 +5,7 @@ namespace Tests\Feature;
 use App\Models\Branch;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\DB;
 use Tests\TestCase;
 
 class UsersTest extends TestCase
@@ -65,12 +66,54 @@ class UsersTest extends TestCase
         $this->assertTrue(\Hash::check('nouveau-mdp', $worker->password));
     }
 
+    public function test_new_password_closes_the_other_sessions_of_the_account(): void
+    {
+        config(['session.driver' => 'database']);
+        $admin = User::factory()->admin()->create();
+        $worker = User::factory()->create(['username' => 'samir', 'remember_token' => 'ancien-jeton']);
+        DB::table('sessions')->insert([
+            ['id' => 'tel-samir', 'user_id' => $worker->id, 'payload' => '', 'last_activity' => time()],
+            ['id' => 'pc-admin', 'user_id' => $admin->id, 'payload' => '', 'last_activity' => time()],
+        ]);
+
+        // sans nouveau mot de passe : rien ne change
+        $this->actingAs($admin)->put("/users/{$worker->id}", ['name' => 'Samir', 'username' => 'samir'])->assertRedirect('/users');
+        $this->assertSame('ancien-jeton', $worker->fresh()->remember_token);
+        $this->assertTrue(DB::table('sessions')->where('id', 'tel-samir')->exists());
+
+        $this->actingAs($admin)->put("/users/{$worker->id}", ['name' => 'Samir', 'username' => 'samir', 'password' => 'nouveau-mdp'])
+            ->assertRedirect('/users');
+        $this->assertNotSame('ancien-jeton', $worker->fresh()->remember_token);
+        $this->assertFalse(DB::table('sessions')->where('id', 'tel-samir')->exists());
+        $this->assertTrue(DB::table('sessions')->where('id', 'pc-admin')->exists());
+    }
+
+    public function test_admin_box_keeps_the_submitted_value_after_an_error(): void
+    {
+        $admin = User::factory()->admin()->create(['username' => 'boss']);
+        $other = User::factory()->admin()->create(['username' => 'samir']);
+        $checked = 'name="is_admin" value="1" checked';
+
+        // case decochee + nom deja pris : la page revient avec la case decochee, pas avec l'ancienne valeur
+        $this->actingAs($admin)->from("/users/{$other->id}/edit")
+            ->put("/users/{$other->id}", ['name' => 'Samir', 'username' => 'boss'])
+            ->assertSessionHasErrors('username');
+        $this->actingAs($admin)->get("/users/{$other->id}/edit")->assertOk()->assertDontSee($checked, false);
+        $this->assertTrue($other->fresh()->is_admin);
+
+        // sans erreur : la valeur enregistree
+        $this->actingAs($admin)->get("/users/{$other->id}/edit")->assertSee($checked, false);
+    }
+
     public function test_an_admin_cannot_demote_or_delete_himself(): void
     {
         $admin = User::factory()->admin()->create(['username' => 'boss']);
         $other = User::factory()->create(['username' => 'pris']);
 
-        $this->actingAs($admin)->put("/users/{$admin->id}", ['name' => 'Boss', 'username' => 'boss'])->assertSessionHasErrors('is_admin');
+        $this->actingAs($admin)->put("/users/{$admin->id}", ['name' => 'Boss', 'username' => 'boss', 'password' => 'nouveau-mdp'])
+            ->assertSessionHasErrors('is_admin')
+            ->assertSessionHasInput('username', 'boss')
+            ->assertSessionMissing('_old_input.password');
         $this->assertTrue($admin->fresh()->is_admin);
         $this->actingAs($admin)->delete("/users/{$admin->id}")->assertSessionHasErrors('user');
         $this->assertNotNull($admin->fresh());

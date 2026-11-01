@@ -43,16 +43,22 @@ class UserController extends Controller
         $data = $this->validated($request, $user);
         $isAdmin = $request->boolean('is_admin');
         if ($user->is($request->user()) && ! $isAdmin) {
-            return back()->withErrors(['is_admin' => 'لا يمكنك إزالة صلاحية المدير عن حسابك أنت.'])->withInput();
+            // jamais le mot de passe dans la session (dontFlash ne vaut que pour les erreurs de validation)
+            return back()->withErrors(['is_admin' => 'لا يمكنك إزالة صلاحية المدير عن حسابك أنت.'])->withInput($request->except('password'));
         }
 
+        $passwordChanged = ! empty($data['password']);
         $user->name = $data['name'];
         $user->username = $data['username'];
-        if (! empty($data['password'])) {
+        if ($passwordChanged) {
             $user->password = $data['password'];
         }
         $user->is_admin = $isAdmin;
         $user->save();
+
+        if ($passwordChanged) {
+            $this->closeOtherSessions($request, $user);
+        }
 
         return redirect()->route('users.index')->with('status', "تم حفظ الحساب «{$user->username}»");
     }
