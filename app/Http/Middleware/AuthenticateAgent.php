@@ -24,10 +24,11 @@ class AuthenticateAgent
             return response()->json(['error' => 'token invalide ou branche desactivee'], 401);
         }
 
-        $branch->forceFill([
-            'last_seen_at' => now(),
-            'agent_version' => $request->header('X-Agent-Version') ?: $branch->agent_version,
-        ])->save();
+        // l'agent appelle toutes les 10 s : une ecriture toutes les 30 s suffit pour "en ligne" (Branch::ONLINE_SECONDS = 60)
+        $version = $request->header('X-Agent-Version') ?: $branch->agent_version;
+        if (! $branch->last_seen_at || $branch->last_seen_at->lt(now()->subSeconds(30)) || $version !== $branch->agent_version) {
+            $branch->forceFill(['last_seen_at' => now(), 'agent_version' => $version])->save();
+        }
 
         $request->attributes->set('branch', $branch);
 

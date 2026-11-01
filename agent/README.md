@@ -136,10 +136,10 @@ SELECT CODEA, DESIGNATIONF2, STOCKREEL FROM GC003 WHERE UPPER(CODEA) = UPPER('�
 }
 ```
 - **`price`:** سعر البيع في Gescomm الفرع. اختياري: الوكيل قبل 1.0.5 لا يرسله، واللوحة تحفظه `null` (غير معروف).
-- **التحديث:** upsert على `(branch_id, code_raw)`.
+- **التحديث:** upsert على `(branch_id, code_raw)`، **للأسطر التي تغيّرت فقط**. الإرسال الذي لا تغيير فيه لا يكتب إلا سطر الفرع، فلا يشعر به أحد. حداثة القيمة التي لم تتغيّر = `last_sync_at` للفرع.
 - **السلع الغائبة عن الإرسال:** **تُحذف** من مخزون ذلك الفرع، لأنها حُذفت من Gescomm الفرع.
 - **أوقات الفرع:** يُحدَّث `last_sync_at`، ويُحفظ `db_file_mtime`. إذا لم يتبدّل `db_file_mtime` طوال يوم عمل، فالقاعدة الحيّة ربما استُبدلت بعد restore → **تنبيه**.
-- **الرد:** `{ "ok": true, "count": 4115 }`.
+- **الرد:** `{ "ok": true, "count": 4115, "changed": 12, "removed": 0 }`.
 
 ### `GET /agent/pending`: كل 10 ثوانٍ
 ```json
@@ -151,7 +151,7 @@ SELECT CODEA, DESIGNATIONF2, STOCKREEL FROM GC003 WHERE UPPER(CODEA) = UPPER('�
   - ثم يؤكد بـ `POST /agent/result {job_id, type: "sync", count, error}`.
   - هذا النوع يحتاج الوكيل 1.0.4 أو أحدث.
 - **حالة الطلبات:** تتحوّل إلى `taken` عند تسليمها.
-- **علامة الحياة:** كل نداء يحدّث `last_seen_at` للفرع، وهذا يعني أن الوكيل حيّ.
+- **علامة الحياة:** النداء يحدّث `last_seen_at` للفرع، مرة كل 30 ثانية على الأكثر، وهذا يعني أن الوكيل حيّ. الفرع «متصل» إذا نادى خلال آخر 60 ثانية.
 
 ### `POST /agent/result`
 ```json

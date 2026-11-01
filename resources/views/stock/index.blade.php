@@ -226,7 +226,7 @@
         const url = new URL(PRODUCT_URL, location.href);
         url.searchParams.set('code', current);
         if (batch) url.searchParams.set('batch', batch);
-        const res = await fetch(url, {headers: {Accept: 'application/json'}});
+        const res = await fetchRetry(url, {headers: {Accept: 'application/json'}});
         if (!res.ok) throw new Error('HTTP ' + res.status);
         return res.json();
     }
@@ -257,10 +257,11 @@
         mRefresh.textContent = 'جارٍ التحديث…';
         mNote.textContent = 'كل فرع يقرأ الكمية من قاعدته الآن — عادةً خلال 15 ثانية.';
         try {
-            const res = await fetch(REFRESH_URL, {
+            // batch choisi ici : si la requete est rejouee apres une coupure, le serveur ne cree pas les demandes deux fois
+            const res = await fetchRetry(REFRESH_URL, {
                 method: 'POST',
                 headers: {'Content-Type': 'application/json', Accept: 'application/json', 'X-CSRF-TOKEN': CSRF},
-                body: JSON.stringify({code: current}),
+                body: JSON.stringify({code: current, batch: newId()}),
             });
             if (!res.ok) throw new Error('HTTP ' + res.status);
             const {batch} = await res.json();
@@ -276,7 +277,7 @@
                         stopPolling();
                         return;
                     }
-                } catch (e) { mNote.textContent = 'خطأ مؤقت (' + e.message + ')، إعادة المحاولة…'; }
+                } catch (e) { mNote.textContent = 'الاتصال بطيء، إعادة المحاولة…'; }
                 timer = setTimeout(tick, POLL_MS);
             };
             timer = setTimeout(tick, 500);

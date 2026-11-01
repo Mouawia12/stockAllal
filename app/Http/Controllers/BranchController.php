@@ -74,9 +74,15 @@ class BranchController extends Controller
         if (! $branch->active) {
             return response()->json(['error' => 'الفرع معطّل'], 422);
         }
+        // batch choisi par la page : une requete rejouee apres une coupure retrouve sa demande au lieu d'en recreer une
+        $batch = $request->validate(['batch' => ['nullable', 'uuid']])['batch'] ?? (string) Str::uuid();
+        $existing = RefreshJob::where('batch', $batch)->where('branch_id', $branch->id)->where('type', 'sync')->first();
+        if ($existing) {
+            return response()->json(['job' => $existing->id]);
+        }
 
         $job = RefreshJob::create([
-            'batch' => (string) Str::uuid(),
+            'batch' => $batch,
             'type' => 'sync',
             'branch_id' => $branch->id,
             'code_key' => null,

@@ -4,6 +4,7 @@ use Illuminate\Foundation\Application;
 use Illuminate\Foundation\Configuration\Exceptions;
 use Illuminate\Foundation\Configuration\Middleware;
 use Illuminate\Http\Request;
+use Symfony\Component\HttpKernel\Exception\HttpException;
 
 return Application::configure(basePath: dirname(__DIR__))
     ->withRouting(
@@ -24,4 +25,15 @@ return Application::configure(basePath: dirname(__DIR__))
         $exceptions->shouldRenderJsonWhen(
             fn (Request $request) => $request->is('api/*') || $request->expectsJson(),
         );
+        // 419 = page restee ouverte trop longtemps (jeton CSRF perime) : retour au formulaire avec un message clair,
+        // au lieu de la page "Page Expired"
+        $exceptions->render(function (HttpException $e, Request $request) {
+            if ($e->getStatusCode() !== 419 || $request->expectsJson()) {
+                return null;
+            }
+
+            return redirect()->back()
+                ->withInput($request->except(['password', 'current_password', 'password_confirmation', '_token']))
+                ->withErrors(['session' => 'انتهت صلاحية الصفحة لأنها بقيت مفتوحة مدة طويلة. أعد المحاولة.']);
+        });
     })->create();

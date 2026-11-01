@@ -111,6 +111,29 @@
     @endif
     @yield('content')
 </main>
+<script>
+    // Lignes internet instables (jusqu'a une connexion sur deux perdue) : chaque appel a un delai et, sans reponse,
+    // il est refait sur une nouvelle connexion. A reserver aux requetes qu'on peut rejouer sans effet de bord.
+    window.fetchRetry = async (url, options = {}, tries = 3, timeoutMs = 8000) => {
+        for (let attempt = 1; ; attempt++) {
+            const ctrl = new AbortController();
+            const timer = setTimeout(() => ctrl.abort(), timeoutMs);
+            try {
+                const res = await fetch(url, {...options, signal: ctrl.signal});
+                if (res.status >= 502 && res.status <= 504 && attempt < tries) throw new Error('HTTP ' + res.status);
+                return res;
+            } catch (e) {
+                if (attempt >= tries) throw (e.name === 'AbortError' ? new Error('لا رد من السيرفر') : e);
+                await new Promise(r => setTimeout(r, 500 * attempt));
+            } finally {
+                clearTimeout(timer);
+            }
+        }
+    };
+    // identifiant choisi par la page : une requete POST rejouee est reconnue par le serveur et n'agit qu'une fois
+    window.newId = () => (crypto.randomUUID ? crypto.randomUUID()
+        : '10000000-1000-4000-8000-100000000000'.replace(/[018]/g, c => (c ^ crypto.getRandomValues(new Uint8Array(1))[0] & 15 >> c / 4).toString(16)));
+</script>
 @stack('scripts')
 </body>
 </html>

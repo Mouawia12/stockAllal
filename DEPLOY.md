@@ -190,10 +190,24 @@ sudo -u user /usr/bin/php8.4 artisan agent:install-code                         
 ## التحديثات لاحقاً
 ```bash
 cd /home/user/web/stockallal.souftech.com/public_html
-sudo -u user /usr/bin/php8.4 artisan down
+sudo -u user /usr/bin/php8.4 artisan down --retry=15   # صفحة «تحديث قصير» تُعاد تلقائياً، والوكلاء يعيدون المحاولة
 sudo -u user git pull
 sudo -u user env COMPOSER_HOME=/home/user/.composer /usr/bin/php8.4 $(which composer) install --no-dev --optimize-autoloader
 sudo -u user /usr/bin/php8.4 artisan migrate --force
 sudo -u user /usr/bin/php8.4 artisan optimize
 sudo -u user /usr/bin/php8.4 artisan up
 ```
+
+- **إذا فشل أمر في الوسط:** الموقع يبقى في وضع الصيانة. أصلح السبب ثم نفّذ `artisan up`، ولا تتركه هكذا.
+- **مدة التوقف:** عادةً أقل من دقيقة. المستخدم يرى «تحديث قصير للنظام»، وتعاد الصفحة وحدها كل 15 ثانية.
+
+## «الموقع غير متوفر» أحياناً: الشبكة وليس السيرفر
+قياس من شبكة المكتب في 2026-11-01:
+- **فشل الاتصال:** نحو نصف اتصالات TCP الجديدة يفشل، نحو السيرفر وأيضاً نحو Cloudflare وGitHub وHostinger. Google لا يفشل، لأن خوادمه داخل الجزائر.
+- **السيرفر سليم:** الـping بدون فقدان، وكل طلب وصل أجاب خلال 0.2 ثانية.
+- **السبب:** خط الإنترنت أو مزوّده، لا الكود ولا المزامنة.
+
+**ما يخفّف الأثر:**
+- **في الكود:** طلبات صفحة البحث والفروع تعيد المحاولة وحدها، وبدون تكرار الطلبات، عبر `fetchRetry` و `newId` في `layouts/app.blade.php`.
+- **في nginx:** اجعل `keepalive_timeout` على الأقل `300s` في قالب Hestia للنطاق. هكذا يعيد المتصفح استعمال الاتصال المفتوح بدل فتح اتصال جديد قد يفشل.
+- **عند المزوّد:** إن استمر المشكل، قارن من شبكة الهاتف (4G). وإن كانت أفضل، فالمشكل عند مزوّد الخط.

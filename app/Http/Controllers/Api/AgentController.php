@@ -82,11 +82,27 @@ class AgentController extends Controller
             }
         }
 
-        DB::transaction(function () use ($branch, $rows, $now, $request) {
-            foreach (array_chunk(array_values($rows), 500) as $chunk) {
+        // Seulement ce qui a change : d'une synchro a l'autre, presque tout le stock est identique.
+        // Une synchro sans changement n'ecrit donc que la ligne de la branche, la recherche ne la sent pas.
+        // La fraicheur d'une valeur inchangee = derniere synchro de la branche (voir StockController::product).
+        $existing = BranchStock::where('branch_id', $branch->id)
+            ->get(['id', 'code_raw', 'code_key', 'designation', 'stock', 'price'])
+            ->keyBy('code_raw');
+        $changed = array_values(array_filter($rows, function (array $row, int|string $code) use ($existing) {
+            $old = $existing->get($code);
+
+            return $old === null || ! $this->sameStock($old, $row);
+        }, ARRAY_FILTER_USE_BOTH));
+        // absent de l'envoi complet = supprime du Gescomm de la branche
+        $removed = $existing->diffKeys($rows)->pluck('id');
+
+        DB::transaction(function () use ($branch, $rows, $changed, $removed, $now, $request) {
+            foreach (array_chunk($changed, 500) as $chunk) {
                 BranchStock::upsert($chunk, ['branch_id', 'code_raw'], ['code_key', 'designation', 'stock', 'price', 'seen_at', 'updated_at']);
             }
-            BranchStock::where('branch_id', $branch->id)->where('seen_at', '<', $now)->delete();
+            foreach ($removed->chunk(500) as $ids) {
+                BranchStock::whereIn('id', $ids)->delete();
+            }
 
             $branch->forceFill([
                 'last_sync_at' => $now,
@@ -96,7 +112,20 @@ class AgentController extends Controller
             ])->save();
         });
 
-        return response()->json(['ok' => true, 'count' => count($rows)]);
+        return response()->json(['ok' => true, 'count' => count($rows), 'changed' => count($changed), 'removed' => $removed->count()]);
+    }
+
+    /** Meme article, memes valeurs ? Les nombres sont compares au centime pres (colonnes decimal(15,2)). */
+    private function sameStock(BranchStock $old, array $new): bool
+    {
+        $sameNumber = fn (?float $a, mixed $b) => $a === null || $b === null
+            ? $a === null && $b === null
+            : abs($a - (float) $b) < 0.005;
+
+        return $old->code_key === $new['code_key']
+            && $old->designation === $new['designation']
+            && $sameNumber($old->stock, $new['stock'])
+            && $sameNumber($old->price, $new['price']);
     }
 
     /** Demandes "mettre a jour" en attente pour cette branche ; elles passent a "taken". */

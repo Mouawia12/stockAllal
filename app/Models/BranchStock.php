@@ -11,7 +11,9 @@ class BranchStock extends Model
 {
     protected $table = 'branch_stock';
 
-    // seen_at / updated_at sont ecrits explicitement par les synchros (upsert)
+    // seen_at / updated_at sont ecrits explicitement par les synchros (upsert), seulement quand la ligne change :
+    // updated_at = derniere valeur differente recue ; une valeur inchangee est confirmee par branches.last_sync_at
+
     public $timestamps = false;
 
     protected function casts(): array

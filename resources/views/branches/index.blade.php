@@ -86,14 +86,14 @@
                     </td>
                     <td>
                         <div class="sync">
-                            <span class="small">{{ $b->last_sync_at?->diffForHumans() ?? '—' }}</span>
+                            <span class="small last-sync">{{ $b->last_sync_at?->diffForHumans() ?? '—' }}</span>
                             @if ($b->active)
                                 <button type="button" data-sync="{{ route('branches.sync', $b) }}" title="يطلب من وكيل الفرع إرسال كل المخزون الآن">⟳ مزامنة الآن</button>
                             @endif
                             <span class="sync-msg muted"></span>
                         </div>
                     </td>
-                    <td class="hide-sm"><span class="num">{{ number_format($b->items_count, 0, ',', ' ') }}</span></td>
+                    <td class="hide-sm"><span class="num items-count">{{ number_format($b->items_count, 0, ',', ' ') }}</span></td>
                     <td class="hide-sm small">
                         @if ($b->db_file_mtime)
                             <span class="{{ $dbStale ? 'pill warn' : '' }}" title="{{ $b->db_file_mtime->format('d/m/Y H:i') }}">{{ $b->db_file_mtime->diffForHumans() }}</span>
@@ -151,19 +151,37 @@
         const show = (text, cls) => { msg.textContent = text; msg.className = 'sync-msg ' + (cls || 'muted'); };
         btn.disabled = true;
         show(texts.pending, 'wait muted');
+        const row = btn.closest('tr');
         try {
-            const res = await fetch(btn.dataset.sync, {
+            // batch choisi ici : rejouee apres une coupure, la requete ne cree pas une seconde demande
+            const res = await fetchRetry(btn.dataset.sync, {
                 method: 'POST',
-                headers: {Accept: 'application/json', 'X-CSRF-TOKEN': CSRF},
+                headers: {'Content-Type': 'application/json', Accept: 'application/json', 'X-CSRF-TOKEN': CSRF},
+                body: JSON.stringify({batch: newId()}),
             });
             const data = await res.json();
             if (!res.ok) throw new Error(data.error || ('HTTP ' + res.status));
             const statusUrl = btn.dataset.sync + '/' + data.job;
             const started = Date.now();
             const tick = async () => {
-                const r = await fetch(statusUrl, {headers: {Accept: 'application/json'}});
-                const s = await r.json();
-                if (s.status === 'done') { show(texts.done, 'pill ok'); setTimeout(() => location.reload(), 1200); return; }
+                let s;
+                try {
+                    const r = await fetchRetry(statusUrl, {headers: {Accept: 'application/json'}});
+                    s = await r.json();
+                } catch (e) {
+                    // coupure passagere : on reessaie au prochain tour, sans alarmer l'utilisateur
+                    if (Date.now() - started < MAX_WAIT_MS) { setTimeout(tick, 3000); return; }
+                    s = {status: 'timeout'};
+                }
+                if (s.status === 'done') {
+                    // mise a jour de la ligne sur place, sans recharger la page
+                    row.querySelector('.last-sync').textContent = s.last_sync || '—';
+                    const count = row.querySelector('.items-count');
+                    if (count) count.textContent = Number(s.items_count || 0).toLocaleString('fr-FR');
+                    show(texts.done, 'pill ok');
+                    btn.disabled = false;
+                    return;
+                }
                 if (s.status === 'error' || s.status === 'timeout' || Date.now() - started > MAX_WAIT_MS) {
                     show(texts[s.status] || texts.timeout, 'pill warn');
                     btn.disabled = false;

@@ -53,7 +53,8 @@ class StockController extends Controller
                     'designation' => $row->designation,
                     'stock' => $row->stock,
                     'price' => $row->price,
-                    'updated' => $row->updated_at?->diffForHumans(),
+                    // une synchro complete n'ecrit que les lignes changees : la valeur est confirmee a la derniere synchro
+                    'updated' => collect([$row->updated_at, $branch->last_sync_at])->filter()->max()?->diffForHumans(),
                 ])->values(),
             ];
         })->sortByDesc(fn (array $b) => $b['rows']->isEmpty() ? -INF : $b['rows']->max('stock'))->values();
@@ -77,9 +78,13 @@ class StockController extends Controller
      */
     public function refresh(Request $request): JsonResponse
     {
-        $data = $request->validate(['code' => ['required', 'string', 'max:30']]);
+        $data = $request->validate(['code' => ['required', 'string', 'max:30'], 'batch' => ['nullable', 'uuid']]);
         $codes = ProductGroup::codesOf(BranchStock::keyFor($data['code']));
-        $batch = (string) Str::uuid();
+        // batch choisi par la page : une requete rejouee apres une coupure retrouve ses demandes au lieu d'en recreer
+        $batch = $data['batch'] ?? (string) Str::uuid();
+        if (RefreshJob::where('batch', $batch)->exists()) {
+            return response()->json(['batch' => $batch]);
+        }
 
         foreach (Branch::where('active', true)->pluck('id') as $branchId) {
             foreach ($codes as $code) {

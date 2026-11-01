@@ -45,6 +45,10 @@ For an already deployed server, use the "التحديثات لاحقاً" sectio
 - **Rate limiters:** use the named ones in `AppServiceProvider`. An anonymous `throttle:N,1` shares one counter per IP across routes,
   so a branch agent would lock out logins from the same office.
 - **MySQL:** code columns use `utf8mb4_bin` (see the `branch_stock` migration), so codes that differ only by case or accent never collide.
+- **Sync writes only what changed** (`AgentController::sync`): unchanged rows keep their `updated_at`; their freshness is the branch's
+  `last_sync_at`. Keep it that way: rewriting ~4k rows per branch every 5 min is load the users feel.
+- **Flaky lines** (about half of new connections can drop, see the end of `DEPLOY.md`): browser calls go through `fetchRetry`;
+  a POST that creates something carries a `newId()` key (`batch`) so a replayed request does not create it twice.
 - **Never commit** `.env` or `database/*.sqlite`.
 
 ## Commands
