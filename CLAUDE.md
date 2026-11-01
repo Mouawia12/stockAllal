@@ -19,7 +19,10 @@ For an already deployed server, use the "التحديثات لاحقاً" sectio
 | `app/Http/Controllers/Api/AgentController.php` | Agent API: `agents/register`, `agent/ping`, `agent/sync`, `agent/pending`, `agent/result` |
 | `app/Http/Middleware/AuthenticateAgent.php` | Branch identified by `Authorization: Bearer <token>` (sha256 stored, never the token) |
 | `app/Http/Controllers/StockController.php` | Search (one row per `code_key`), product modal JSON, "refresh now" |
-| `app/Http/Controllers/BranchController.php` | Branches page, one-time install codes, rename / disable / delete |
+| `app/Http/Controllers/BranchController.php` | Branches page, one-time install codes, rename / disable / delete, "sync now" (job type `sync`) |
+| `app/Http/Controllers/AgentDownloadController.php` | Agent zip download (built on the fly, needs PHP `zip`) and the PDF guide |
+| `agent/guide/` | `guide.html` = source of `agent/GescomAgent-Guide.pdf`; rebuild with `agent/guide/build-pdf.ps1` (headless Edge) after editing it |
+| `resources/views/partials/theme*.blade.php` | Day / night / auto theme (CSS variables + toggle saved in localStorage) |
 | `app/Http/Controllers/AccountController.php` | "حسابي": change display name, username (login is by username) and password |
 | `routes/console.php` | `user:create`, `agent:install-code`, daily cleanup schedule |
 | `resources/views/` | Blade, Arabic RTL, plain CSS + vanilla JS (no Node / Vite build) |

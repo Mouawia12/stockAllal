@@ -8,8 +8,8 @@ la regle de regroupement des produits (code_key = TRIM + MAJUSCULES). Donnees en
 
 Agent     : POST /api/agents/register   GET /api/agent/ping   POST /api/agent/sync
             GET  /api/agent/pending     POST /api/agent/result
-Tableau   : POST /api/refresh {"code": "820AC"}   GET /api/search?q=820
-            GET  /api/product?code=820AC           GET /api/state
+Tableau   : POST /api/refresh {"code": "820AC"}   POST /api/branch-sync {"branch_id": 1}
+            GET  /api/search?q=820   GET /api/product?code=820AC   GET /api/state
 """
 import argparse
 import hashlib
@@ -88,6 +88,14 @@ class Handler(BaseHTTPRequestHandler):
                     return self.agent(method, path, b)
                 if path == "/api/refresh" and method == "POST":
                     return self.refresh()
+                if path == "/api/branch-sync" and method == "POST":
+                    bid = int(self.json_body().get("branch_id") or 0)
+                    if bid not in BRANCHES:
+                        return self.reply(404, {"error": "branche inconnue"})
+                    jid = len(JOBS) + 1
+                    JOBS[jid] = {"id": jid, "type": "sync", "branch_id": bid, "code": None, "status": "pending",
+                                 "created": now(), "answered": None, "result": None}
+                    return self.reply(200, {"job": jid})
                 if path == "/api/search":
                     return self.search((q.get("q") or [""])[0])
                 if path == "/api/product":
@@ -138,13 +146,17 @@ class Handler(BaseHTTPRequestHandler):
             jobs = [j for j in JOBS.values() if j["branch_id"] == b["id"] and j["status"] == "pending"]
             for j in jobs:
                 j["status"] = "taken"
-            return self.reply(200, {"jobs": [{"id": j["id"], "code": j["code"]} for j in jobs]})
+            return self.reply(200, {"jobs": [{"id": j["id"], "type": j.get("type", "code"), "code": j["code"]} for j in jobs]})
 
         if path == "/api/agent/result" and method == "POST":
             d = self.json_body()
             j = JOBS.get(d.get("job_id"))
             if not j or j["branch_id"] != b["id"]:
                 return self.reply(404, {"error": "demande inconnue"})
+            if j.get("type") == "sync":
+                j.update(status="error" if d.get("error") else "done", answered=now(), result=d)
+                print(f"[result] '{b['name']}' synchro {j['id']} -> {j['status']} ({d.get('count')} articles)")
+                return self.reply(200, {"ok": True})
             j["status"] = "error" if d.get("error") else ("done" if d.get("found") else "not_found")
             j["answered"] = now()
             j["result"] = d

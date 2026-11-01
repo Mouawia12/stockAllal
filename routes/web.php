@@ -1,6 +1,7 @@
 <?php
 
 use App\Http\Controllers\AccountController;
+use App\Http\Controllers\AgentDownloadController;
 use App\Http\Controllers\Auth\LoginController;
 use App\Http\Controllers\BranchController;
 use App\Http\Controllers\StockController;
@@ -24,4 +25,9 @@ Route::middleware('auth')->group(function () {
     Route::post('branches/install-code', [BranchController::class, 'installCode'])->name('branches.install-code');
     Route::patch('branches/{branch}', [BranchController::class, 'update'])->name('branches.update');
     Route::delete('branches/{branch}', [BranchController::class, 'destroy'])->name('branches.destroy');
+    Route::post('branches/{branch}/sync', [BranchController::class, 'sync'])->name('branches.sync')->middleware('throttle:refresh');
+    Route::get('branches/{branch}/sync/{job}', [BranchController::class, 'syncStatus'])->name('branches.sync-status');
+
+    Route::get('agent/download', [AgentDownloadController::class, 'zip'])->name('agent.download');
+    Route::get('agent/guide', [AgentDownloadController::class, 'guide'])->name('agent.guide');
 });

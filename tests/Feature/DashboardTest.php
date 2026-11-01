@@ -144,6 +144,31 @@ class DashboardTest extends TestCase
         $this->assertFalse($data['done']);
     }
 
+    public function test_agent_download_zip_and_guide(): void
+    {
+        $user = User::factory()->create();
+        $this->get('/agent/download')->assertRedirect('/login');
+
+        $res = $this->actingAs($user)->get('/agent/download')->assertOk();
+        $this->assertStringContainsString('GescomAgent-', $res->headers->get('content-disposition'));
+        $zip = new \ZipArchive;
+        $this->assertTrue($zip->open($res->getFile()->getPathname()));
+        $names = [];
+        for ($i = 0; $i < $zip->numFiles; $i++) {
+            $names[] = $zip->getNameIndex($i);
+        }
+        $zip->close();
+        sort($names);
+        $this->assertSame([
+            'GescomAgent/GescomAgent-Guide.pdf', 'GescomAgent/README.md', 'GescomAgent/agent.ps1',
+            'GescomAgent/diagnose.ps1', 'GescomAgent/install.ps1', 'GescomAgent/uninstall.ps1',
+        ], $names);
+        @unlink($res->getFile()->getPathname());
+
+        $this->actingAs($user)->get('/agent/guide')->assertOk()->assertHeader('content-type', 'application/pdf');
+        $this->actingAs($user)->get('/branches')->assertSee('تنزيل الوكيل')->assertSee('theme-toggle', false);
+    }
+
     public function test_branches_page_install_code_rename_and_disable(): void
     {
         [$oran] = $this->seedBranches();

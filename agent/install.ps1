@@ -73,6 +73,14 @@ $BranchName = $BranchName.Trim()
 $InstallCode = $InstallCode.Trim()
 if (-not $ApiUrl -or -not $BranchName -or -not $InstallCode) { Fail 'adresse API, nom de branche et code d''installation sont obligatoires.' }
 if (-not (Test-Path $Isql)) { Fail "isql introuvable : $Isql" }
+# autre branche, autre disque : si la base n'est pas au chemin par defaut, on demande ou elle est
+$dbFile = [regex]::Match($Database, '[A-Za-z]:\\.+$').Value
+if ($dbFile -and -not (Test-Path -LiteralPath $dbFile)) {
+    Write-Host "Base Gescomm introuvable : $dbFile" -ForegroundColor Yellow
+    $typed = (Read-Host 'Chemin complet du fichier .IB de Gescomm (ex : E:\Gescomm\LABASEN.IB)').Trim().Trim('"')
+    if (-not $typed -or -not (Test-Path -LiteralPath $typed)) { Fail "fichier introuvable : $typed" }
+    $Database = "localhost:$typed"
+}
 Write-Host "Branche : $BranchName"
 Write-Host "API     : $ApiUrl"
 Write-Host "Base    : $Database"

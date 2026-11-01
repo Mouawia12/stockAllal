@@ -1,0 +1,150 @@
+<!doctype html>
+<!-- Source du guide PDF. Regenerer GescomAgent-Guide.pdf avec agent/guide/build-pdf.ps1 apres toute modification. -->
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="utf-8">
+<title>دليل تركيب وكيل المخزون — GescomAgent</title>
+<style>
+    @page { size: A4; margin: 16mm 15mm 16mm 15mm; }
+    * { box-sizing: border-box; }
+    body { font: 11.5pt/1.65 "Segoe UI", Tahoma, Arial, sans-serif; color: #1d2228; margin: 0; }
+    h1 { font-size: 22pt; margin: 0 0 4pt; color: #0b3d91; }
+    h2 { font-size: 14.5pt; margin: 18pt 0 6pt; padding-bottom: 3pt; border-bottom: 2px solid #1f6feb; color: #0b3d91; page-break-after: avoid; }
+    h3 { font-size: 12pt; margin: 12pt 0 4pt; page-break-after: avoid; }
+    p { margin: 4pt 0; }
+    .sub { color: #555; font-size: 11pt; }
+    .meta { margin-top: 8pt; font-size: 10pt; color: #555; }
+    code, .cmd { font-family: Consolas, "Courier New", monospace; direction: ltr; unicode-bidi: isolate; }
+    code { background: #f0f3f6; padding: 0 3pt; border-radius: 3pt; font-size: 10pt; }
+    .cmd { display: block; text-align: left; background: #0f1216; color: #e6edf3; padding: 7pt 9pt; border-radius: 5pt; font-size: 9.5pt; margin: 5pt 0; white-space: pre-wrap; word-break: break-all; }
+    table { width: 100%; border-collapse: collapse; margin: 6pt 0; font-size: 10.5pt; page-break-inside: auto; }
+    tr { page-break-inside: avoid; }
+    th, td { border: 1px solid #d0d7de; padding: 4pt 6pt; vertical-align: top; text-align: right; }
+    th { background: #eaf2ff; }
+    ol, ul { margin: 4pt 0; padding-right: 18pt; }
+    li { margin: 2pt 0; }
+    .box { border: 1px solid #d0d7de; border-right: 4px solid #1f6feb; background: #f6f9ff; padding: 6pt 9pt; margin: 8pt 0; border-radius: 4pt; }
+    .warn { border-right-color: #bf8700; background: #fff8e6; }
+    .ltr { direction: ltr; unicode-bidi: isolate; }
+</style>
+</head>
+<body>
+
+<h1>دليل تركيب وكيل المخزون</h1>
+<div class="sub">GescomAgent — ربط مخزون Gescomm في كل فرع بلوحة <span class="ltr">stockallal.souftech.com</span></div>
+<div class="meta">نسخة الوكيل 1.0.4 — نوفمبر 2026</div>
+
+<h2>1. ما هو الوكيل؟</h2>
+<p>برنامج صغير (سكريبت PowerShell) يُركَّب مرة واحدة على <b>السيرفر الذي فيه قاعدة Gescomm</b> في كل فرع. يقرأ من القاعدة <b>قراءة فقط</b> (الكود، التسمية، الكمية) ويرسلها إلى اللوحة:</p>
+<ul>
+    <li>كل 5 دقائق: المخزون كاملاً.</li>
+    <li>عند الضغط على «تحديث الآن» في اللوحة: كمية منتج واحد خلال 10 إلى 20 ثانية.</li>
+    <li>عند الضغط على «مزامنة الآن» في صفحة الفروع: المخزون كاملاً فوراً.</li>
+</ul>
+<p>يشتغل وحده عند تشغيل الجهاز، بدون تسجيل دخول ولا نافذة، ولا يغيّر شيئاً في Gescomm ولا في قاعدته، ولا يفتح أي منفذ في الفرع (يتصل هو بالخارج عبر HTTPS فقط).</p>
+
+<h2>2. المتطلبات</h2>
+<table>
+    <tr><th>العنصر</th><th>المطلوب</th></tr>
+    <tr><td>الجهاز</td><td>سيرفر Gescomm في الفرع (الجهاز الذي فيه ملف القاعدة <code>.IB</code> وخدمة InterBase)</td></tr>
+    <tr><td>ويندوز</td><td>Windows 10 أو 11 (أو Windows 7 بعد تثبيت WMF 5.1)</td></tr>
+    <tr><td>InterBase</td><td>InterBase 7.5 مع <code>isql.exe</code> (موجود افتراضياً في <code>C:\Program Files (x86)\Borland\InterBase\bin</code>)</td></tr>
+    <tr><td>الصلاحيات</td><td>حساب <b>Administrateur</b> على الجهاز، للتركيب فقط</td></tr>
+    <tr><td>الإنترنت</td><td>اتصال خارجي عادي (HTTPS). لا حاجة لـ IP ثابت</td></tr>
+    <tr><td>من اللوحة</td><td>حساب دخول + <b>كود تركيب</b> جديد لكل فرع</td></tr>
+</table>
+
+<h2>3. الملفات التي تُنقل إلى سيرفر الفرع</h2>
+<p>كلها داخل ملف <code>GescomAgent-1.0.4.zip</code> الذي تنزّله من اللوحة (صفحة <b>الفروع</b> ← <b>⬇ تنزيل الوكيل</b>):</p>
+<table>
+    <tr><th>الملف</th><th>دوره</th></tr>
+    <tr><td><code>install.ps1</code></td><td>التركيب: يسأل عن اسم الفرع والكود، يسجّل الفرع، ينشئ المهمة المجدولة</td></tr>
+    <tr><td><code>agent.ps1</code></td><td>الوكيل نفسه (يُنسخ تلقائياً إلى <code>C:\ProgramData\GescomAgent</code>)</td></tr>
+    <tr><td><code>diagnose.ps1</code></td><td>فحص الحالة عند أي مشكلة (قراءة فقط)</td></tr>
+    <tr><td><code>uninstall.ps1</code></td><td>الإزالة</td></tr>
+    <tr><td><code>README.md</code> / هذا الدليل</td><td>المرجع</td></tr>
+</table>
+<p>انقل الملف بأي طريقة: تنزيل مباشر على سيرفر الفرع، أو USB، أو AnyDesk.</p>
+
+<h2>4. خطوات التركيب</h2>
+<ol>
+    <li><b>من اللوحة</b> (<span class="ltr">https://stockallal.souftech.com</span>) ← <b>الفروع</b>:
+        <ul>
+            <li>اضغط <b>⬇ تنزيل الوكيل</b> وانقل الملف إلى سيرفر الفرع.</li>
+            <li>اضغط <b>كود تركيب جديد</b> وانسخ الكود (مثلاً <code>ABC-DEF-GHJ</code>). صالح <b>24 ساعة</b> و<b>مرة واحدة</b>.</li>
+        </ul>
+    </li>
+    <li><b>على سيرفر الفرع:</b> فكّ ضغط الملف في مجلد، مثلاً <code>C:\GescomAgent-setup</code> (زر يمين ← Extraire tout).</li>
+    <li><b>افتح PowerShell كأدمين:</b> قائمة ابدأ ← اكتب <code>PowerShell</code> ← زر يمين ← <b>Exécuter en tant qu'administrateur</b>.</li>
+    <li><b>شغّل التركيب</b> (عدّل المسار إذا فككت الضغط في مكان آخر):
+        <span class="cmd">powershell -ExecutionPolicy Bypass -File C:\GescomAgent-setup\GescomAgent\install.ps1</span>
+    </li>
+    <li><b>أجب على الأسئلة:</b>
+        <ul>
+            <li><b>Adresse de l'API</b>: اضغط <b>Entrée</b> لقبول <code>https://stockallal.souftech.com/api</code>.</li>
+            <li><b>Nom de la branche</b>: اسم الفرع كما تريد أن يظهر في اللوحة (يمكن تغييره لاحقاً من اللوحة).</li>
+            <li><b>Code d'installation</b>: الكود من الخطوة 1.</li>
+            <li>إذا ظهر <b>Base Gescomm introuvable</b>: أدخل المسار الكامل لملف القاعدة، مثلاً <code>E:\Gescomm\LABASEN.IB</code>.</li>
+        </ul>
+    </li>
+    <li><b>انتظر</b> حتى تظهر <b>Installation terminee</b>. خطوة التسجيل قد تأخذ حتى دقيقة إذا كان الإنترنت ضعيفاً — لا تغلق النافذة.</li>
+</ol>
+<div class="box">ما يحدث في الخلفية: إنشاء <code>C:\ProgramData\GescomAgent</code> (لا يقرؤه إلا SYSTEM والأدمين لأن فيه التوكن)، اختبار القاعدة <b>قبل</b> استهلاك الكود، تسجيل الفرع والحصول على توكن خاص به، ثم إنشاء المهمة المجدولة <code>GescomAgent</code> (عند الإقلاع + مراقبة كل 5 دقائق) وتشغيلها.</div>
+
+<h2>5. التحقق من أن كل شيء يعمل</h2>
+<ol>
+    <li>في اللوحة ← <b>الفروع</b>: الفرع الجديد يظهر <b>متصل</b>، وعدد السلع، وآخر مزامنة «منذ دقيقة».</li>
+    <li>اضغط <b>⟳ مزامنة الآن</b> بجانب الفرع: يجب أن تظهر «تمت المزامنة ✓» خلال 10 إلى 30 ثانية.</li>
+    <li>في <b>البحث</b>: ابحث عن منتج ← <b>معاينة</b> ← <b>تحديث الآن</b>، وقارن الكمية مع Gescomm.</li>
+    <li>جرّب إعادة تشغيل الجهاز في وقت مناسب: بعد 2 إلى 3 دقائق يجب أن يعود الفرع «متصل» وحده.</li>
+</ol>
+
+<h2>6. حالات خاصة</h2>
+<h3>قاعدة في مسار آخر أو كلمة سر SYSDBA مختلفة</h3>
+<span class="cmd">powershell -ExecutionPolicy Bypass -File .\install.ps1 -Database 'localhost:E:\Gescomm\LABASEN.IB' -DbPassword 'xxxx'</span>
+<h3>مضاد الفيروسات (AVG، Avast...)</h3>
+<p>أضف استثناءات في إعدادات البرنامج (AVG: ☰ Menu ← Settings ← General ← Exceptions ← Add exception):</p>
+<ul>
+    <li><code>C:\ProgramData\GescomAgent\*</code></li>
+    <li><code>C:\Program Files (x86)\Borland\InterBase\bin\isql.exe</code></li>
+    <li><code>https://stockallal.souftech.com/*</code></li>
+</ul>
+<p>وراجع الحجر (Quarantine): إذا وُجد فيه <code>agent.ps1</code> اضغط Restore. لا تستثنِ <code>powershell.exe</code> كله.</p>
+<h3>إنترنت ضعيف أو متقطع</h3>
+<p>الوكيل يعيد المحاولة وحده (حتى 4 مرات، وكل طلب له حد أقصى 60 ثانية). قد يظهر الفرع «غير متصل» لدقائق ثم يعود. إذا تكرّر كثيراً، راجع الراوتر أو مزوّد الإنترنت.</p>
+
+<h2>7. التحديث والإزالة</h2>
+<p><b>تحديث الوكيل</b> (بعد تنزيل نسخة جديدة من اللوحة): فكّ الضغط ثم كأدمين:</p>
+<span class="cmd">powershell -ExecutionPolicy Bypass -File C:\GescomAgent-setup\GescomAgent\install.ps1 -UpdateOnly</span>
+<p>يبدّل ملف الوكيل ويعيد تشغيله، بدون تسجيل جديد ولا كود.</p>
+<p><b>الإزالة</b> كأدمين، ثم <b>عطّل الفرع أو احذفه من اللوحة</b> (وإلا يبقى توكنه صالحاً):</p>
+<span class="cmd">powershell -ExecutionPolicy Bypass -File C:\GescomAgent-setup\GescomAgent\uninstall.ps1</span>
+
+<h2>8. حل المشاكل</h2>
+<p>أول خطوة دائماً: شغّل الفحص كأدمين، وأرسل النتيجة (تُحفظ أيضاً على سطح المكتب باسم <code>GescomAgent-diagnostic.txt</code>، بدون التوكن ولا كلمات السر):</p>
+<span class="cmd">powershell -ExecutionPolicy Bypass -File C:\GescomAgent-setup\GescomAgent\diagnose.ps1</span>
+<table>
+    <tr><th>ما تراه</th><th>السبب المحتمل</th><th>الحل</th></tr>
+    <tr><td>الفرع «غير متصل» وسلع 0 بعد التركيب</td><td>المهمة لا تشتغل، أو مضاد الفيروسات أوقف الوكيل</td><td>شغّل <code>diagnose.ps1</code> واقرأ السجل؛ أضف استثناءات مضاد الفيروسات</td></tr>
+    <tr><td>في السجل: <code>une autre instance tourne deja</code></td><td>نسخة أخرى من الوكيل تمسك القفل (نسخ قبل 1.0.2)</td><td>حدّث بـ <code>install.ps1 -UpdateOnly</code></td></tr>
+    <tr><td>في السجل: <code>token refuse (401)</code></td><td>الفرع معطّل أو محذوف من اللوحة</td><td>فعّله من اللوحة، أو أزل الوكيل وأعد التركيب بكود جديد</td></tr>
+    <tr><td>عند التركيب: <code>HTTP 422</code></td><td>كود التركيب خاطئ أو منتهٍ أو مستعمل</td><td>أنشئ كوداً جديداً من اللوحة</td></tr>
+    <tr><td><code>Impossible de se connecter</code> أو <code>pas de reponse en 60 s</code></td><td>الإنترنت مقطوع أو ضعيف</td><td>الوكيل يعيد وحده؛ تحقّق من الإنترنت في الفرع</td></tr>
+    <tr><td><code>Base Gescomm introuvable</code> عند التركيب</td><td>القاعدة ليست في <code>D:\Gescomm\LABASEN.IB</code></td><td>أدخل المسار الصحيح عند السؤال، أو استعمل <code>-Database</code></td></tr>
+    <tr><td><code>isql introuvable</code></td><td>InterBase مثبّت في مسار آخر</td><td>أضف <code>-Isql 'المسار\isql.exe'</code> لأمر التركيب</td></tr>
+    <tr><td><code>colonnes absentes</code> (GC003)</td><td>نسخة Gescomm مختلفة في هذا الفرع</td><td>تواصل مع المطوّر مع نتيجة <code>diagnose.ps1</code></td></tr>
+    <tr><td>«آخر كتابة للقاعدة» قديمة جداً في اللوحة</td><td>Gescomm يعمل على ملف قاعدة آخر (بعد استرجاع نسخة)</td><td>أعد التركيب مع <code>-Database</code> بالمسار الجديد</td></tr>
+</table>
+
+<h2>9. معلومات مرجعية</h2>
+<table>
+    <tr><th>العنصر</th><th>القيمة</th></tr>
+    <tr><td>مجلد الوكيل المركّب</td><td><code>C:\ProgramData\GescomAgent</code> (<code>config.json</code>، <code>logs\</code>)</td></tr>
+    <tr><td>السجل</td><td><code>C:\ProgramData\GescomAgent\logs\agent-YYYYMMDD.log</code> (يُحذف بعد 14 يوماً)</td></tr>
+    <tr><td>المهمة المجدولة</td><td><code>GescomAgent</code> — حساب SYSTEM</td></tr>
+    <tr><td>عنوان الـAPI</td><td><code>https://stockallal.souftech.com/api</code></td></tr>
+    <tr><td>ما يُقرأ من القاعدة</td><td>الجدول <code>GC003</code>: <code>CODEA</code>، <code>DESIGNATIONF2</code>، <code>STOCKREEL</code> — بدون أي سعر، قراءة فقط</td></tr>
+</table>
+
+</body>
+</html>

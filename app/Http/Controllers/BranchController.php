@@ -4,8 +4,11 @@ namespace App\Http\Controllers;
 
 use App\Models\Branch;
 use App\Models\InstallCode;
+use App\Models\RefreshJob;
+use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Str;
 use Illuminate\View\View;
 
 class BranchController extends Controller
@@ -14,6 +17,7 @@ class BranchController extends Controller
     {
         return view('branches.index', [
             'branches' => Branch::orderBy('name')->get(),
+            'agentVersion' => AgentDownloadController::version(),
         ]);
     }
 
@@ -42,5 +46,36 @@ class BranchController extends Controller
         $branch->delete();
 
         return back()->with('status', "تم حذف الفرع «{$name}» ومخزونه");
+    }
+
+    /** Bouton "مزامنة الآن" : l'agent renvoie tout le stock de la branche des qu'il recupere la demande (~10 s). */
+    public function sync(Request $request, Branch $branch): JsonResponse
+    {
+        if (! $branch->active) {
+            return response()->json(['error' => 'الفرع معطّل'], 422);
+        }
+
+        $job = RefreshJob::create([
+            'batch' => (string) Str::uuid(),
+            'type' => 'sync',
+            'branch_id' => $branch->id,
+            'code_key' => null,
+            'status' => 'pending',
+            'requested_by' => $request->user()->id,
+        ]);
+
+        return response()->json(['job' => $job->id]);
+    }
+
+    public function syncStatus(Branch $branch, RefreshJob $job): JsonResponse
+    {
+        abort_unless($job->branch_id === $branch->id && $job->type === 'sync', 404);
+
+        return response()->json([
+            'status' => $job->displayStatus(),
+            'error' => $job->result['error'] ?? null,
+            'last_sync' => $branch->last_sync_at?->diffForHumans(),
+            'items_count' => $branch->items_count,
+        ]);
     }
 }

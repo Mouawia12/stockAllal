@@ -23,7 +23,7 @@ param(
 
 $ErrorActionPreference = 'Stop'
 Add-Type -AssemblyName System.Net.Http
-$AgentVersion = '1.0.3'
+$AgentVersion = '1.0.4'
 $Table = 'GC003'
 $Fields = @('CODEA', 'DESIGNATIONF2', 'STOCKREEL')
 $ReadOnlyTx = 'SET TRANSACTION READ ONLY NO WAIT ISOLATION LEVEL READ COMMITTED RECORD_VERSION;'
@@ -299,16 +299,33 @@ function Send-FullSync {
         $file = Join-Path $OutboxDir ('sync-{0:yyyyMMdd-HHmmss}.json' -f (Get-Date))
         [IO.File]::WriteAllText($file, (ConvertTo-Json $payload -Depth 6), $Utf8NoBom)
         Write-Log ('DRY-RUN : {0} articles ecrits dans {1}' -f $items.Count, $file)
-        return
+        return $items.Count
     }
     Invoke-Api 'POST' '/agent/sync' $payload | Out-Null
     Write-Log ('SYNC OK : {0} articles envoyes en {1:N1} s' -f $items.Count, ((Get-Date) - $t0).TotalSeconds)
+    return $items.Count
+}
+
+# Bouton "synchroniser maintenant" de la page des branches : tout le stock part maintenant, puis l'agent confirme la demande.
+function Invoke-SyncJob($Job) {
+    $result = [ordered]@{ job_id = $Job.id; type = 'sync'; count = 0; error = $null; read_at = $null }
+    try {
+        $result.count = Send-FullSync
+    } catch {
+        $result.error = 'sync_failed'
+        Write-Log ("demande {0} (synchro) : {1}" -f $Job.id, (Get-ErrorText $_)) -IsError
+    }
+    $result.read_at = Get-Now
+    Invoke-Api 'POST' '/agent/result' $result | Out-Null
+    if ($result.error) { $summary = $result.error } else { $summary = '{0} articles' -f $result.count }
+    Write-Log ("DEMANDE {0} : synchro complete -> {1}" -f $Job.id, $summary)
 }
 
 function Invoke-PendingJobs {
     $r = Invoke-Api 'GET' '/agent/pending' $null
     foreach ($job in @($r.jobs)) {
         if ($null -eq $job) { continue }
+        if ([string]$job.type -eq 'sync') { Invoke-SyncJob $job; continue }
         $code = [string]$job.code
         $result = [ordered]@{ job_id = $job.id; code = $code; found = $false; items = @(); error = $null; read_at = $null }
         if (-not (Test-Code $code)) {
@@ -356,7 +373,7 @@ function Start-AgentLoop {
             } else {
                 if ((Get-Date) -ge $nextSync) {
                     $nextSync = (Get-Date).AddMinutes(1)   # en cas d'echec : nouvel essai dans 1 minute
-                    Send-FullSync
+                    $null = Send-FullSync
                     $nextSync = (Get-Date).AddMinutes([double]$cfg.full_sync_minutes)
                 }
                 if (-not $DryRun) { Invoke-PendingJobs }
@@ -425,7 +442,7 @@ try {
 
     if (-not $DryRun) { Assert-ApiUrl }
     if ($Once) {
-        if (Test-Schema) { Send-FullSync; exit 0 } else { exit 1 }
+        if (Test-Schema) { $null = Send-FullSync; exit 0 } else { exit 1 }
     }
     Start-AgentLoop
 } catch {

@@ -138,6 +138,52 @@ class AgentApiTest extends TestCase
         $this->assertSame([], $byBranch['Setif']['rows'], "l'article disparu de Setif est retire");
     }
 
+    public function test_sync_now_button_round_trip(): void
+    {
+        [$token, $branch] = $this->registerBranch();
+        $user = User::factory()->create();
+
+        $jobId = $this->actingAs($user)->postJson("/branches/{$branch->id}/sync")->assertOk()->json('job');
+        $this->actingAs($user)->getJson("/branches/{$branch->id}/sync/{$jobId}")->assertJsonPath('status', 'pending');
+
+        $jobs = $this->withToken($token)->getJson('/api/agent/pending')->json('jobs');
+        $this->assertSame([['id' => $jobId, 'type' => 'sync', 'code' => null]], $jobs);
+        $this->actingAs($user)->getJson("/branches/{$branch->id}/sync/{$jobId}")->assertJsonPath('status', 'taken');
+
+        // l'agent envoie le stock, puis confirme la demande
+        $this->sync($token, [['code' => '820AC', 'designation' => 'BOULLON', 'stock' => 164.11]])->assertOk();
+        $this->withToken($token)->postJson('/api/agent/result', ['job_id' => $jobId, 'type' => 'sync', 'count' => 1, 'error' => null])->assertOk();
+
+        $this->actingAs($user)->getJson("/branches/{$branch->id}/sync/{$jobId}")
+            ->assertJsonPath('status', 'done')->assertJsonPath('items_count', 1);
+        $this->assertSame(1, BranchStock::where('branch_id', $branch->id)->count(), 'une confirmation de synchro ne touche pas au stock');
+    }
+
+    public function test_sync_now_reports_agent_errors_and_timeouts(): void
+    {
+        [$token, $branch] = $this->registerBranch();
+        [, $other] = $this->registerBranch('Setif');
+        $user = User::factory()->create();
+
+        $failed = $this->actingAs($user)->postJson("/branches/{$branch->id}/sync")->json('job');
+        $this->withToken($token)->getJson('/api/agent/pending');
+        $this->withToken($token)->postJson('/api/agent/result', ['job_id' => $failed, 'type' => 'sync', 'error' => 'sync_failed'])->assertOk();
+        $this->actingAs($user)->getJson("/branches/{$branch->id}/sync/{$failed}")
+            ->assertJsonPath('status', 'error')->assertJsonPath('error', 'sync_failed');
+
+        $silent = $this->actingAs($user)->postJson("/branches/{$branch->id}/sync")->json('job');
+        $this->travel(RefreshJob::TIMEOUT_SECONDS + 5)->seconds();
+        $this->actingAs($user)->getJson("/branches/{$branch->id}/sync/{$silent}")->assertJsonPath('status', 'pending');
+        $this->travel(RefreshJob::SYNC_TIMEOUT_SECONDS)->seconds();
+        $this->actingAs($user)->getJson("/branches/{$branch->id}/sync/{$silent}")->assertJsonPath('status', 'timeout');
+
+        // la demande d'une branche ne se lit pas sous une autre
+        $this->actingAs($user)->getJson("/branches/{$other->id}/sync/{$silent}")->assertNotFound();
+
+        $branch->update(['active' => false]);
+        $this->actingAs($user)->postJson("/branches/{$branch->id}/sync")->assertStatus(422);
+    }
+
     public function test_unanswered_refresh_times_out(): void
     {
         [$token] = $this->registerBranch();

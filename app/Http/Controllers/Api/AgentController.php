@@ -116,7 +116,7 @@ class AgentController extends Controller
         }
 
         return response()->json([
-            'jobs' => $jobs->map(fn (RefreshJob $job) => ['id' => $job->id, 'code' => $job->code_key])->values(),
+            'jobs' => $jobs->map(fn (RefreshJob $job) => ['id' => $job->id, 'type' => $job->type, 'code' => $job->code_key])->values(),
         ]);
     }
 
@@ -129,6 +129,17 @@ class AgentController extends Controller
         }
 
         $error = $request->input('error');
+        if ($job->type === 'sync') {
+            // le stock lui-meme est deja arrive par POST /agent/sync ; ici l'agent confirme seulement
+            $job->update([
+                'status' => $error ? 'error' : 'done',
+                'answered_at' => now(),
+                'result' => $request->only(['error', 'count', 'read_at']),
+            ]);
+
+            return response()->json(['ok' => true]);
+        }
+
         $items = $request->input('items');
         $items = is_array($items) ? $items : [];
         $status = $error ? 'error' : ($request->boolean('found') && $items ? 'done' : 'not_found');

@@ -5,19 +5,8 @@
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <meta name="csrf-token" content="{{ csrf_token() }}">
     <title>@yield('title', 'مخزون الفروع')</title>
+    @include('partials.theme')
     <style>
-        :root {
-            --bg: #f5f6f8; --card: #ffffff; --text: #1d2228; --muted: #67707a; --border: #e1e4e8;
-            --accent: #1f6feb; --on-accent: #ffffff; --row-hover: #f0f3f6;
-            --ok: #1a7f37; --warn: #9a6700; --bad: #cf222e; --ok-bg: #dafbe1; --warn-bg: #fff8c5; --bad-bg: #ffebe9;
-        }
-        @media (prefers-color-scheme: dark) {
-            :root {
-                --bg: #0f1216; --card: #171b21; --text: #e6edf3; --muted: #8b949e; --border: #2d333b;
-                --accent: #4493f8; --on-accent: #0f1216; --row-hover: #1f252d;
-                --ok: #3fb950; --warn: #d29922; --bad: #f85149; --ok-bg: #12301c; --warn-bg: #3a2e0a; --bad-bg: #3d1517;
-            }
-        }
         * { box-sizing: border-box; }
         body { margin: 0; background: var(--bg); color: var(--text); font: 15px/1.6 "Segoe UI", Tahoma, "Noto Sans Arabic", Arial, sans-serif; }
         a { color: var(--accent); text-decoration: none; }
@@ -42,7 +31,7 @@
         button.danger { color: var(--bad); }
         button.link { border: 0; background: none; color: var(--muted); padding: 4px; }
         .ltr { direction: ltr; unicode-bidi: isolate; }
-        .num { direction: ltr; unicode-bidi: isolate; font-variant-numeric: tabular-nums; }
+        .num { direction: ltr; unicode-bidi: isolate; font-variant-numeric: tabular-nums; white-space: nowrap; }
         .neg { color: var(--bad); }
         .muted { color: var(--muted); }
         .small { font-size: 13px; }
@@ -64,6 +53,7 @@
             <a href="{{ route('stock.index') }}" class="{{ request()->routeIs('stock.*') ? 'on' : '' }}">البحث</a>
             <a href="{{ route('branches.index') }}" class="{{ request()->routeIs('branches.*') ? 'on' : '' }}">الفروع</a>
         </nav>
+        @include('partials.theme-toggle')
         <a href="{{ route('account.edit') }}" class="small {{ request()->routeIs('account.*') ? '' : 'muted' }}">{{ auth()->user()->name }}</a>
         <form method="post" action="{{ route('logout') }}">@csrf<button class="link" type="submit">خروج</button></form>
     </div>

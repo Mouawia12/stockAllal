@@ -4,7 +4,7 @@
 
 @push('head')
 <style>
-    .top { display: flex; align-items: center; gap: 12px; margin-bottom: 16px; }
+    .top { display: flex; align-items: center; gap: 8px; margin-bottom: 16px; flex-wrap: wrap; }
     .top h1 { font-size: 20px; margin: 0; flex: 1; }
     .code-box { border: 2px dashed var(--accent); border-radius: 10px; padding: 14px 16px; margin-bottom: 16px; background: var(--card); }
     .code-box .code { font: 600 26px/1.3 Consolas, "Courier New", monospace; letter-spacing: 2px; direction: ltr; unicode-bidi: isolate; }
@@ -13,13 +13,20 @@
     .rename button { padding: 5px 10px; }
     .actions { display: flex; gap: 6px; }
     .actions button { padding: 5px 10px; }
+    .sync { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+    .sync button { padding: 3px 10px; font-size: 13px; white-space: nowrap; }
+    .sync-msg { font-size: 12px; }
     tr.off td { opacity: .55; }
+    .wait::before { content: ""; display: inline-block; width: 9px; height: 9px; margin-left: 5px; border: 2px solid var(--muted); border-top-color: transparent; border-radius: 50%; animation: spin .8s linear infinite; vertical-align: -1px; }
+    @keyframes spin { to { transform: rotate(360deg); } }
 </style>
 @endpush
 
 @section('content')
 <div class="top">
     <h1>الفروع</h1>
+    <a class="btn" href="{{ route('agent.download') }}">⬇ تنزيل الوكيل <span class="ltr small">v{{ $agentVersion }}</span></a>
+    <a class="btn" href="{{ route('agent.guide') }}" target="_blank" rel="noopener">دليل التركيب PDF</a>
     <form method="post" action="{{ route('branches.install-code') }}">
         @csrf
         <button class="primary" type="submit">كود تركيب جديد</button>
@@ -31,15 +38,15 @@
         <div class="muted small">كود التركيب — يُستعمل مرة واحدة خلال 24 ساعة. لن يظهر مرة أخرى:</div>
         <div class="code">{{ session('install_code') }}</div>
         <div class="small muted">
-            على سيرفر الفرع الجديد، شغّل <span class="ltr">install.ps1</span> كأدمين من مجلد <span class="ltr">agent</span>، وأدخل اسم الفرع وهذا الكود.
-            عنوان الـAPI: <span class="ltr">{{ url('/api') }}</span>
+            على سيرفر Gescomm في الفرع الجديد: فكّ ضغط «تنزيل الوكيل»، ثم شغّل <span class="ltr">install.ps1</span> كأدمين، وأدخل اسم الفرع وهذا الكود.
+            عنوان الـAPI: <span class="ltr">{{ url('/api') }}</span> — التفاصيل في «دليل التركيب».
         </div>
     </div>
 @endif
 
 <div class="card">
     @if ($branches->isEmpty())
-        <p class="muted">لا يوجد أي فرع بعد. أنشئ كود تركيب، ثم ركّب الوكيل على سيرفر الفرع.</p>
+        <p class="muted">لا يوجد أي فرع بعد. نزّل الوكيل، أنشئ كود تركيب، ثم ركّب الوكيل على سيرفر الفرع (راجع «دليل التركيب»).</p>
     @else
         <table>
             <thead>
@@ -74,7 +81,15 @@
                             <div class="muted small">{{ $b->last_seen_at?->diffForHumans() ?? 'أبداً' }}</div>
                         @endif
                     </td>
-                    <td class="small">{{ $b->last_sync_at?->diffForHumans() ?? '—' }}</td>
+                    <td>
+                        <div class="sync">
+                            <span class="small">{{ $b->last_sync_at?->diffForHumans() ?? '—' }}</span>
+                            @if ($b->active)
+                                <button type="button" data-sync="{{ route('branches.sync', $b) }}" title="يطلب من وكيل الفرع إرسال كل المخزون الآن">⟳ مزامنة الآن</button>
+                            @endif
+                            <span class="sync-msg muted"></span>
+                        </div>
+                    </td>
                     <td class="hide-sm"><span class="num">{{ number_format($b->items_count, 0, ',', ' ') }}</span></td>
                     <td class="hide-sm small">
                         @if ($b->db_file_mtime)
@@ -103,9 +118,56 @@
             </tbody>
         </table>
         <p class="muted small">
+            «مزامنة الآن» = يطلب من وكيل الفرع إرسال كل المخزون فوراً، بدل انتظار المزامنة التلقائية (كل 5 دقائق). يحتاج الوكيل 1.0.4 أو أحدث.
             «آخر كتابة للقاعدة» = آخر تعديل لملف قاعدة Gescomm في الفرع. إذا تجاوز يوماً كاملاً في أيام العمل، ربما يعمل البرنامج على ملف آخر (بعد استرجاع نسخة) — تحقّق من مسار القاعدة في إعداد الوكيل.
             الفرع المعطّل يُرفض وكيله ولا يظهر في البحث.
         </p>
     @endif
 </div>
 @endsection
+
+@push('scripts')
+<script>
+(() => {
+    const CSRF = document.querySelector('meta[name=csrf-token]').content;
+    const MAX_WAIT_MS = 130000;
+    const texts = {
+        pending: 'في انتظار الوكيل…', taken: 'الوكيل يرسل المخزون…',
+        done: 'تمت المزامنة ✓', error: 'فشلت المزامنة في الفرع', timeout: 'الوكيل لم يرد — هل الفرع متصل؟',
+    };
+
+    document.querySelectorAll('button[data-sync]').forEach(btn => btn.addEventListener('click', async () => {
+        const msg = btn.parentElement.querySelector('.sync-msg');
+        const show = (text, cls) => { msg.textContent = text; msg.className = 'sync-msg ' + (cls || 'muted'); };
+        btn.disabled = true;
+        show(texts.pending, 'wait muted');
+        try {
+            const res = await fetch(btn.dataset.sync, {
+                method: 'POST',
+                headers: {Accept: 'application/json', 'X-CSRF-TOKEN': CSRF},
+            });
+            const data = await res.json();
+            if (!res.ok) throw new Error(data.error || ('HTTP ' + res.status));
+            const statusUrl = btn.dataset.sync + '/' + data.job;
+            const started = Date.now();
+            const tick = async () => {
+                const r = await fetch(statusUrl, {headers: {Accept: 'application/json'}});
+                const s = await r.json();
+                if (s.status === 'done') { show(texts.done, 'pill ok'); setTimeout(() => location.reload(), 1200); return; }
+                if (s.status === 'error' || s.status === 'timeout' || Date.now() - started > MAX_WAIT_MS) {
+                    show(texts[s.status] || texts.timeout, 'pill warn');
+                    btn.disabled = false;
+                    return;
+                }
+                show(texts[s.status] || texts.pending, 'wait muted');
+                setTimeout(tick, 2000);
+            };
+            setTimeout(tick, 1500);
+        } catch (e) {
+            show('تعذّر إرسال الطلب (' + e.message + ')', 'pill warn');
+            btn.disabled = false;
+        }
+    }));
+})();
+</script>
+@endpush

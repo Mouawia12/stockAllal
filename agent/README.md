@@ -142,8 +142,13 @@ SELECT CODEA, DESIGNATIONF2, STOCKREEL FROM GC003 WHERE UPPER(CODEA) = UPPER('�
 
 ### `GET /agent/pending`: كل 10 ثوانٍ
 ```json
-{ "jobs": [ { "id": 41, "code": "820AC" } ] }
+{ "jobs": [ { "id": 41, "type": "code", "code": "820AC" }, { "id": 42, "type": "sync", "code": null } ] }
 ```
+- `type: "code"`: زر «تحديث الآن»، اقرأ هذا المنتج فقط.
+- `type: "sync"`: زر «مزامنة الآن» في صفحة الفروع.
+  - الوكيل يرسل المخزون كاملاً عبر `POST /agent/sync`.
+  - ثم يؤكد بـ `POST /agent/result {job_id, type: "sync", count, error}`.
+  - هذا النوع يحتاج الوكيل 1.0.4 أو أحدث.
 - **حالة الطلبات:** تتحوّل إلى `taken` عند تسليمها.
 - **علامة الحياة:** كل نداء يحدّث `last_seen_at` للفرع، وهذا يعني أن الوكيل حيّ.
 
