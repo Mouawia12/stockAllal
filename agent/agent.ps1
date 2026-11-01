@@ -22,7 +22,7 @@ param(
 )
 
 $ErrorActionPreference = 'Stop'
-$AgentVersion = '1.0.1'
+$AgentVersion = '1.0.2'
 $Table = 'GC003'
 $Fields = @('CODEA', 'DESIGNATIONF2', 'STOCKREEL')
 $ReadOnlyTx = 'SET TRANSACTION READ ONLY NO WAIT ISOLATION LEVEL READ COMMITTED RECORD_VERSION;'
@@ -279,8 +279,13 @@ function Invoke-PendingJobs {
 }
 
 function Start-AgentLoop {
-    try { $mutex = New-Object Threading.Mutex($false, 'Global\GescomAgent') }
-    catch { $mutex = New-Object Threading.Mutex($false, 'Local\GescomAgent') }
+    # un verrou par fichier de config : empeche deux boucles du meme agent (tache + lancement manuel),
+    # sans bloquer un autre agent du meme PC (ex : agent de test local a cote de l'agent installe)
+    $sha = [Security.Cryptography.SHA1]::Create()
+    $id = -join ($sha.ComputeHash([Text.Encoding]::UTF8.GetBytes((Resolve-Path $ConfigPath).Path.ToLowerInvariant())) |
+        Select-Object -First 8 | ForEach-Object { $_.ToString('x2') })
+    try { $mutex = New-Object Threading.Mutex($false, "Global\GescomAgent-$id") }
+    catch { $mutex = New-Object Threading.Mutex($false, "Local\GescomAgent-$id") }
     try { $owned = $mutex.WaitOne(0) } catch [Threading.AbandonedMutexException] { $owned = $true }
     if (-not $owned) { Write-Log 'une autre instance tourne deja, sortie.'; return }
 
