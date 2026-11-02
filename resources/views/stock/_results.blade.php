@@ -25,7 +25,12 @@
             <th>التسمية</th>
             <th>المجموع</th>
             @if ($mainBranch)
-                <th title="سعر الفرع الرئيسي «{{ $mainBranch->name }}»">السعر</th>
+                {{-- prix de la branche principale, comme dans la liste des articles de Gescomm --}}
+                <th title="Pu Detail — سعر الفرع الرئيسي «{{ $mainBranch->name }}»">التجزئة</th>
+                <th class="hide-sm" title="Prix Vente Gros — سعر الفرع الرئيسي «{{ $mainBranch->name }}»">الجملة</th>
+                @if ($showBuy)
+                    <th class="hide-sm" title="Pu Achat — يظهر للمدير فقط">الشراء</th>
+                @endif
             @endif
             <th class="hide-sm">الفروع</th>
             <th></th>
@@ -54,9 +59,13 @@
                     <td>
                         <span class="num">{{ $r->price === null ? '—' : number_format($r->price, 2, ',', ' ') }}</span>
                         @if ($r->price_differs)
-                            <span class="pill warn" title="فرع واحد على الأقل يبيع بسعر آخر — التفاصيل في «معاينة»">سعر مختلف</span>
+                            <span class="pill warn" title="فرع واحد على الأقل يبيع بسعر آخر (تجزئة أو جملة) — التفاصيل في «معاينة»">سعر مختلف</span>
                         @endif
                     </td>
+                    <td class="hide-sm"><span class="num">{{ $r->wholesale === null ? '—' : number_format($r->wholesale, 2, ',', ' ') }}</span></td>
+                    @if ($showBuy)
+                        <td class="hide-sm"><span class="num muted">{{ $r->buy === null ? '—' : number_format($r->buy, 2, ',', ' ') }}</span></td>
+                    @endif
                 @endif
                 <td class="hide-sm"><span class="pill">{{ $r->branches }} / {{ $branchesTotal }}</span></td>
                 <td><button type="button" data-code="{{ $r->code }}" data-designation="{{ $r->designation }}">معاينة</button></td>

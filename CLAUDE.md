@@ -1,8 +1,5 @@
 # GescomStock
 
-> **Open task:** `agent/PRICES-TASK.md`: the agent must also send the selling price. It needs a PC with Gescomm to find the
-> price column in `GC003`. If you are on such a PC (Windows, InterBase, `C:\ProgramData\GescomAgent\config.json`), do it first.
-
 Central dashboard for the stock of several branches that each run **Gescomm** (a Delphi app on **InterBase 7.5**).
 A PowerShell agent on each branch server reads the stock (read-only) and pushes it to this Laravel app; the dashboard
 searches products across branches and can ask every branch for a live quantity.
@@ -42,6 +39,13 @@ For an already deployed server, use the "التحديثات لاحقاً" sectio
 - **API contract:** `agent/README.md` and `AgentController` must stay in sync. The server only ever sends the agent a product code, never SQL.
 - **Agent scripts:** must stay ASCII-only (PowerShell 5.1 reads BOM-less files as ANSI) and read-only on the Gescomm DB
   (every isql script starts with `SET TRANSACTION READ ONLY`).
+- **Every agent change** (the user asked for this): bump `$AgentVersion` in `agent/agent.ps1`, update `agent/README.md`,
+  update `agent/guide/guide.html` (version line, zip name, what it reads) and rebuild `agent/GescomAgent-Guide.pdf`
+  with `agent/guide/build-pdf.ps1` (needs Windows + Edge), all in the same commit. The dashboard's download zip ships these files.
+- **Prices** = the columns of Gescomm's article list (`GC003`): `PUGROS` "Pu Detail" -> `price` (retail, التجزئة),
+  `PRIXVNFACT` "Prix Vente Gros" -> `price_wholesale` (الجملة), `PRIX` "Pu Achat" -> `price_buy` (الشراء).
+  Column names do not match their meaning; trust the captions. `price_buy` is admins only: `StockController` never puts it
+  in a worker's page or JSON. Price columns are optional in the agent (a branch with an older Gescomm still syncs).
 - **Rate limiters:** use the named ones in `AppServiceProvider`. An anonymous `throttle:N,1` shares one counter per IP across routes,
   so a branch agent would lock out logins from the same office.
 - **MySQL:** code columns use `utf8mb4_bin` (see the `branch_stock` migration), so codes that differ only by case or accent never collide.

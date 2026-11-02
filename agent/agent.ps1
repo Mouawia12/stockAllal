@@ -23,9 +23,16 @@ param(
 
 $ErrorActionPreference = 'Stop'
 Add-Type -AssemblyName System.Net.Http
-$AgentVersion = '1.0.4'
+$AgentVersion = '1.0.5'
 $Table = 'GC003'
 $Fields = @('CODEA', 'DESIGNATIONF2', 'STOCKREEL')
+# Prix comme dans la liste des articles de Gescomm (colonne de GC003 = titre dans Gescomm => champ envoye a l'API).
+# Facultatifs : une colonne absente (autre version de Gescomm) n'arrete pas la synchro, le prix part vide.
+$PriceColumns = [ordered]@{
+    PUGROS     = 'price'            # Pu Detail (prix de detail)
+    PRIXVNFACT = 'price_wholesale'  # Prix Vente Gros
+    PRIX       = 'price_buy'        # Pu Achat (le serveur ne le montre qu'aux administrateurs)
+}
 $ReadOnlyTx = 'SET TRANSACTION READ ONLY NO WAIT ISOLATION LEVEL READ COMMITTED RECORD_VERSION;'
 $Ansi = [Text.Encoding]::GetEncoding(1252)
 $Utf8NoBom = New-Object Text.UTF8Encoding($false)
@@ -38,6 +45,7 @@ $OutboxDir = Join-Path $Dir 'outbox'
 $script:LastError = ''
 $script:LastErrorAt = [datetime]::MinValue
 $script:Http = $null
+$script:PriceCols = $null   # colonnes de prix presentes dans cette base, rempli par Test-Schema
 
 # ---------- journal ----------
 
@@ -134,12 +142,18 @@ function ConvertFrom-IsqlList([string[]]$Lines, [string[]]$Names) {
     if ($cur) { $cur }
 }
 
+# Float : isql peut ecrire un DOUBLE PRECISION en notation exponentielle (4.500000000000000e+01)
+function ConvertTo-Number($Value) {
+    if ($null -eq $Value -or $Value -eq '') { return $null }
+    return [decimal]::Parse($Value, [Globalization.NumberStyles]::Float, $Invariant)
+}
+
 function ConvertTo-StockItem($Row) {
-    $stock = $null
-    if ($null -ne $Row['STOCKREEL']) { $stock = [decimal]::Parse($Row['STOCKREEL'], $Invariant) }
     $designation = $Row['DESIGNATIONF2']
     if ($null -ne $designation) { $designation = $designation.Trim() }
-    [ordered]@{ code = $Row['CODEA']; designation = $designation; stock = $stock }
+    $item = [ordered]@{ code = $Row['CODEA']; designation = $designation; stock = (ConvertTo-Number $Row['STOCKREEL']) }
+    foreach ($col in $script:PriceCols) { $item[$PriceColumns[$col]] = ConvertTo-Number $Row[$col] }
+    $item
 }
 
 function Test-Schema {
@@ -150,12 +164,24 @@ function Test-Schema {
         Write-Log ("table {0} : colonnes absentes : {1}" -f $Table, ($missing -join ', ')) -IsError
         return $false
     }
+    $script:PriceCols = @($PriceColumns.Keys | Where-Object { $found -contains $_ })
+    $noPrice = @($PriceColumns.Keys | Where-Object { $found -notcontains $_ })
+    if ($noPrice.Count) {
+        Write-Log ("table {0} : colonnes de prix absentes ({1}) : stock envoye sans ces prix" -f $Table, ($noPrice -join ', '))
+    }
     return $true
 }
 
+# Colonnes lues : les obligatoires, puis les prix presents dans cette base
+function Get-SelectColumns {
+    if ($null -eq $script:PriceCols) { $null = Test-Schema }
+    @($Fields) + @($script:PriceCols)
+}
+
 function Get-AllStock {
-    $lines = Invoke-Isql @("SELECT CODEA, DESIGNATIONF2, STOCKREEL FROM $Table;")
-    ConvertFrom-IsqlList $lines $Fields | ForEach-Object { ConvertTo-StockItem $_ }
+    $cols = Get-SelectColumns
+    $lines = Invoke-Isql @("SELECT $($cols -join ', ') FROM $Table;")
+    ConvertFrom-IsqlList $lines $cols | ForEach-Object { ConvertTo-StockItem $_ }
 }
 
 # Un code arrive de l'API : on n'accepte qu'un code (1 a 15 caracteres, pas de controle ni de ';'),
@@ -169,8 +195,9 @@ function Test-Code([string]$Code) {
 function Get-StockByCode([string]$Code) {
     if (-not (Test-Code $Code)) { throw "code refuse : '$Code'" }
     $literal = $Code.Replace("'", "''")
-    $lines = Invoke-Isql @("SELECT CODEA, DESIGNATIONF2, STOCKREEL FROM $Table WHERE UPPER(CODEA) = UPPER('$literal');")
-    ConvertFrom-IsqlList $lines $Fields | ForEach-Object { ConvertTo-StockItem $_ }
+    $cols = Get-SelectColumns
+    $lines = Invoke-Isql @("SELECT $($cols -join ', ') FROM $Table WHERE UPPER(CODEA) = UPPER('$literal');")
+    ConvertFrom-IsqlList $lines $cols | ForEach-Object { ConvertTo-StockItem $_ }
 }
 
 function Get-DbFileTime {
@@ -426,6 +453,8 @@ try {
         if (Test-Schema) {
             $n = @(Get-AllStock).Count
             Write-Host "Table     : $Table OK ($n articles)" -ForegroundColor Green
+            if ($script:PriceCols.Count) { Write-Host ("Prix      : {0}" -f (@($script:PriceCols | ForEach-Object { '{0} -> {1}' -f $_, $PriceColumns[$_] }) -join ', ')) }
+            else { Write-Host 'Prix      : aucune colonne de prix trouvee (stock envoye sans prix)' -ForegroundColor Yellow }
             $mtime = Get-DbFileTime
             if ($mtime) { Write-Host "Fichier   : derniere ecriture $mtime" }
         } else {

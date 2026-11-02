@@ -89,7 +89,11 @@
                 <th>الكود هناك</th>
                 <th class="hide-sm">التسمية هناك</th>
                 <th>الكمية</th>
-                <th>السعر</th>
+                <th title="Pu Detail">التجزئة</th>
+                <th title="Prix Vente Gros">الجملة</th>
+                @if ($showBuy)
+                    <th class="hide-sm" title="Pu Achat — يظهر للمدير فقط">الشراء</th>
+                @endif
                 <th>الحالة</th>
             </tr>
             </thead>
@@ -134,12 +138,19 @@
         return row ? '<span class="muted small">' + esc(row.updated) + '</span>' : '';
     }
 
-    // prix d'une branche, en evidence s'il differe de celui de la branche principale
-    function priceCell(data, b, r) {
-        const differs = !b.main && data.main_price !== null && r.price !== null && Math.abs(r.price - data.main_price) >= 0.005;
-        return differs
-            ? '<span class="pill warn num" title="الفرع الرئيسي: ' + fmt(data.main_price) + '">' + fmt(r.price) + '</span>'
-            : '<span class="num">' + fmt(r.price) + '</span>';
+    // un prix d'une branche ("price", "price_wholesale", "price_buy"), en evidence s'il differe de la branche principale
+    function priceCell(data, b, r, field, cls) {
+        const ref = data.main_prices ? data.main_prices[field] : null;
+        const value = r[field] ?? null;
+        const differs = !b.main && ref !== null && ref !== undefined && value !== null && Math.abs(value - ref) >= 0.005;
+        return '<td class="' + (cls || '') + '">' + (differs
+            ? '<span class="pill warn num" title="الفرع الرئيسي: ' + fmt(ref) + '">' + fmt(value) + '</span>'
+            : '<span class="num">' + fmt(value) + '</span>') + '</td>';
+    }
+
+    function priceCells(data, b, r) {
+        return priceCell(data, b, r, 'price') + priceCell(data, b, r, 'price_wholesale')
+            + (data.show_buy ? priceCell(data, b, r, 'price_buy', 'hide-sm') : '');
     }
 
     function render(data) {
@@ -151,8 +162,9 @@
         for (const b of data.branches) {
             const name = esc(b.branch) + (b.main ? ' <span class="pill ok">رئيسي</span>' : '');
             if (!b.rows.length) {
+                const dashes = '<td class="muted">—</td><td class="muted">—</td>' + (data.show_buy ? '<td class="muted hide-sm">—</td>' : '');
                 html.push('<tr><td>' + name + '</td><td class="muted">—</td><td class="muted hide-sm">غير موجود</td>'
-                    + '<td class="muted">—</td><td class="muted">—</td><td>' + statusCell(b, null) + '</td></tr>');
+                    + '<td class="muted">—</td>' + dashes + '<td>' + statusCell(b, null) + '</td></tr>');
                 continue;
             }
             for (const r of b.rows) {
@@ -160,11 +172,11 @@
                     + '<td><span class="code ltr">' + esc(r.code) + '</span></td>'
                     + '<td class="hide-sm"><bdi>' + esc(r.designation) + '</bdi></td>'
                     + '<td><span class="num total' + (r.stock < 0 ? ' neg' : '') + '">' + fmt(r.stock) + '</span></td>'
-                    + '<td>' + priceCell(data, b, r) + '</td>'
+                    + priceCells(data, b, r)
                     + '<td>' + statusCell(b, r) + '</td></tr>');
             }
         }
-        mBody.innerHTML = html.join('') || '<tr><td colspan="6" class="muted">لا توجد فروع مفعّلة.</td></tr>';
+        mBody.innerHTML = html.join('') || '<tr><td colspan="8" class="muted">لا توجد فروع مفعّلة.</td></tr>';
     }
 
     async function load(batch) {

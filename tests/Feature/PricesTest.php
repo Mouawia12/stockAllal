@@ -100,6 +100,60 @@ class PricesTest extends TestCase
         $this->assertNull($byBranch['Alger']['rows'][0]['price']);
     }
 
+    public function test_three_prices_and_the_buy_price_only_for_admins(): void
+    {
+        $oran = Branch::create(['name' => 'Oran', 'active' => true, 'is_main' => true]);
+        $oran->forceFill(['is_main' => true])->save();
+        $setif = Branch::create(['name' => 'Setif', 'active' => true]);
+        foreach ([[$oran, 550, 400, 380], [$setif, 550, 420, 390]] as [$branch, $retail, $wholesale, $buy]) {
+            BranchStock::create([
+                'branch_id' => $branch->id, 'code_raw' => '820AC', 'code_key' => '820AC', 'designation' => 'BOULLON',
+                'stock' => 5, 'price' => $retail, 'price_wholesale' => $wholesale, 'price_buy' => $buy,
+                'seen_at' => now(), 'updated_at' => now(),
+            ]);
+        }
+        $worker = User::factory()->create();
+        $admin = User::factory()->admin()->create();
+
+        // employe : detail + gros, jamais l'achat (ni dans la page, ni dans le JSON)
+        $res = $this->actingAs($worker)->get('/stock?q=820AC')->assertOk()
+            ->assertSee('التجزئة')->assertSee('الجملة')->assertDontSee('الشراء')->assertDontSee('380,00');
+        $row = $res->viewData('results')[0];
+        $this->assertEquals([550, 400, null], [$row->price, $row->wholesale, $row->buy]);
+        $this->assertTrue($row->price_differs, 'Setif vend en gros a 420, la principale a 400');
+
+        $data = $this->actingAs($worker)->getJson('/product?code=820AC')->json();
+        $this->assertFalse($data['show_buy']);
+        $this->assertSame(['price', 'price_wholesale'], array_keys($data['main_prices']));
+        $this->assertArrayNotHasKey('price_buy', $data['branches'][0]['rows'][0]);
+        $this->assertStringNotContainsString('price_buy', json_encode($data));
+
+        // administrateur : les trois
+        $row = $this->actingAs($admin)->get('/stock?q=820AC')->assertSee('الشراء')->assertSee('380,00')->viewData('results')[0];
+        $this->assertEquals(380, $row->buy);
+        $data = $this->actingAs($admin)->getJson('/product?code=820AC')->json();
+        $this->assertTrue($data['show_buy']);
+        $this->assertEquals(['price' => 550, 'price_wholesale' => 400, 'price_buy' => 380], $data['main_prices']);
+        $this->assertEquals(390, collect($data['branches'])->firstWhere('branch', 'Setif')['rows'][0]['price_buy']);
+    }
+
+    public function test_agent_105_sends_three_prices_and_a_wholesale_change_is_written(): void
+    {
+        $res = $this->postJson('/api/agents/register', [
+            'install_code' => InstallCode::generate(null), 'branch_name' => 'Oran',
+        ])->assertCreated();
+        $token = $res->json('token');
+        $item = ['code' => '820AC', 'designation' => 'BOULLON', 'stock' => 164.11, 'price' => 550, 'price_wholesale' => 400, 'price_buy' => 400];
+
+        $this->withToken($token)->postJson('/api/agent/sync', ['items' => [$item]])->assertOk()->assertJsonPath('changed', 1);
+        $this->withToken($token)->postJson('/api/agent/sync', ['items' => [$item]])->assertOk()->assertJsonPath('changed', 0);
+        $this->withToken($token)->postJson('/api/agent/sync', ['items' => [['price_wholesale' => 420] + $item]])
+            ->assertOk()->assertJsonPath('changed', 1);
+
+        $saved = BranchStock::where('code_raw', '820AC')->firstOrFail();
+        $this->assertEquals([550, 420, 400], [$saved->price, $saved->price_wholesale, $saved->price_buy]);
+    }
+
     public function test_agents_send_the_price_and_older_agents_leave_it_empty(): void
     {
         $res = $this->postJson('/api/agents/register', [

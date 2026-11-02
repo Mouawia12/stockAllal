@@ -86,7 +86,7 @@ class AgentController extends Controller
         // Une synchro sans changement n'ecrit donc que la ligne de la branche, la recherche ne la sent pas.
         // La fraicheur d'une valeur inchangee = derniere synchro de la branche (voir StockController::product).
         $existing = BranchStock::where('branch_id', $branch->id)
-            ->get(['id', 'code_raw', 'code_key', 'designation', 'stock', 'price'])
+            ->get(['id', 'code_raw', 'code_key', 'designation', 'stock', ...BranchStock::PRICES])
             ->keyBy('code_raw');
         $changed = array_values(array_filter($rows, function (array $row, int|string $code) use ($existing) {
             $old = $existing->get($code);
@@ -98,7 +98,7 @@ class AgentController extends Controller
 
         DB::transaction(function () use ($branch, $rows, $changed, $removed, $now, $request) {
             foreach (array_chunk($changed, 500) as $chunk) {
-                BranchStock::upsert($chunk, ['branch_id', 'code_raw'], ['code_key', 'designation', 'stock', 'price', 'seen_at', 'updated_at']);
+                BranchStock::upsert($chunk, ['branch_id', 'code_raw'], ['code_key', 'designation', 'stock', ...BranchStock::PRICES, 'seen_at', 'updated_at']);
             }
             foreach ($removed->chunk(500) as $ids) {
                 BranchStock::whereIn('id', $ids)->delete();
@@ -125,7 +125,7 @@ class AgentController extends Controller
         return $old->code_key === $new['code_key']
             && $old->designation === $new['designation']
             && $sameNumber($old->stock, $new['stock'])
-            && $sameNumber($old->price, $new['price']);
+            && collect(BranchStock::PRICES)->every(fn (string $field) => $sameNumber($old->{$field}, $new[$field]));
     }
 
     /** Demandes "mettre a jour" en attente pour cette branche ; elles passent a "taken". */
@@ -177,7 +177,7 @@ class AgentController extends Controller
         DB::transaction(function () use ($branch, $job, $items, $status, $now, $request) {
             if ($status === 'done') {
                 $rows = array_values(array_filter(array_map(fn ($item) => $this->stockRow($branch, $item, $now), $items)));
-                BranchStock::upsert($rows, ['branch_id', 'code_raw'], ['code_key', 'designation', 'stock', 'price', 'seen_at', 'updated_at']);
+                BranchStock::upsert($rows, ['branch_id', 'code_raw'], ['code_key', 'designation', 'stock', ...BranchStock::PRICES, 'seen_at', 'updated_at']);
             } elseif ($status === 'not_found') {
                 // l'article n'existe plus dans le Gescomm de la branche : la lecture en direct fait foi
                 BranchStock::where('branch_id', $branch->id)->where('code_key', $job->code_key)->delete();
@@ -209,19 +209,21 @@ class AgentController extends Controller
         }
         $designation = trim((string) ($item['designation'] ?? ''));
         $stock = $item['stock'] ?? null;
-        // prix de vente : envoye a partir de l'agent 1.0.5, absent avant (null = inconnu)
-        $price = $item['price'] ?? null;
 
-        return [
+        $row = [
             'branch_id' => $branch->id,
             'code_raw' => $code,
             'code_key' => BranchStock::keyFor($code),
             'designation' => $designation === '' ? null : mb_substr($designation, 0, 200),
             'stock' => is_numeric($stock) ? $stock : null,
-            'price' => is_numeric($price) ? $price : null,
-            'seen_at' => $now,
-            'updated_at' => $now,
         ];
+        // prix (detail, gros, achat) : envoyes a partir de l'agent 1.0.5, absents avant (null = inconnu)
+        foreach (BranchStock::PRICES as $field) {
+            $value = $item[$field] ?? null;
+            $row[$field] = is_numeric($value) ? $value : null;
+        }
+
+        return $row + ['seen_at' => $now, 'updated_at' => $now];
     }
 
     private function parseDate(mixed $value): ?Carbon
