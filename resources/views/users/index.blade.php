@@ -1,6 +1,6 @@
 @extends('layouts.app')
 
-@section('title', 'المستخدمون — مخزون الفروع')
+@section('title', __('users.title').' — '.__('common.app_name'))
 
 @push('head')
 <style>
@@ -14,47 +14,48 @@
 @endpush
 
 @section('content')
-<h1 class="page-title">المستخدمون</h1>
+<h1 class="page-title">{{ __('users.title') }}</h1>
 
 <form class="card new-user" method="post" action="{{ route('users.store') }}">
     @csrf
-    <h2>حساب جديد</h2>
+    <h2>{{ __('users.new') }}</h2>
     @include('users.form', ['user' => null])
-    <div class="submit"><button class="primary" type="submit">إنشاء الحساب</button></div>
+    <div class="submit"><button class="primary" type="submit">{{ __('users.create') }}</button></div>
 </form>
 
 <div class="card">
     <table>
         <thead>
         <tr>
-            <th>الاسم</th>
-            <th>اسم المستخدم</th>
-            <th>الصلاحية</th>
-            <th class="hide-sm">أُنشئ</th>
+            <th>{{ __('users.name') }}</th>
+            <th>{{ __('users.username') }}</th>
+            <th>{{ __('users.role') }}</th>
+            <th class="hide-sm">{{ __('users.created') }}</th>
             <th></th>
         </tr>
         </thead>
         <tbody>
         @foreach ($users as $u)
             <tr>
-                <td>{{ $u->name }} @if ($u->is(auth()->user()))<span class="muted small">(أنت)</span>@endif</td>
+                <td>{{ $u->name }} @if ($u->is(auth()->user()))<span class="muted small">{{ __('users.you') }}</span>@endif</td>
                 <td><span class="ltr">{{ $u->username }}</span></td>
                 <td>
                     @if ($u->is_admin)
-                        <span class="pill ok">مدير</span>
+                        <span class="pill ok">{{ __('users.admin') }}</span>
                     @else
-                        <span class="pill">عامل — المخزون فقط</span>
+                        <span class="pill">{{ __('users.worker') }}</span>
                     @endif
                 </td>
                 <td class="hide-sm small muted">{{ $u->created_at?->diffForHumans() }}</td>
                 <td>
                     <div class="actions">
-                        <a class="btn" href="{{ route('users.edit', $u) }}">تعديل</a>
+                        <a class="btn" href="{{ route('users.edit', $u) }}">{{ __('common.edit') }}</a>
                         @unless ($u->is(auth()->user()))
+                            {{-- @js : un ' dans le nom d'utilisateur ne casse pas (ni n'injecte) le JavaScript de l'attribut --}}
                             <form method="post" action="{{ route('users.destroy', $u) }}"
-                                  onsubmit="return confirm('حذف حساب «{{ $u->username }}»؟ لن يستطيع الدخول بعد ذلك.')">
+                                  onsubmit="return confirm(@js(__('users.confirm_delete', ['username' => $u->username])))">
                                 @csrf @method('delete')
-                                <button class="danger" type="submit">حذف</button>
+                                <button class="danger" type="submit">{{ __('common.delete') }}</button>
                             </form>
                         @endunless
                     </div>
@@ -63,9 +64,6 @@
         @endforeach
         </tbody>
     </table>
-    <p class="muted small">
-        <b>العامل</b> يرى البحث في المخزون ونافذة الفروع ويضغط «تحديث الآن»، ويغيّر كلمة سره من «حسابي». <b>المدير</b> يرى كل شيء: الفروع، تنزيل الوكيل، والحسابات.
-        لا يمكنك حذف حسابك ولا إزالة صلاحية المدير عنه، حتى يبقى دائماً مدير واحد على الأقل.
-    </p>
+    <p class="muted small">{!! __('users.help') !!}</p>
 </div>
 @endsection

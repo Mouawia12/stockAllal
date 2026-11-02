@@ -1,0 +1,54 @@
+<?php
+
+return [
+    'title' => 'Branches',
+    'download_agent' => 'Download agent',
+    'guide' => 'Install guide PDF',
+    'new_code' => 'New install code',
+    'code_once' => 'Install code — single use, valid for 24 hours. It will not be shown again:',
+    'code_help' => 'On the Gescomm server of the new branch: unzip “Download agent”, run :script as administrator, then enter the branch name and this code.',
+    'api_url' => 'API address: :url — details in the “Install guide”.',
+    'empty' => 'No branches yet. Download the agent, create an install code, then install the agent on the branch server (see the “Install guide”).',
+
+    'col_name' => 'Name',
+    'col_status' => 'Status',
+    'col_last_sync' => 'Last sync',
+    'col_items' => 'Items',
+    'col_db_write' => 'Last database write',
+    'col_host' => 'Host',
+
+    'main' => 'Main',
+    'main_pill_tip' => 'Its prices are the ones shown in search',
+    'disabled' => 'Disabled',
+    'online' => 'Online',
+    'offline' => 'Offline',
+    'never' => 'Never',
+    'sync_now' => 'Sync now',
+    'sync_tip' => 'Asks the branch agent to send all of its stock now',
+    'main_tip' => 'The main branch\'s prices are shown in search, and the preview highlights branches with a different price',
+    'unset_main' => 'Unset main',
+    'set_main' => 'Make main',
+    'disable' => 'Disable',
+    'enable' => 'Enable',
+    'confirm_delete' => 'Delete the branch “:name” and all its stock? Its agent will be rejected afterwards.',
+    'help' => [
+        '“Sync now” = asks the branch agent to send all of its stock right away, instead of waiting for the automatic sync (every 5 minutes). Needs agent 1.0.4 or newer.',
+        '“Last database write” = the last change to the branch\'s Gescomm database file. If it goes over a full day on a working day, the software may be using another file (after a backup restore) — check the database path in the agent settings.',
+        'A disabled branch has its agent rejected and does not appear in search.',
+        '“Main branch” = the price reference: its price is shown on each item\'s row in search, and the preview shows every branch\'s price and highlights the ones that differ. Needs agent 1.0.5 or newer (prices).',
+    ],
+
+    'sync' => [
+        'pending' => 'Waiting for the agent…',
+        'taken' => 'The agent is sending the stock…',
+        'done' => 'Synced ✓',
+        'error' => 'Sync failed at the branch',
+        'timeout' => 'The agent did not answer — is the branch online?',
+    ],
+
+    'name_required' => 'Branch name is required',
+    'now_main' => '“:name” is now the main branch: its price is shown in search',
+    'no_longer_main' => '“:name” is no longer the main branch',
+    'deleted' => 'Branch “:name” and its stock deleted',
+    'is_disabled' => 'The branch is disabled',
+];

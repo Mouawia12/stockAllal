@@ -1,24 +1,24 @@
 {{-- Champs communs a la creation (index) et a la modification (edit) d'un compte. $user = null pour un nouveau compte. --}}
 <div class="user-form">
     <label>
-        <span>الاسم الظاهر</span>
+        <span>{{ __('users.display_name') }}</span>
         <input type="text" name="name" value="{{ old('name', $user?->name) }}" maxlength="100" required>
     </label>
     <label>
-        <span>اسم المستخدم (للدخول)</span>
+        <span>{{ __('users.login_username') }}</span>
         <input type="text" name="username" value="{{ old('username', $user?->username) }}" maxlength="50" required dir="ltr" autocomplete="off">
     </label>
     <label>
-        <span>{{ $user ? 'كلمة سر جديدة (اتركها فارغة للإبقاء على الحالية)' : 'كلمة السر (8 أحرف على الأقل)' }}</span>
+        <span>{{ $user ? __('users.password_keep') : __('users.password_new') }}</span>
         <span class="pw">
             <input type="password" name="password" minlength="8" {{ $user ? '' : 'required' }} dir="ltr" autocomplete="new-password">
-            <button type="button" class="link show-pw" aria-label="إظهار كلمة السر">إظهار</button>
+            <button type="button" class="link show-pw" aria-label="{{ __('users.show_password') }}">{{ __('common.show') }}</button>
         </span>
     </label>
     <label class="check">
         {{-- apres une erreur, une case decochee n'est pas dans old() : sans ce test elle reviendrait cochee pour un administrateur --}}
         <input type="checkbox" name="is_admin" value="1" @checked($errors->any() ? old('is_admin') : $user?->is_admin)>
-        <span><b>مدير</b> — صلاحيات كاملة: الفروع، تنزيل الوكيل، والحسابات. بدونها يرى الحساب المخزون فقط.</span>
+        <span><b>{{ __('users.admin') }}</b> {{ __('users.admin_help') }}</span>
     </label>
 </div>
 @once
@@ -37,7 +37,7 @@
         document.querySelectorAll('.show-pw').forEach(b => b.addEventListener('click', () => {
             const input = b.parentElement.querySelector('input');
             input.type = input.type === 'password' ? 'text' : 'password';
-            b.textContent = input.type === 'password' ? 'إظهار' : 'إخفاء';
+            b.textContent = input.type === 'password' ? @json(__('common.show')) : @json(__('common.hide'));
         }));
     </script>
     @endpush

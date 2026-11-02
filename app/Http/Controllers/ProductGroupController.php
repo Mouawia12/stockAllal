@@ -21,11 +21,11 @@ class ProductGroupController extends Controller
             'codes' => ['required', 'array'],
             'codes.*' => ['required', 'string', 'max:30'],
         ], [
-            'codes.required' => 'حدّد صنفين على الأقل للدمج',
+            'codes.required' => __('stock.merge.pick_two'),
         ]);
         $keys = collect($data['codes'])->map(fn (string $code) => BranchStock::keyFor($code))->unique()->values();
         if ($keys->count() < 2) {
-            return back()->withErrors(['codes' => 'حدّد صنفين على الأقل للدمج']);
+            return back()->withErrors(['codes' => __('stock.merge.pick_two')]);
         }
 
         $codes = DB::transaction(function () use ($keys, $request) {
@@ -50,11 +50,11 @@ class ProductGroupController extends Controller
         });
 
         if ($codes === null) {
-            return back()->withErrors(['codes' => 'هذه الأصناف مدموجة من قبل']);
+            return back()->withErrors(['codes' => __('stock.merge.already')]);
         }
 
         // LRI ... PDI : sans isolation, "820-AC + 820AC" s'affiche en desordre dans la phrase arabe
-        return back()->with('status', "تم الدمج: \u{2066}".implode(' + ', $codes)."\u{2069}");
+        return back()->with('status', __('stock.merge.done', ['codes' => "\u{2066}".implode(' + ', $codes)."\u{2069}"]));
     }
 
     /** Retire un code de son groupe ; un groupe qui n'a plus qu'un code est supprime. */
@@ -75,6 +75,6 @@ class ProductGroupController extends Controller
             }
         });
 
-        return back()->with('status', "أُخرج «{$key}» من الدمج");
+        return back()->with('status', __('stock.merge.removed', ['code' => $key]));
     }
 }

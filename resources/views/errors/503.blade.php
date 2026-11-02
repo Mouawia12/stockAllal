@@ -1,14 +1,14 @@
 {{-- Maintenance (php artisan down, pendant une mise a jour) : la page se recharge seule jusqu'au retour du site. --}}
 @extends('errors.layout')
 
-@section('title', 'تحديث قصير')
-@section('heading', 'تحديث قصير للنظام')
-@section('message', 'نعود خلال لحظات. لا تحتاج أن تفعل شيئاً: الصفحة تُعاد تلقائياً.')
+@section('title', __('errors.maintenance.title'))
+@section('heading', __('errors.maintenance.heading'))
+@section('message', __('errors.maintenance.message'))
 @section('actions')
-    <button class="btn primary" type="button" onclick="location.reload()">إعادة المحاولة الآن</button>
+    <button class="btn primary" type="button" onclick="location.reload()">{{ __('errors.maintenance.retry_now') }}</button>
 @endsection
 @section('after')
-    <p class="muted" id="retry">إعادة المحاولة بعد <span id="sec">15</span> ثانية…</p>
+    <p class="muted" id="retry">{!! __('errors.maintenance.retry_in', ['seconds' => '<span id="sec">15</span>']) !!}</p>
     <script>
         (() => {
             let s = 15;

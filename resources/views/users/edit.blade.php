@@ -1,6 +1,6 @@
 @extends('layouts.app')
 
-@section('title', "تعديل {$user->username} — مخزون الفروع")
+@section('title', __('users.edit_title', ['username' => $user->username]).' — '.__('common.app_name'))
 
 @push('head')
 <style>
@@ -13,14 +13,14 @@
 @section('content')
 <form class="card edit-user" method="post" action="{{ route('users.update', $user) }}">
     @csrf @method('put')
-    <h1>تعديل الحساب <span class="ltr">{{ $user->username }}</span></h1>
+    <h1>{{ __('users.edit_heading') }} <span class="ltr">{{ $user->username }}</span></h1>
     @include('users.form', ['user' => $user])
     @if ($user->is(auth()->user()))
-        <p class="muted small">هذا حسابك: لا يمكن إزالة صلاحية المدير عنه.</p>
+        <p class="muted small">{{ __('users.own_account') }}</p>
     @endif
     <div class="bar">
-        <button class="primary" type="submit">حفظ</button>
-        <a class="btn" href="{{ route('users.index') }}">رجوع</a>
+        <button class="primary" type="submit">{{ __('common.save') }}</button>
+        <a class="btn" href="{{ route('users.index') }}">{{ __('common.back') }}</a>
     </div>
 </form>
 @endsection

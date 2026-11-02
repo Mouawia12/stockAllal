@@ -1,0 +1,50 @@
+<?php
+
+return [
+    'title' => 'Users',
+    'new' => 'New account',
+    'create' => 'Create account',
+    'name' => 'Name',
+    'username' => 'Username',
+    'role' => 'Role',
+    'created' => 'Created',
+    'you' => '(you)',
+    'admin' => 'Admin',
+    'worker' => 'Employee — stock only',
+    'confirm_delete' => 'Delete the account “:username”? It will no longer be able to sign in.',
+    'help' => 'An <b>employee</b> sees the stock search and the branches window, can press “Refresh now”, and changes their password in “My account”. An <b>admin</b> sees everything: branches, agent download and accounts.
+        You cannot delete your own account or remove its admin role, so there is always at least one admin.',
+
+    'edit_title' => 'Edit :username',
+    'edit_heading' => 'Edit account',
+    'own_account' => 'This is your account: its admin role cannot be removed.',
+
+    'display_name' => 'Display name',
+    'login_username' => 'Username (for signing in)',
+    'password_keep' => 'New password (leave empty to keep the current one)',
+    'password_new' => 'Password (at least 8 characters)',
+    'show_password' => 'Show password',
+    'admin_help' => '— full access: branches, agent download and accounts. Without it, the account only sees the stock.',
+
+    'new_password' => 'New password',
+    'leave_empty' => '(leave empty to keep it)',
+    'confirm_password' => 'Confirm new password',
+    'current_password' => 'Current password',
+    'required_to_save' => '(required to save any change)',
+
+    'name_required' => 'Name is required',
+    'username_required' => 'Username is required',
+    'username_taken' => 'This username is already used by another account',
+    'password_required' => 'Password is required',
+    'password_min' => 'Password: at least 8 characters',
+    'new_password_min' => 'New password: at least 8 characters',
+    'password_mismatch' => 'The new password confirmation does not match',
+    'current_password_required' => 'Enter your current password to confirm the change',
+    'current_password_wrong' => 'The current password is wrong',
+    'cannot_demote_self' => 'You cannot remove the admin role from your own account.',
+    'cannot_delete_self' => 'You cannot delete your own account.',
+    'created_flash' => 'Account “:username” created',
+    'saved_flash' => 'Account “:username” saved',
+    'deleted_flash' => 'Account “:username” deleted',
+    'account_saved' => 'Account saved',
+];

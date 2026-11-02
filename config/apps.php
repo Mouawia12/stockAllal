@@ -4,13 +4,14 @@
  * Applications de l'ecran d'accueil (facon Odoo), dans l'ordre d'affichage.
  * route = null : application pas encore developpee, affichee "قريباً" sans lien.
  * admin = true : visible des administrateurs seulement.
- * L'icone de chaque cle est dans resources/views/partials/app-icon.blade.php.
+ * Le nom de chaque cle est traduit dans lang/<langue>/common.php (apps), son icone est dans
+ * resources/views/partials/app-icon.blade.php.
  */
 return [
-    'stock' => ['name' => 'المخزون', 'route' => 'stock.index'],
-    'sales' => ['name' => 'المبيعات', 'route' => null],
-    'purchases' => ['name' => 'المشتريات', 'route' => null],
-    'suppliers' => ['name' => 'الموردون', 'route' => null],
-    'customers' => ['name' => 'الزبائن', 'route' => null],
-    'settings' => ['name' => 'الإعدادات', 'route' => 'users.index', 'admin' => true],
+    'stock' => ['route' => 'stock.index'],
+    'sales' => ['route' => null],
+    'purchases' => ['route' => null],
+    'suppliers' => ['route' => null],
+    'customers' => ['route' => null],
+    'settings' => ['route' => 'users.index', 'admin' => true],
 ];

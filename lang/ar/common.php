@@ -1,0 +1,51 @@
+<?php
+
+// Textes communs : barre du haut, ecran des applications, theme, boutons. Memes cles dans lang/fr et lang/en.
+return [
+    'app_name' => 'مخزون الفروع',
+    'language' => 'اللغة',
+    'apps_launcher' => 'التطبيقات',
+    // une cle par application de config/apps.php
+    'apps' => [
+        'stock' => 'المخزون',
+        'sales' => 'المبيعات',
+        'purchases' => 'المشتريات',
+        'suppliers' => 'الموردون',
+        'customers' => 'الزبائن',
+        'settings' => 'الإعدادات',
+    ],
+    'soon' => 'قريباً',
+    'available' => 'متاح',
+    'in_development' => ':app: قيد التطوير',
+    'hello' => 'مرحباً :name',
+    'choose_app' => 'اختر التطبيق',
+
+    'nav' => [
+        'search' => 'البحث',
+        'merge' => 'دمج الأصناف',
+        'branches' => 'الفروع',
+        'users' => 'المستخدمون',
+    ],
+    'account' => 'حسابي',
+    'logout' => 'خروج',
+    'weak_password' => 'كلمة السر الحالية تساوي اسم المستخدم. غيّرها من :link.',
+    'no_response' => 'لا رد من السيرفر',
+    'page_expired' => 'انتهت صلاحية الصفحة لأنها بقيت مفتوحة مدة طويلة. أعد المحاولة.',
+    'request_failed' => 'تعذّر إرسال الطلب (:error)',
+
+    'save' => 'حفظ',
+    'saved' => 'تم الحفظ',
+    'delete' => 'حذف',
+    'edit' => 'تعديل',
+    'back' => 'رجوع',
+    'show' => 'إظهار',
+    'hide' => 'إخفاء',
+
+    'theme' => [
+        'change' => 'تغيير المظهر',
+        'title' => 'المظهر: :theme — اضغط للتغيير',
+        'auto' => 'تلقائي',
+        'light' => 'نهاري',
+        'dark' => 'ليلي',
+    ],
+];

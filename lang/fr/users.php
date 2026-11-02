@@ -1,0 +1,50 @@
+<?php
+
+return [
+    'title' => 'Utilisateurs',
+    'new' => 'Nouveau compte',
+    'create' => 'Créer le compte',
+    'name' => 'Nom',
+    'username' => 'Nom d\'utilisateur',
+    'role' => 'Rôle',
+    'created' => 'Créé',
+    'you' => '(vous)',
+    'admin' => 'Administrateur',
+    'worker' => 'Employé — stock uniquement',
+    'confirm_delete' => 'Supprimer le compte « :username » ? Il ne pourra plus se connecter.',
+    'help' => 'L\'<b>employé</b> voit la recherche dans le stock et la fenêtre des succursales, peut cliquer sur « Actualiser » et change son mot de passe dans « Mon compte ». L\'<b>administrateur</b> voit tout : succursales, téléchargement de l\'agent et comptes.
+        Vous ne pouvez ni supprimer votre propre compte ni lui retirer le rôle d\'administrateur : il reste ainsi toujours au moins un administrateur.',
+
+    'edit_title' => 'Modifier :username',
+    'edit_heading' => 'Modifier le compte',
+    'own_account' => 'C\'est votre compte : impossible de lui retirer le rôle d\'administrateur.',
+
+    'display_name' => 'Nom affiché',
+    'login_username' => 'Nom d\'utilisateur (pour la connexion)',
+    'password_keep' => 'Nouveau mot de passe (laisser vide pour garder l\'actuel)',
+    'password_new' => 'Mot de passe (8 caractères minimum)',
+    'show_password' => 'Afficher le mot de passe',
+    'admin_help' => '— accès complet : succursales, téléchargement de l\'agent et comptes. Sans ce rôle, le compte ne voit que le stock.',
+
+    'new_password' => 'Nouveau mot de passe',
+    'leave_empty' => '(laisser vide pour ne pas le changer)',
+    'confirm_password' => 'Confirmer le nouveau mot de passe',
+    'current_password' => 'Mot de passe actuel',
+    'required_to_save' => '(obligatoire pour enregistrer une modification)',
+
+    'name_required' => 'Le nom est obligatoire',
+    'username_required' => 'Le nom d\'utilisateur est obligatoire',
+    'username_taken' => 'Ce nom d\'utilisateur est déjà utilisé par un autre compte',
+    'password_required' => 'Le mot de passe est obligatoire',
+    'password_min' => 'Mot de passe : 8 caractères minimum',
+    'new_password_min' => 'Nouveau mot de passe : 8 caractères minimum',
+    'password_mismatch' => 'La confirmation du nouveau mot de passe ne correspond pas',
+    'current_password_required' => 'Saisissez votre mot de passe actuel pour confirmer la modification',
+    'current_password_wrong' => 'Le mot de passe actuel est incorrect',
+    'cannot_demote_self' => 'Vous ne pouvez pas retirer le rôle d\'administrateur à votre propre compte.',
+    'cannot_delete_self' => 'Vous ne pouvez pas supprimer votre propre compte.',
+    'created_flash' => 'Compte « :username » créé',
+    'saved_flash' => 'Compte « :username » enregistré',
+    'deleted_flash' => 'Compte « :username » supprimé',
+    'account_saved' => 'Compte enregistré',
+];

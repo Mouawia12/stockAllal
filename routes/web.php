@@ -5,10 +5,14 @@ use App\Http\Controllers\AgentDownloadController;
 use App\Http\Controllers\Auth\LoginController;
 use App\Http\Controllers\BranchController;
 use App\Http\Controllers\HomeController;
+use App\Http\Controllers\LocaleController;
 use App\Http\Controllers\ProductGroupController;
 use App\Http\Controllers\StockController;
 use App\Http\Controllers\UserController;
 use Illuminate\Support\Facades\Route;
+
+// Langue de l'interface, pour tous (page de connexion comprise).
+Route::post('locale', LocaleController::class)->name('locale');
 
 Route::middleware('guest')->group(function () {
     Route::get('login', [LoginController::class, 'show'])->name('login');

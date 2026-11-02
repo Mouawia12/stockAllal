@@ -1,8 +1,8 @@
 @extends('errors.layout')
 
-@section('title', 'غير مسموح')
-@section('heading', 'هذه الصفحة للمدير فقط')
-@section('message', 'حسابك يسمح بالبحث في المخزون فقط. إذا كنت تحتاج صلاحيات أكثر، اطلبها من المدير.')
+@section('title', __('errors.forbidden.title'))
+@section('heading', __('errors.forbidden.heading'))
+@section('message', __('errors.forbidden.message'))
 @section('actions')
-    <a class="btn primary" href="{{ url('/') }}">الرجوع إلى التطبيقات</a>
+    <a class="btn primary" href="{{ url('/') }}">{{ __('errors.forbidden.back') }}</a>
 @endsection

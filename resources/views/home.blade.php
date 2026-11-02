@@ -1,6 +1,6 @@
 @extends('layouts.app')
 
-@section('title', 'التطبيقات — مخزون الفروع')
+@section('title', __('common.apps_launcher').' — '.__('common.app_name'))
 
 @push('head')
 <style>
@@ -37,20 +37,20 @@
 @section('content')
 <div class="home">
     <div class="in">
-        <p class="hello">مرحباً {{ auth()->user()->name }}</p>
-        <p class="hello-sub">اختر التطبيق</p>
+        <p class="hello">{{ __('common.hello', ['name' => auth()->user()->name]) }}</p>
+        <p class="hello-sub">{{ __('common.choose_app') }}</p>
         <div class="apps">
             @foreach ($apps as $key => $app)
                 @if ($app['route'])
                     <a class="app" href="{{ route($app['route']) }}">
                         <span class="tile">@include('partials.app-icon', ['name' => $key])</span>
-                        <span class="label">{{ $app['name'] }}</span>
+                        <span class="label">{{ __("common.apps.{$key}") }}</span>
                     </a>
                 @else
-                    <div class="app soon" aria-disabled="true" title="{{ $app['name'] }}: قيد التطوير">
+                    <div class="app soon" aria-disabled="true" title="{{ __('common.in_development', ['app' => __("common.apps.{$key}")]) }}">
                         <span class="tile">@include('partials.app-icon', ['name' => $key])</span>
-                        <span class="label">{{ $app['name'] }}</span>
-                        <span class="soon-pill">قريباً</span>
+                        <span class="label">{{ __("common.apps.{$key}") }}</span>
+                        <span class="soon-pill">{{ __('common.soon') }}</span>
                     </div>
                 @endif
             @endforeach

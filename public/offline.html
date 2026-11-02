@@ -24,18 +24,39 @@
     </style>
     <script>
         try { var t = localStorage.getItem('theme'); if (t === 'light' || t === 'dark') document.documentElement.setAttribute('data-theme', t); } catch (e) {}
+        // langue choisie dans l'application (cookie "locale", app/Http/Middleware/SetLocale.php) ; l'arabe est deja dans la page
+        var LANG = (document.cookie.match(/(?:^|;\s*)locale=(fr|en)(?:;|$)/) || [])[1] || 'ar';
+        var TEXTS = {
+            ar: {try: 'محاولة رقم :n…', back: 'عاد الاتصال، جارٍ فتح الصفحة…', again: 'لم ينجح بعد. المحاولة التالية بعد 4 ثوانٍ…'},
+            fr: {title: 'Reconnexion — Stock des succursales', h1: 'La connexion au serveur est coupée pour le moment',
+                p: 'Cela vient de la ligne internet, le logiciel fonctionne. Nous réessayons automatiquement et la page s\'ouvrira toute seule dès le retour de la connexion.',
+                retry: 'Réessayer maintenant', state: 'Prochain essai dans un instant…',
+                try: 'Essai n° :n…', back: 'Connexion rétablie, ouverture de la page…', again: 'Pas encore. Prochain essai dans 4 secondes…'},
+            en: {title: 'Reconnecting — Branch Stock', h1: 'The connection to the server is down right now',
+                p: 'This comes from the internet line; the software is working. We keep retrying and the page will open by itself as soon as the connection is back.',
+                retry: 'Try again now', state: 'Next try in a moment…',
+                try: 'Try :n…', back: 'Connection is back, opening the page…', again: 'Not yet. Next try in 4 seconds…'},
+        }[LANG];
+        if (LANG !== 'ar') {
+            document.documentElement.lang = LANG;
+            document.documentElement.dir = 'ltr';
+        }
     </script>
 </head>
 <body>
 <div class="box">
     <div class="ring" aria-hidden="true"></div>
-    <h1>الاتصال بالسيرفر متقطع الآن</h1>
-    <p>هذا من خط الإنترنت، والبرنامج يعمل. نعيد المحاولة تلقائياً وتفتح الصفحة وحدها عند عودة الاتصال.</p>
+    <h1 id="h1">الاتصال بالسيرفر متقطع الآن</h1>
+    <p id="p">هذا من خط الإنترنت، والبرنامج يعمل. نعيد المحاولة تلقائياً وتفتح الصفحة وحدها عند عودة الاتصال.</p>
     <button type="button" id="retry">إعادة المحاولة الآن</button>
     <small id="state">المحاولة التالية بعد لحظات…</small>
 </div>
 <script>
 (() => {
+    if (LANG !== 'ar') {
+        document.title = TEXTS.title;
+        for (const id of ['h1', 'p', 'retry', 'state']) document.getElementById(id).textContent = TEXTS[id];
+    }
     const state = document.getElementById('state');
     let tries = 0, busy = false;
     // le site repond-il ? /up est la sonde de Laravel (sans session ni base)
@@ -43,18 +64,18 @@
         if (busy) return;
         busy = true;
         tries += 1;
-        state.textContent = 'محاولة رقم ' + tries + '…';
+        state.textContent = TEXTS.try.replace(':n', tries);
         const ctrl = new AbortController();
         const timer = setTimeout(() => ctrl.abort(), 6000);
         try {
             const res = await fetch('/up?t=' + Date.now(), {cache: 'no-store', signal: ctrl.signal});
-            if (res.ok) { state.textContent = 'عاد الاتصال، جارٍ فتح الصفحة…'; location.reload(); return; }
+            if (res.ok) { state.textContent = TEXTS.back; location.reload(); return; }
         } catch (e) {
         } finally {
             clearTimeout(timer);
             busy = false;
         }
-        state.textContent = 'لم ينجح بعد. المحاولة التالية بعد 4 ثوانٍ…';
+        state.textContent = TEXTS.again;
     }
     document.getElementById('retry').addEventListener('click', check);
     window.addEventListener('online', check);

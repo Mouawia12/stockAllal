@@ -78,9 +78,19 @@ return [
     |
     */
 
-    'locale' => env('APP_LOCALE', 'en'),
+    'locale' => env('APP_LOCALE', 'ar'),
 
     'fallback_locale' => env('APP_FALLBACK_LOCALE', 'en'),
+
+    /*
+     * Langues de l'interface (lang/<code>/*.php), dans l'ordre du selecteur.
+     * short = libelle du lien, name = nom complet (infobulle), dir = sens d'ecriture de la page.
+     */
+    'locales' => [
+        'ar' => ['short' => 'عربي', 'name' => 'العربية', 'dir' => 'rtl'],
+        'fr' => ['short' => 'FR', 'name' => 'Français', 'dir' => 'ltr'],
+        'en' => ['short' => 'EN', 'name' => 'English', 'dir' => 'ltr'],
+    ],
 
     'faker_locale' => env('APP_FAKER_LOCALE', 'en_US'),
 

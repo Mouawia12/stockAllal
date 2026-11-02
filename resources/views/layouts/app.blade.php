@@ -1,10 +1,10 @@
 <!doctype html>
-<html lang="ar" dir="rtl">
+<html lang="{{ app()->getLocale() }}" dir="{{ config('app.locales')[app()->getLocale()]['dir'] }}">
 <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <meta name="csrf-token" content="{{ csrf_token() }}">
-    <title>@yield('title', 'مخزون الفروع')</title>
+    <title>@yield('title', __('common.app_name'))</title>
     @include('partials.theme')
     <style>
         * { box-sizing: border-box; }
@@ -29,7 +29,8 @@
         /* overflow-x : sur telephone, un tableau large defile dans sa carte au lieu d'elargir toute la page */
         .card { background: var(--card); border: 1px solid var(--border); border-radius: 10px; padding: 16px; overflow-x: auto; }
         table { width: 100%; border-collapse: collapse; }
-        th { text-align: right; font-weight: 600; color: var(--muted); font-size: 13px; padding: 8px 10px; border-bottom: 1px solid var(--border); white-space: nowrap; }
+        /* start = droite en arabe, gauche en francais / anglais */
+        th { text-align: start; font-weight: 600; color: var(--muted); font-size: 13px; padding: 8px 10px; border-bottom: 1px solid var(--border); white-space: nowrap; }
         td { padding: 8px 10px; border-bottom: 1px solid var(--border); vertical-align: middle; }
         tbody tr:hover { background: var(--row-hover); }
         input[type=text], input[type=search], input[type=email], input[type=password] {
@@ -56,7 +57,9 @@
             td, th { padding: 7px 6px; }
             header .in { flex-wrap: wrap; gap: 6px 10px; }
             header .app-title { flex: 1; }
-            header nav { order: 5; flex-basis: 100%; }
+            /* deuxieme ligne : les menus, puis les boutons de langue au bout */
+            header nav { order: 5; flex-basis: calc(100% - 140px); }
+            header .lang-switch { order: 6; margin-inline-start: auto; }
         }
         @media (max-width: 480px) { header .theme-label { display: none; } header .in { gap: 6px 8px; } }
     </style>
@@ -75,33 +78,34 @@
 @endphp
 <header>
     <div class="in">
-        <a class="launcher" href="{{ route('home') }}" title="التطبيقات" aria-label="التطبيقات">@include('partials.app-icon', ['name' => 'grid'])</a>
+        <a class="launcher" href="{{ route('home') }}" title="{{ __('common.apps_launcher') }}" aria-label="{{ __('common.apps_launcher') }}">@include('partials.app-icon', ['name' => 'grid'])</a>
         @if ($currentApp)
-            <a class="app-title" href="{{ route($currentApp['route']) }}">@include('partials.app-icon', ['name' => $current]){{ $currentApp['name'] }}</a>
+            <a class="app-title" href="{{ route($currentApp['route']) }}">@include('partials.app-icon', ['name' => $current]){{ __("common.apps.{$current}") }}</a>
         @else
-            <a class="app-title" href="{{ route('home') }}">@include('partials.app-icon', ['name' => 'logo'])مخزون الفروع</a>
+            <a class="app-title" href="{{ route('home') }}">@include('partials.app-icon', ['name' => 'logo']){{ __('common.app_name') }}</a>
         @endif
         <nav>
             @if ($current === 'stock')
-                <a href="{{ route('stock.index') }}" class="{{ request()->routeIs('stock.*') ? 'on' : '' }}">البحث</a>
+                <a href="{{ route('stock.index') }}" class="{{ request()->routeIs('stock.*') ? 'on' : '' }}">{{ __('common.nav.search') }}</a>
                 @if ($user->is_admin)
-                    <a href="{{ route('merge.index') }}" class="{{ request()->routeIs('merge.*') ? 'on' : '' }}">دمج الأصناف</a>
-                    <a href="{{ route('branches.index') }}" class="{{ request()->routeIs('branches.*') ? 'on' : '' }}">الفروع</a>
+                    <a href="{{ route('merge.index') }}" class="{{ request()->routeIs('merge.*') ? 'on' : '' }}">{{ __('common.nav.merge') }}</a>
+                    <a href="{{ route('branches.index') }}" class="{{ request()->routeIs('branches.*') ? 'on' : '' }}">{{ __('common.nav.branches') }}</a>
                 @endif
             @elseif ($current === 'settings')
-                <a href="{{ route('users.index') }}" class="on">المستخدمون</a>
+                <a href="{{ route('users.index') }}" class="on">{{ __('common.nav.users') }}</a>
             @endif
         </nav>
+        @include('partials.lang-switch')
         @include('partials.theme-toggle')
-        <a href="{{ route('account.edit') }}" class="user {{ request()->routeIs('account.*') ? 'on' : '' }}" title="حسابي">
+        <a href="{{ route('account.edit') }}" class="user {{ request()->routeIs('account.*') ? 'on' : '' }}" title="{{ __('common.account') }}">
             <span class="avatar">{{ mb_substr($user->name, 0, 1) }}</span><span class="hide-sm">{{ $user->name }}</span>
         </a>
-        <form method="post" action="{{ route('logout') }}">@csrf<button class="link" type="submit">خروج</button></form>
+        <form method="post" action="{{ route('logout') }}">@csrf<button class="link" type="submit">{{ __('common.logout') }}</button></form>
     </div>
 </header>
 <main>
     @if (session('weak_password'))
-        <div class="errors">كلمة السر الحالية تساوي اسم المستخدم. غيّرها من <a href="{{ route('account.edit') }}">حسابي</a>.</div>
+        <div class="errors">{!! __('common.weak_password', ['link' => '<a href="'.route('account.edit').'">'.e(__('common.account')).'</a>']) !!}</div>
     @endif
     @if (session('status'))
         <div class="flash">{{ session('status') }}</div>
@@ -129,7 +133,7 @@
                 return res;
             } catch (e) {
                 if (outer?.aborted) throw new DOMException('annule', 'AbortError');
-                if (attempt >= tries) throw (e.name === 'AbortError' ? new Error('لا رد من السيرفر') : e);
+                if (attempt >= tries) throw (e.name === 'AbortError' ? new Error(@json(__('common.no_response'))) : e);
                 await new Promise(r => setTimeout(r, 500 * attempt));
             } finally {
                 clearTimeout(timer);

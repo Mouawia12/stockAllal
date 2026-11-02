@@ -21,12 +21,12 @@ class LoginController extends Controller
             'username' => ['required', 'string', 'max:50'],
             'password' => ['required', 'string'],
         ], [
-            'username.required' => 'اسم المستخدم مطلوب',
-            'password.required' => 'كلمة السر مطلوبة',
+            'username.required' => __('login.username_required'),
+            'password.required' => __('login.password_required'),
         ]);
 
         if (! Auth::attempt($credentials, $request->boolean('remember'))) {
-            return back()->withErrors(['username' => 'اسم المستخدم أو كلمة السر غير صحيحة'])->onlyInput('username');
+            return back()->withErrors(['username' => __('login.failed')])->onlyInput('username');
         }
 
         $request->session()->regenerate();

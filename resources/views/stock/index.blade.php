@@ -1,14 +1,16 @@
 @extends('layouts.app')
 
 {{-- Meme page pour la recherche et pour "دمج الأصناف" ($merge, administrateur) : cases a cocher et retrait d'un code en plus. --}}
-@section('title', ($q !== '' ? "{$q} — " : '').($merge ? 'دمج الأصناف — ' : '').'مخزون الفروع')
+@php($baseTitle = ($merge ? __('common.nav.merge').' — ' : '').__('common.app_name'))
+@section('title', ($q !== '' ? "{$q} — " : '').$baseTitle)
 
 @push('head')
 <style>
     .search { display: flex; gap: 8px; margin-bottom: 16px; }
     .search .q-wrap { position: relative; flex: 1; display: flex; }
     .search input { flex: 1; font-size: 16px; padding: 10px 12px; }
-    .live-spin { display: none; position: absolute; left: 38px; top: 50%; width: 16px; height: 16px; margin-top: -8px;
+    /* a la fin du champ, avant la croix d'effacement du navigateur */
+    .live-spin { display: none; position: absolute; inset-inline-end: 38px; top: 50%; width: 16px; height: 16px; margin-top: -8px;
         border: 2px solid var(--muted); border-top-color: transparent; border-radius: 50%; animation: spin .8s linear infinite; }
     .search.busy .live-spin { display: block; }
     .search.offline input { border-color: var(--warn); }
@@ -39,29 +41,25 @@
     .modal-head .grow { flex: 1; }
     .modal .desig { margin: 0 0 12px; }
     .modal #m-merged { margin: -8px 0 12px; }
-    .wait::before { content: ""; display: inline-block; width: 10px; height: 10px; margin-left: 6px; border: 2px solid var(--muted); border-top-color: transparent; border-radius: 50%; animation: spin .8s linear infinite; vertical-align: -1px; }
+    .wait::before { content: ""; display: inline-block; width: 10px; height: 10px; margin-inline-end: 6px; border: 2px solid var(--muted); border-top-color: transparent; border-radius: 50%; animation: spin .8s linear infinite; vertical-align: -1px; }
     @keyframes spin { to { transform: rotate(360deg); } }
 </style>
 @endpush
 
 @section('content')
 @if ($merge)
-    <h1 class="page-title">دمج الأصناف</h1>
-    <p class="muted small merge-help">
-        نفس المنتج قد يُكتب بكود مختلف في كل فرع (مثلاً <span class="ltr">820AC</span> و <span class="ltr">820-AC</span>).
-        ابحث، حدّد الأصناف التي هي نفس المنتج، ثم «دمج المحدد»: تظهر بعدها سطراً واحداً في البحث، والمعاينة و«تحديث الآن» تشمل كل أكوادها.
-        زر ✕ بجانب الكود يُخرجه من الدمج.
-    </p>
+    <h1 class="page-title">{{ __('common.nav.merge') }}</h1>
+    <p class="muted small merge-help">{!! __('stock.merge.help') !!}</p>
 @endif
 
-<form class="search" method="get" action="{{ route($merge ? 'merge.index' : 'stock.index') }}" data-title="{{ $merge ? 'دمج الأصناف — ' : '' }}مخزون الفروع">
+<form class="search" method="get" action="{{ route($merge ? 'merge.index' : 'stock.index') }}" data-title="{{ $baseTitle }}">
     <div class="q-wrap">
-        <input type="search" name="q" value="{{ $q }}" placeholder="كود المنتج أو كلمات من التسمية — مثلاً 820AC أو boulon 20" autofocus autocomplete="off" aria-controls="results">
+        <input type="search" name="q" value="{{ $q }}" placeholder="{{ __('stock.placeholder') }}" autofocus autocomplete="off" aria-controls="results">
         <span class="live-spin" aria-hidden="true"></span>
     </div>
-    <button class="primary" type="submit">بحث</button>
+    <button class="primary" type="submit">{{ __('stock.search') }}</button>
 </form>
-<p class="live-hint muted small hide-sm">النتائج تتحدّث أثناء الكتابة. <kbd>↓</kbd> <kbd>↑</kbd> للتنقل، <kbd>Enter</kbd> للمعاينة، <kbd>/</kbd> للرجوع إلى البحث.</p>
+<p class="live-hint muted small hide-sm">{!! __('stock.live_hint') !!}</p>
 
 @if ($merge)
     <form id="merge-form" method="post" action="{{ route('merge.store') }}">@csrf</form>
@@ -77,24 +75,24 @@
         <div class="modal-head">
             <span class="code ltr" id="m-code"></span>
             <span class="grow"></span>
-            <button type="button" class="primary" id="m-refresh">تحديث الآن</button>
-            <button type="button" class="link" id="m-close" aria-label="إغلاق">✕</button>
+            <button type="button" class="primary" id="m-refresh">{{ __('stock.refresh_now') }}</button>
+            <button type="button" class="link" id="m-close" aria-label="{{ __('stock.close') }}">✕</button>
         </div>
         <p class="desig muted"><bdi id="m-desig"></bdi></p>
         <p class="muted small" id="m-merged" hidden></p>
         <table>
             <thead>
             <tr>
-                <th>الفرع</th>
-                <th>الكود هناك</th>
-                <th class="hide-sm">التسمية هناك</th>
-                <th>الكمية</th>
-                <th title="Pu Detail">التجزئة</th>
-                <th title="Prix Vente Gros">الجملة</th>
+                <th>{{ __('stock.col_branch') }}</th>
+                <th>{{ __('stock.col_code_there') }}</th>
+                <th class="hide-sm">{{ __('stock.col_designation_there') }}</th>
+                <th>{{ __('stock.col_quantity') }}</th>
+                <th title="Pu Detail">{{ __('stock.col_retail') }}</th>
+                <th title="Prix Vente Gros">{{ __('stock.col_wholesale') }}</th>
                 @if ($showBuy)
-                    <th class="hide-sm" title="Pu Achat — يظهر للمدير فقط">الشراء</th>
+                    <th class="hide-sm" title="Pu Achat — {{ __('stock.admin_only') }}">{{ __('stock.col_buy') }}</th>
                 @endif
-                <th>الحالة</th>
+                <th>{{ __('stock.col_status') }}</th>
             </tr>
             </thead>
             <tbody id="m-body"></tbody>
@@ -111,6 +109,11 @@
     const REFRESH_URL = @json(route('stock.refresh'));
     const CSRF = document.querySelector('meta[name=csrf-token]').content;
     const POLL_MS = 2000, MAX_WAIT_MS = 35000;
+    // textes de la langue choisie (lang/*/stock.php) ; t() remplace les :marqueurs.
+    {{-- tableau prepare dans @php : @json() coupe son argument aux virgules --}}
+    @php($texts = __('stock.js') + ['refresh_now' => __('stock.refresh_now'), 'refreshing' => __('stock.refreshing'), 'request_failed' => __('common.request_failed'), 'weak_connection' => __('stock.weak_connection'), 'pick_hint' => __('stock.merge.pick_hint')])
+    const T = @json($texts);
+    const t = (text, values) => text.replace(/:(\w+)/g, (m, key) => key in values ? values[key] : m);
 
     const bg = document.getElementById('modal-bg');
     const mCode = document.getElementById('m-code');
@@ -128,13 +131,13 @@
     function statusCell(b, row) {
         switch (b.status) {
             case 'pending':
-            case 'taken': return '<span class="wait muted">في الانتظار…</span>';
-            case 'done': return '<span class="pill ok">الآن ✓</span>';
-            case 'not_found': return '<span class="pill">غير موجود في الفرع</span>';
-            case 'error': return '<span class="pill bad">خطأ في القراءة</span>';
-            case 'timeout': return '<span class="pill warn">لم يرد' + (row ? ' — آخر قيمة ' + esc(row.updated) : '') + '</span>';
+            case 'taken': return '<span class="wait muted">' + esc(T.waiting) + '</span>';
+            case 'done': return '<span class="pill ok">' + esc(T.now) + '</span>';
+            case 'not_found': return '<span class="pill">' + esc(T.not_in_branch) + '</span>';
+            case 'error': return '<span class="pill bad">' + esc(T.read_error) + '</span>';
+            case 'timeout': return '<span class="pill warn">' + esc(T.no_answer) + (row ? ' — ' + esc(t(T.last_value, {time: row.updated})) : '') + '</span>';
         }
-        if (!b.online) return '<span class="pill warn">غير متصل' + (row ? ' — ' + esc(row.updated) : '') + '</span>';
+        if (!b.online) return '<span class="pill warn">' + esc(T.offline) + (row ? ' — ' + esc(row.updated) : '') + '</span>';
         return row ? '<span class="muted small">' + esc(row.updated) + '</span>' : '';
     }
 
@@ -144,7 +147,7 @@
         const value = r[field] ?? null;
         const differs = !b.main && ref !== null && ref !== undefined && value !== null && Math.abs(value - ref) >= 0.005;
         return '<td class="' + (cls || '') + '">' + (differs
-            ? '<span class="pill warn num" title="الفرع الرئيسي: ' + fmt(ref) + '">' + fmt(value) + '</span>'
+            ? '<span class="pill warn num" title="' + esc(t(T.main_price, {price: fmt(ref)})) + '">' + fmt(value) + '</span>'
             : '<span class="num">' + fmt(value) + '</span>') + '</td>';
     }
 
@@ -157,13 +160,13 @@
         const others = (data.codes || []).filter(c => c !== data.code);
         mMerged.hidden = !others.length;
         // chaque code isole (LRI ... PDI) pour garder son ordre dans la phrase arabe
-        mMerged.textContent = others.length ? 'مدمج مع: ' + others.map(c => '\u2066' + c + '\u2069').join('، ') : '';
+        mMerged.textContent = others.length ? t(T.merged_with, {codes: others.map(c => '\u2066' + c + '\u2069').join(T.list_separator)}) : '';
         const html = [];
         for (const b of data.branches) {
-            const name = esc(b.branch) + (b.main ? ' <span class="pill ok">رئيسي</span>' : '');
+            const name = esc(b.branch) + (b.main ? ' <span class="pill ok">' + esc(T.main) + '</span>' : '');
             if (!b.rows.length) {
                 const dashes = '<td class="muted">—</td><td class="muted">—</td>' + (data.show_buy ? '<td class="muted hide-sm">—</td>' : '');
-                html.push('<tr><td>' + name + '</td><td class="muted">—</td><td class="muted hide-sm">غير موجود</td>'
+                html.push('<tr><td>' + name + '</td><td class="muted">—</td><td class="muted hide-sm">' + esc(T.not_found) + '</td>'
                     + '<td class="muted">—</td>' + dashes + '<td>' + statusCell(b, null) + '</td></tr>');
                 continue;
             }
@@ -176,7 +179,7 @@
                     + '<td>' + statusCell(b, r) + '</td></tr>');
             }
         }
-        mBody.innerHTML = html.join('') || '<tr><td colspan="8" class="muted">لا توجد فروع مفعّلة.</td></tr>';
+        mBody.innerHTML = html.join('') || '<tr><td colspan="8" class="muted">' + esc(T.no_branches) + '</td></tr>';
     }
 
     async function load(batch) {
@@ -192,7 +195,7 @@
         clearTimeout(timer);
         timer = null;
         mRefresh.disabled = false;
-        mRefresh.textContent = 'تحديث الآن';
+        mRefresh.textContent = T.refresh_now;
     }
 
     async function open(code, designation) {
@@ -202,17 +205,17 @@
         mDesig.textContent = designation || '';
         mMerged.hidden = true;
         mNote.textContent = '';
-        mBody.innerHTML = '<tr><td colspan="6" class="muted"><span class="wait">تحميل…</span></td></tr>';
+        mBody.innerHTML = '<tr><td colspan="6" class="muted"><span class="wait">' + esc(T.loading) + '</span></td></tr>';
         bg.classList.add('open');
         try { render(await load()); }
-        catch (e) { mBody.innerHTML = '<tr><td colspan="6" class="neg">تعذّر التحميل (' + esc(e.message) + ')</td></tr>'; }
+        catch (e) { mBody.innerHTML = '<tr><td colspan="6" class="neg">' + esc(t(T.load_failed, {error: e.message})) + '</td></tr>'; }
     }
 
     async function refresh() {
         if (timer || !current) return;
         mRefresh.disabled = true;
-        mRefresh.textContent = 'جارٍ التحديث…';
-        mNote.textContent = 'كل فرع يقرأ الكمية من قاعدته الآن — عادةً خلال 15 ثانية.';
+        mRefresh.textContent = T.refreshing;
+        mNote.textContent = T.reading;
         try {
             // batch choisi ici : si la requete est rejouee apres une coupure, le serveur ne cree pas les demandes deux fois
             const res = await fetchRetry(REFRESH_URL, {
@@ -230,16 +233,16 @@
                     const data = await load(batch);
                     render(data);
                     if (data.done || Date.now() - startedAt > MAX_WAIT_MS) {
-                        mNote.textContent = 'آخر تحديث: ' + new Date().toLocaleTimeString('fr-FR');
+                        mNote.textContent = t(T.last_update, {time: new Date().toLocaleTimeString('fr-FR')});
                         stopPolling();
                         return;
                     }
-                } catch (e) { mNote.textContent = 'الاتصال بطيء، إعادة المحاولة…'; }
+                } catch (e) { mNote.textContent = T.slow; }
                 timer = setTimeout(tick, POLL_MS);
             };
             timer = setTimeout(tick, 500);
         } catch (e) {
-            mNote.textContent = 'تعذّر إرسال الطلب (' + e.message + ')';
+            mNote.textContent = t(T.request_failed, {error: e.message});
             stopPolling();
         }
     }
@@ -300,8 +303,8 @@
         const update = () => {
             btn.disabled = picked.size < 2;
             count.textContent = picked.size
-                ? 'محدد: ' + [...picked].map(c => '\u2066' + c + '\u2069').join('، ')
-                : 'حدّد صنفين أو أكثر هما نفس المنتج.';
+                ? t(T.picked, {codes: [...picked].map(c => '\u2066' + c + '\u2069').join(T.list_separator)})
+                : T.pick_hint;
         };
         boxes.forEach(b => {
             b.checked = picked.has(b.value);
@@ -357,7 +360,7 @@
             if (my !== seq || e.name === 'AbortError') return;
             // les resultats precedents restent ; la prochaine touche (ou Entree) reessaie
             form.classList.add('offline');
-            form.title = 'الاتصال ضعيف: النتائج المعروضة قد لا تكون آخر بحث';
+            form.title = T.weak_connection;
         } finally {
             if (my === seq) {
                 form.classList.remove('busy');

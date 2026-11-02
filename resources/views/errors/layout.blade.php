@@ -1,10 +1,10 @@
 {{-- Gabarit des pages d'erreur : autonome (pas de session ni de base), pour s'afficher meme quand l'application va mal. --}}
 <!doctype html>
-<html lang="ar" dir="rtl">
+<html lang="{{ app()->getLocale() }}" dir="{{ config('app.locales')[app()->getLocale()]['dir'] }}">
 <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>@yield('title') — مخزون الفروع</title>
+    <title>@yield('title') — {{ __('common.app_name') }}</title>
     @include('partials.theme')
     <style>
         * { box-sizing: border-box; }

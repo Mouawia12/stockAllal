@@ -34,11 +34,11 @@ class BranchController extends Controller
             'name' => ['sometimes', 'required', 'string', 'max:100'],
             'active' => ['sometimes', 'boolean'],
         ], [
-            'name.required' => 'اسم الفرع مطلوب',
+            'name.required' => __('branches.name_required'),
         ]);
         $branch->update($data);
 
-        return back()->with('status', 'تم الحفظ');
+        return back()->with('status', __('common.saved'));
     }
 
     /**
@@ -55,9 +55,7 @@ class BranchController extends Controller
             }
         });
 
-        return back()->with('status', $makeMain
-            ? "«{$branch->name}» هو الفرع الرئيسي الآن: سعره يظهر في البحث"
-            : "«{$branch->name}» لم يعد الفرع الرئيسي");
+        return back()->with('status', __($makeMain ? 'branches.now_main' : 'branches.no_longer_main', ['name' => $branch->name]));
     }
 
     public function destroy(Branch $branch): RedirectResponse
@@ -65,14 +63,14 @@ class BranchController extends Controller
         $name = $branch->name;
         $branch->delete();
 
-        return back()->with('status', "تم حذف الفرع «{$name}» ومخزونه");
+        return back()->with('status', __('branches.deleted', ['name' => $name]));
     }
 
     /** Bouton "مزامنة الآن" : l'agent renvoie tout le stock de la branche des qu'il recupere la demande (~10 s). */
     public function sync(Request $request, Branch $branch): JsonResponse
     {
         if (! $branch->active) {
-            return response()->json(['error' => 'الفرع معطّل'], 422);
+            return response()->json(['error' => __('branches.is_disabled')], 422);
         }
         // batch choisi par la page : une requete rejouee apres une coupure retrouve sa demande au lieu d'en recreer une
         $batch = $request->validate(['batch' => ['nullable', 'uuid']])['batch'] ?? (string) Str::uuid();

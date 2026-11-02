@@ -18,6 +18,9 @@ return Application::configure(basePath: dirname(__DIR__))
             'agent' => \App\Http\Middleware\AuthenticateAgent::class,
             'admin' => \App\Http\Middleware\EnsureAdmin::class,
         ]);
+        // langue choisie (cookie en clair) : avant tout le reste, pour que les pages d'erreur soient traduites aussi
+        $middleware->prepend(\App\Http\Middleware\SetLocale::class);
+        $middleware->encryptCookies(except: ['locale']);
         $middleware->redirectGuestsTo(fn () => route('login'));
         $middleware->redirectUsersTo(fn () => route('home'));
     })
@@ -34,6 +37,6 @@ return Application::configure(basePath: dirname(__DIR__))
 
             return redirect()->back()
                 ->withInput($request->except(['password', 'current_password', 'password_confirmation', '_token']))
-                ->withErrors(['session' => 'انتهت صلاحية الصفحة لأنها بقيت مفتوحة مدة طويلة. أعد المحاولة.']);
+                ->withErrors(['session' => __('common.page_expired')]);
         });
     })->create();

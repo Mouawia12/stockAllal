@@ -1,9 +1,9 @@
 @extends('errors.layout')
 
-@section('title', 'خطأ')
-@section('heading', 'حدث خطأ غير متوقع')
-@section('message', 'سُجّل الخطأ لدى المطوّر. أعد المحاولة بعد لحظة، وإذا تكرّر فأخبر المدير.')
+@section('title', __('errors.server.title'))
+@section('heading', __('errors.server.heading'))
+@section('message', __('errors.server.message'))
 @section('actions')
-    <button class="btn primary" type="button" onclick="location.reload()">إعادة المحاولة</button>
-    <a class="btn" href="{{ url('/') }}">الصفحة الرئيسية</a>
+    <button class="btn primary" type="button" onclick="location.reload()">{{ __('errors.server.retry') }}</button>
+    <a class="btn" href="{{ url('/') }}">{{ __('errors.server.home') }}</a>
 @endsection

@@ -1,9 +1,9 @@
 <!doctype html>
-<html lang="ar" dir="rtl">
+<html lang="{{ app()->getLocale() }}" dir="{{ config('app.locales')[app()->getLocale()]['dir'] }}">
 <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>تسجيل الدخول — مخزون الفروع</title>
+    <title>{{ __('login.title') }} — {{ __('common.app_name') }}</title>
     @include('partials.theme')
     <style>
         * { box-sizing: border-box; }
@@ -21,12 +21,16 @@
         .sub { margin: 0 0 26px; color: var(--muted); }
         label.f { display: block; font-size: 13px; font-weight: 600; margin: 16px 0 6px; }
         .field { position: relative; }
-        .field > svg { position: absolute; top: 50%; right: 13px; width: 18px; height: 18px; transform: translateY(-50%); color: var(--muted); pointer-events: none; }
+        /* icone au debut du champ, bouton "إظهار" a la fin, selon le sens de la page */
+        .field > svg { position: absolute; top: 50%; inset-inline-start: 13px; width: 18px; height: 18px; transform: translateY(-50%); color: var(--muted); pointer-events: none; }
         .field input { width: 100%; height: 46px; font: inherit; color: var(--text); background: var(--card); border: 1px solid var(--border); border-radius: 10px;
             padding: 0 42px 0 12px; transition: border-color .15s, box-shadow .15s; }
         .field input:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
         .field input#password { padding-left: 74px; }
-        .eye { position: absolute; top: 50%; left: 6px; transform: translateY(-50%); font: inherit; font-size: 13px; border: 0; background: none; color: var(--accent); cursor: pointer; padding: 6px 8px; border-radius: 6px; }
+        /* les champs sont en dir="ltr" (padding-inline suivrait leur sens a eux) : marges physiques, inversees en francais / anglais */
+        html[dir=ltr] .field input { padding: 0 12px 0 42px; }
+        html[dir=ltr] .field input#password { padding: 0 74px 0 42px; }
+        .eye { position: absolute; top: 50%; inset-inline-end: 6px; transform: translateY(-50%); font: inherit; font-size: 13px; border: 0; background: none; color: var(--accent); cursor: pointer; padding: 6px 8px; border-radius: 6px; }
         .eye:hover { background: var(--accent-soft); }
         .caps { margin: 6px 0 0; font-size: 13px; color: var(--warn); }
         .remember { display: flex; gap: 8px; align-items: center; margin-top: 16px; font-size: 14px; color: var(--muted); cursor: pointer; }
@@ -42,7 +46,8 @@
         .alert { display: flex; gap: 10px; align-items: flex-start; padding: 11px 13px; border-radius: 10px; background: var(--bad-bg); color: var(--bad); font-size: 14px; margin-bottom: 4px; }
         .alert svg { width: 18px; height: 18px; flex: none; margin-top: 2px; }
         .foot { margin: 40px 0 0; font-size: 12px; color: var(--muted); text-align: center; }
-        .theme-toggle { position: absolute; top: 16px; right: 16px; font: inherit; font-size: 13px; cursor: pointer; border: 1px solid var(--border); border-radius: 99px; padding: 5px 12px; background: var(--card); color: var(--muted); }
+        .corner { position: absolute; top: 16px; inset-inline-start: 16px; display: flex; align-items: center; gap: 8px; }
+        .theme-toggle { font: inherit; font-size: 13px; cursor: pointer; border: 1px solid var(--border); border-radius: 99px; padding: 5px 12px; background: var(--card); color: var(--muted); }
 
         /* panneau de presentation */
         .showcase { position: relative; overflow: hidden; color: #fff; display: grid; place-items: center; padding: 56px;
@@ -78,15 +83,18 @@
 <body>
 <div class="shell">
     <section class="form-side">
-        @include('partials.theme-toggle')
+        <div class="corner">
+            @include('partials.theme-toggle')
+            @include('partials.lang-switch')
+        </div>
         <div class="form-wrap">
             <div class="brand">
                 @include('partials.app-icon', ['name' => 'logo'])
-                <div><b>مخزون الفروع</b><span>منصة إدارة الفروع</span></div>
+                <div><b>{{ __('common.app_name') }}</b><span>{{ __('login.tagline') }}</span></div>
             </div>
 
-            <h1>تسجيل الدخول</h1>
-            <p class="sub">أدخل اسم المستخدم وكلمة السر للمتابعة.</p>
+            <h1>{{ __('login.title') }}</h1>
+            <p class="sub">{{ __('login.intro') }}</p>
 
             @if ($errors->any())
                 <div class="alert" role="alert">
@@ -97,44 +105,44 @@
 
             <form method="post" action="{{ url('login') }}" id="login-form">
                 @csrf
-                <label class="f" for="username">اسم المستخدم</label>
+                <label class="f" for="username">{{ __('login.username') }}</label>
                 <div class="field">
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><circle cx="12" cy="8" r="4"/><path d="M4 20.5c0-4.2 3.6-7 8-7s8 2.8 8 7"/></svg>
                     <input id="username" type="text" name="username" value="{{ old('username') }}" required autofocus autocomplete="username" dir="ltr">
                 </div>
 
-                <label class="f" for="password">كلمة السر</label>
+                <label class="f" for="password">{{ __('login.password') }}</label>
                 <div class="field">
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><rect x="4.5" y="10.5" width="15" height="10" rx="2.5"/><path d="M8 10.5V7.5a4 4 0 0 1 8 0v3"/></svg>
                     <input id="password" type="password" name="password" required autocomplete="current-password" dir="ltr">
-                    <button type="button" class="eye" id="eye" aria-pressed="false">إظهار</button>
+                    <button type="button" class="eye" id="eye" aria-pressed="false">{{ __('common.show') }}</button>
                 </div>
-                <p class="caps" id="caps" hidden>⇪ زر الأحرف الكبيرة (Caps Lock) مفعّل</p>
+                <p class="caps" id="caps" hidden>{{ __('login.caps_lock') }}</p>
 
-                <label class="remember"><input type="checkbox" name="remember" value="1"> تذكّرني على هذا الجهاز</label>
+                <label class="remember"><input type="checkbox" name="remember" value="1"> {{ __('login.remember') }}</label>
 
-                <button class="submit" type="submit" id="submit"><span class="spin"></span><span>دخول</span></button>
+                <button class="submit" type="submit" id="submit"><span class="spin"></span><span>{{ __('login.submit') }}</span></button>
             </form>
 
-            <p class="foot">© {{ date('Y') }} مخزون الفروع</p>
+            <p class="foot">© {{ date('Y') }} {{ __('common.app_name') }}</p>
         </div>
     </section>
 
     <aside class="showcase" aria-hidden="true">
         <div class="show-in">
-            <h2>كل فروعك في شاشة واحدة</h2>
-            <p>مخزون كل فرع وأسعاره لحظة بلحظة، من أي مكان.</p>
+            <h2>{{ __('login.showcase_title') }}</h2>
+            <p>{{ __('login.showcase_text') }}</p>
             <ul class="features">
-                <li>كمية كل منتج في كل الفروع، مع تحديث فوري من الفرع</li>
-                <li>دمج الأصناف المكتوبة بأكواد مختلفة بين الفروع</li>
-                <li>سعر الفرع الرئيسي، وتنبيه للفروع التي لم تحدّث سعرها</li>
+                @foreach (__('login.features') as $feature)
+                    <li>{{ $feature }}</li>
+                @endforeach
             </ul>
             <div class="mini-apps">
                 @foreach (collect(config('apps'))->reject(fn ($app) => ! empty($app['admin'])) as $key => $app)
                     <div class="mini">
                         <span class="ic">@include('partials.app-icon', ['name' => $key])</span>
-                        <b>{{ $app['name'] }}</b>
-                        <small>{{ $app['route'] ? 'متاح' : 'قريباً' }}</small>
+                        <b>{{ __("common.apps.{$key}") }}</b>
+                        <small>{{ $app['route'] ? __('common.available') : __('common.soon') }}</small>
                     </div>
                 @endforeach
             </div>
@@ -144,13 +152,16 @@
 
 <script>
 (() => {
+    {{-- tableau prepare dans @php : @json() coupe son argument aux virgules --}}
+    @php($texts = ['show' => __('common.show'), 'hide' => __('common.hide'), 'submit' => __('login.submit'), 'submitting' => __('login.submitting')])
+    const T = @json($texts);
     const pw = document.getElementById('password');
     const eye = document.getElementById('eye');
     const caps = document.getElementById('caps');
     eye.addEventListener('click', () => {
         const show = pw.type === 'password';
         pw.type = show ? 'text' : 'password';
-        eye.textContent = show ? 'إخفاء' : 'إظهار';
+        eye.textContent = show ? T.hide : T.show;
         eye.setAttribute('aria-pressed', String(show));
         pw.focus();
     });
@@ -161,12 +172,12 @@
     const btn = document.getElementById('submit');
     document.getElementById('login-form').addEventListener('submit', () => {
         btn.disabled = true;
-        btn.lastElementChild.textContent = 'جارٍ الدخول…';
+        btn.lastElementChild.textContent = T.submitting;
     });
     // retour arriere du navigateur (page en cache) : le bouton ne doit pas rester bloque
     window.addEventListener('pageshow', () => {
         btn.disabled = false;
-        btn.lastElementChild.textContent = 'دخول';
+        btn.lastElementChild.textContent = T.submit;
     });
 })();
 </script>

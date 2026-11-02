@@ -24,13 +24,13 @@ class AccountController extends Controller
             'current_password' => ['required', 'current_password'],
             'password' => ['nullable', 'string', 'min:8', 'confirmed'],
         ], [
-            'name.required' => 'الاسم مطلوب',
-            'username.required' => 'اسم المستخدم مطلوب',
-            'username.unique' => 'اسم المستخدم مستعمل من حساب آخر',
-            'current_password.required' => 'أدخل كلمة السر الحالية لتأكيد التغيير',
-            'current_password.current_password' => 'كلمة السر الحالية غير صحيحة',
-            'password.min' => 'كلمة السر الجديدة: 8 أحرف على الأقل',
-            'password.confirmed' => 'تأكيد كلمة السر الجديدة غير مطابق',
+            'name.required' => __('users.name_required'),
+            'username.required' => __('users.username_required'),
+            'username.unique' => __('users.username_taken'),
+            'current_password.required' => __('users.current_password_required'),
+            'current_password.current_password' => __('users.current_password_wrong'),
+            'password.min' => __('users.new_password_min'),
+            'password.confirmed' => __('users.password_mismatch'),
         ]);
 
         $passwordChanged = ! empty($data['password']);
@@ -48,6 +48,6 @@ class AccountController extends Controller
         $password = $passwordChanged ? $data['password'] : $data['current_password'];
         $request->session()->put('weak_password', $password === $user->username);
 
-        return back()->with('status', 'تم حفظ الحساب');
+        return back()->with('status', __('users.account_saved'));
     }
 }
