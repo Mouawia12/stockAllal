@@ -5,6 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <meta name="csrf-token" content="{{ csrf_token() }}">
     <title>@yield('title', __('common.app_name'))</title>
+    @include('partials.favicon')
     @include('partials.theme')
     <style>
         * { box-sizing: border-box; }

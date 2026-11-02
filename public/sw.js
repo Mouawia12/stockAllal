@@ -7,8 +7,8 @@
  * appels fetch des pages ne passent pas ici (ils ont fetchRetry dans layouts/app.blade.php).
  * Pour le desactiver : remplacer ce fichier par un service worker qui appelle self.registration.unregister().
  */
-// a changer quand offline.html change (v2 : traduction fr / en) : sinon les navigateurs gardent l'ancienne copie
-const CACHE = 'stockallal-offline-v2';
+// a changer quand offline.html change (v2 : traduction fr / en, v3 : icone d'onglet) : sinon les navigateurs gardent l'ancienne copie
+const CACHE = 'stockallal-offline-v3';
 const OFFLINE_URL = '/offline.html';
 const TRIES = 3;
 const TIMEOUT_MS = 10000;

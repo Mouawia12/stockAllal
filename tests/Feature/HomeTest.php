@@ -4,6 +4,7 @@ namespace Tests\Feature;
 
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Route;
 use Tests\TestCase;
 
 class HomeTest extends TestCase
@@ -40,5 +41,21 @@ class HomeTest extends TestCase
 
         $this->actingAs($admin)->get('/')->assertOk()->assertSee('الإعدادات')->assertSee(route('users.index'));
         $this->actingAs($admin)->get('/users')->assertOk()->assertSee('الإعدادات');
+    }
+
+    public function test_every_page_shows_the_inventory_box_in_the_browser_tab(): void
+    {
+        foreach (['favicon.svg', 'favicon.ico', 'apple-touch-icon.png'] as $file) {
+            $this->assertGreaterThan(0, filesize(public_path($file)), $file);
+        }
+
+        $this->get('/login')->assertOk()->assertSee('favicon.svg', false)->assertSee('favicon.ico', false);
+        $this->actingAs(User::factory()->create())->get('/')->assertOk()->assertSee('favicon.svg', false);
+
+        Route::get('/_boom', fn () => abort(500));
+        $this->get('/_boom')->assertStatus(500)->assertSee('favicon.svg', false);
+
+        // offline.html s'affiche sans le serveur : son icone est dans la page meme
+        $this->assertStringContainsString('rel="icon" type="image/svg+xml" href="data:image/svg+xml,', file_get_contents(public_path('offline.html')));
     }
 }

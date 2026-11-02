@@ -4,6 +4,7 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>{{ __('login.title') }} — {{ __('common.app_name') }}</title>
+    @include('partials.favicon')
     @include('partials.theme')
     <style>
         * { box-sizing: border-box; }

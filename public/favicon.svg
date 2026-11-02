@@ -1,0 +1,8 @@
+<!-- Icone d'onglet = icone de l'application المخزون (partials/app-icon.blade.php, 'stock'), cadree sur la boite. -->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="4 4.5 40 40">
+    <polygon points="24,6 42,15 24,24 6,15" fill="#fbbf24"/>
+    <polygon points="6,15 24,24 24,43 6,34" fill="#f59e0b"/>
+    <polygon points="24,24 42,15 42,34 24,43" fill="#d97706"/>
+    <polygon points="14.1,10.95 15.9,10.05 33.9,19.05 32.1,19.95" fill="#fef3c7"/>
+    <polygon points="32.1,19.95 33.9,19.05 33.9,26.1 32.1,27" fill="#fde68a"/>
+</svg>
