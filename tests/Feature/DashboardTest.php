@@ -200,7 +200,8 @@ class DashboardTest extends TestCase
         $this->actingAs($user)->post('/branches/install-code')->assertSessionHas('install_code');
         $code = session('install_code');
         $this->assertMatchesRegularExpression('/^[A-Z2-9]{3}-[A-Z2-9]{3}-[A-Z2-9]{3}$/', $code);
-        $this->actingAs($user)->withSession(['install_code' => $code])->get('/branches')->assertOk()->assertSee($code);
+        $this->actingAs($user)->withSession(['install_code' => $code])->get('/branches')->assertOk()->assertSee($code)
+            ->assertSee('data-copy="'.$code.'"', false)->assertSee('نسخ');
 
         $this->actingAs($user)->patch("/branches/{$oran->id}", ['name' => 'فرع وهران'])->assertSessionHas('status');
         $this->actingAs($user)->patch("/branches/{$oran->id}", ['active' => 0]);

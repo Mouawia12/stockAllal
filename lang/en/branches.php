@@ -8,6 +8,12 @@ return [
     'code_once' => 'Install code — single use, valid for 24 hours. It will not be shown again:',
     'code_help' => 'On the Gescomm server of the new branch: unzip the whole “Download agent” file, run :script, then enter the branch name and this code.',
     'api_url' => 'API address: :url — details in the “Install guide”.',
+    'copy' => [
+        'button' => 'Copy',
+        'tip' => 'Copy the code',
+        'done' => 'Copied ✓',
+        'failed' => 'Could not copy: select the code and copy it',
+    ],
     'empty' => 'No branches yet. Download the agent, create an install code, then install the agent on the branch server (see the “Install guide”).',
 
     'col_name' => 'Name',

@@ -7,7 +7,10 @@
     .top { display: flex; align-items: center; gap: 8px; margin-bottom: 16px; flex-wrap: wrap; }
     .top h1 { font-size: 20px; margin: 0; flex: 1; }
     .code-box { border: 2px dashed var(--accent); border-radius: 10px; padding: 14px 16px; margin-bottom: 16px; background: var(--card); }
-    .code-box .code { font: 600 26px/1.3 Consolas, "Courier New", monospace; letter-spacing: 2px; direction: ltr; unicode-bidi: isolate; }
+    .code-box .code { font: 600 26px/1.3 Consolas, "Courier New", monospace; letter-spacing: 2px; direction: ltr; unicode-bidi: isolate; user-select: all; }
+    .code-row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin: 4px 0 6px; }
+    .copy { display: inline-flex; align-items: center; gap: 6px; padding: 5px 12px; }
+    .copy svg { width: 17px; height: 17px; flex: none; }
     .rename { display: flex; gap: 6px; }
     .rename input { width: 170px; padding: 5px 8px; }
     .rename button { padding: 5px 10px; }
@@ -36,7 +39,14 @@
 @if (session('install_code'))
     <div class="code-box">
         <div class="muted small">{{ __('branches.code_once') }}</div>
-        <div class="code">{{ session('install_code') }}</div>
+        <div class="code-row">
+            <div class="code">{{ session('install_code') }}</div>
+            <button type="button" class="copy" data-copy="{{ session('install_code') }}" title="{{ __('branches.copy.tip') }}">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15V6a2 2 0 0 1 2-2h9"/></svg>
+                <span>{{ __('branches.copy.button') }}</span>
+            </button>
+            <span class="copy-msg small" aria-live="polite"></span>
+        </div>
         <div class="small muted">
             {!! __('branches.code_help', ['script' => '<span class="ltr">GescomAgent-Setup.exe</span>']) !!}
             {!! __('branches.api_url', ['url' => '<span class="ltr">'.e(url('/api')).'</span>']) !!}
@@ -138,6 +148,34 @@
 
 @push('scripts')
 <script>
+(() => {
+    const COPY = @json(__('branches.copy'));
+    document.querySelectorAll('button[data-copy]').forEach(btn => btn.addEventListener('click', async () => {
+        const text = btn.dataset.copy;
+        let ok = false;
+        try {
+            await navigator.clipboard.writeText(text);
+            ok = true;
+        } catch (e) {
+            // presse-papiers refuse (ancien navigateur, page non https) : selection + execCommand
+            const ta = document.createElement('textarea');
+            ta.value = text;
+            ta.setAttribute('readonly', '');
+            ta.style.position = 'fixed';
+            ta.style.opacity = '0';
+            document.body.appendChild(ta);
+            ta.select();
+            try { ok = document.execCommand('copy'); } catch (e2) { ok = false; }
+            ta.remove();
+        }
+        const msg = btn.parentElement.querySelector('.copy-msg');
+        msg.textContent = ok ? COPY.done : COPY.failed;
+        msg.className = 'copy-msg small pill ' + (ok ? 'ok' : 'warn');
+        clearTimeout(btn.copyTimer);
+        btn.copyTimer = setTimeout(() => { msg.textContent = ''; msg.className = 'copy-msg small'; }, 4000);
+    }));
+})();
+
 (() => {
     const CSRF = document.querySelector('meta[name=csrf-token]').content;
     const MAX_WAIT_MS = 130000;
