@@ -183,7 +183,7 @@ class DashboardTest extends TestCase
         $zip->close();
         sort($names);
         $this->assertSame([
-            'GescomAgent/GescomAgent-Guide.pdf', 'GescomAgent/README.md', 'GescomAgent/agent.ps1',
+            'GescomAgent/GescomAgent-Guide.pdf', 'GescomAgent/GescomAgent-Setup.exe', 'GescomAgent/README.md', 'GescomAgent/agent.ps1',
             'GescomAgent/diagnose.ps1', 'GescomAgent/install.ps1', 'GescomAgent/uninstall.ps1',
         ], $names);
         @unlink($res->getFile()->getPathname());

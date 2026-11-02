@@ -6,7 +6,7 @@ return [
     'guide' => 'Guide d\'installation PDF',
     'new_code' => 'Nouveau code d\'installation',
     'code_once' => 'Code d\'installation — à usage unique, valable 24 heures. Il ne sera plus affiché :',
-    'code_help' => 'Sur le serveur Gescomm de la nouvelle succursale : décompressez « Télécharger l\'agent », lancez :script en administrateur, puis saisissez le nom de la succursale et ce code.',
+    'code_help' => 'Sur le serveur Gescomm de la nouvelle succursale : décompressez entièrement « Télécharger l\'agent », lancez :script, puis saisissez le nom de la succursale et ce code.',
     'api_url' => 'Adresse de l\'API : :url — détails dans le « Guide d\'installation ».',
     'empty' => 'Aucune succursale pour l\'instant. Téléchargez l\'agent, créez un code d\'installation, puis installez l\'agent sur le serveur de la succursale (voir le « Guide d\'installation »).',
 

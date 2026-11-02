@@ -9,8 +9,13 @@ use ZipArchive;
 /** Telechargement de l'agent a copier sur le serveur Gescomm d'une branche, et de son guide PDF. */
 class AgentDownloadController extends Controller
 {
-    /** Ce qu'il faut sur la branche ; le reste du dossier agent/ (outils de test, source du guide) n'y sert pas. */
-    private const FILES = ['agent.ps1', 'install.ps1', 'uninstall.ps1', 'diagnose.ps1', 'README.md', 'GescomAgent-Guide.pdf'];
+    /**
+     * Ce qu'il faut sur la branche ; le reste du dossier agent/ (sources de l'installateur, tests, source du guide) n'y sert pas.
+     * GescomAgent-Setup.exe installe l'agent.ps1 du meme zip : une nouvelle version de l'agent part sans recompiler l'exe.
+     */
+    private const FILES = [
+        'GescomAgent-Setup.exe', 'agent.ps1', 'install.ps1', 'uninstall.ps1', 'diagnose.ps1', 'README.md', 'GescomAgent-Guide.pdf',
+    ];
 
     public function zip(): BinaryFileResponse
     {

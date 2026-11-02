@@ -178,12 +178,14 @@ sudo -u user /usr/bin/php8.4 artisan agent:install-code                         
 
 ## 11. ما تعطيه للمستخدم في النهاية
 - **اللوحة:** https://stockallal.souftech.com، مع اسم المستخدم الذي أعطاه. ذكّره بتغيير كلمة السر من «حسابي»، خاصة إذا كانت تساوي اسم المستخدم.
-- **عنوان الـAPI للوكلاء:** `https://stockallal.souftech.com/api`. هذا هو العنوان الافتراضي في `agent/install.ps1`.
+- **عنوان الـAPI للوكلاء:** `https://stockallal.souftech.com/api`. هذا هو العنوان الافتراضي في المثبّت وفي `agent/install.ps1`.
 - **كود تركيب لأول فرع:** من الخطوة 10، أو من اللوحة ← «الفروع» ← «كود تركيب جديد».
 - **على سيرفر Gescomm في كل فرع:**
-  1. انسخ مجلد `agent`.
-  2. شغّل كأدمين: `powershell -ExecutionPolicy Bypass -File .\install.ps1`
-  3. اضغط Enter لقبول عنوان الـAPI، ثم أدخل اسم الفرع والكود.
+  1. من اللوحة ← «الفروع» ← «تنزيل الوكيل»، وفكّ ضغط الملف كاملاً.
+  2. شغّل `GescomAgent-Setup.exe` واقبل صلاحيات المسؤول.
+  3. اكتب اسم الفرع والكود، ثم «تركيب». المثبّت يجد قاعدة Gescomm وحده.
+
+**المثبّت `agent/GescomAgent-Setup.exe` يأتي من Git كما هو:** السيرفر لا يبنيه، فلا تحاول بناءه هنا. إذا فشل `php artisan test` في `AgentSetupTest`، فالـexe لم يُعَد بناؤه بعد تعديل `agent/setup/`. أبلغ المستخدم: يجب بناؤه على جهاز Windows ورفعه.
 
 ---
 

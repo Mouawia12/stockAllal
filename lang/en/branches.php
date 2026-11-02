@@ -6,7 +6,7 @@ return [
     'guide' => 'Install guide PDF',
     'new_code' => 'New install code',
     'code_once' => 'Install code — single use, valid for 24 hours. It will not be shown again:',
-    'code_help' => 'On the Gescomm server of the new branch: unzip “Download agent”, run :script as administrator, then enter the branch name and this code.',
+    'code_help' => 'On the Gescomm server of the new branch: unzip the whole “Download agent” file, run :script, then enter the branch name and this code.',
     'api_url' => 'API address: :url — details in the “Install guide”.',
     'empty' => 'No branches yet. Download the agent, create an install code, then install the agent on the branch server (see the “Install guide”).',
 

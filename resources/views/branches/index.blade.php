@@ -38,7 +38,7 @@
         <div class="muted small">{{ __('branches.code_once') }}</div>
         <div class="code">{{ session('install_code') }}</div>
         <div class="small muted">
-            {!! __('branches.code_help', ['script' => '<span class="ltr">install.ps1</span>']) !!}
+            {!! __('branches.code_help', ['script' => '<span class="ltr">GescomAgent-Setup.exe</span>']) !!}
             {!! __('branches.api_url', ['url' => '<span class="ltr">'.e(url('/api')).'</span>']) !!}
         </div>
     </div>

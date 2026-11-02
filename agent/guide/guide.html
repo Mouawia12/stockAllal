@@ -32,7 +32,7 @@
 
 <h1>دليل تركيب وكيل المخزون</h1>
 <div class="sub">GescomAgent — ربط مخزون Gescomm في كل فرع بلوحة <span class="ltr">stockallal.souftech.com</span></div>
-<div class="meta">نسخة الوكيل 1.0.5 — نوفمبر 2026</div>
+<div class="meta">نسخة الوكيل 1.0.6 — نوفمبر 2026</div>
 
 <h2>1. ما هو الوكيل؟</h2>
 <p>برنامج صغير (سكريبت PowerShell) يُركَّب مرة واحدة على <b>السيرفر الذي فيه قاعدة Gescomm</b> في كل فرع. يقرأ من القاعدة <b>قراءة فقط</b> (الكود، التسمية، الكمية، وأسعار التجزئة والجملة والشراء) ويرسلها إلى اللوحة. سعر الشراء لا يظهر في اللوحة إلا للمدير:</p>
@@ -55,10 +55,11 @@
 </table>
 
 <h2>3. الملفات التي تُنقل إلى سيرفر الفرع</h2>
-<p>كلها داخل ملف <code>GescomAgent-1.0.5.zip</code> الذي تنزّله من اللوحة (صفحة <b>الفروع</b> ← <b>⬇ تنزيل الوكيل</b>):</p>
+<p>كلها داخل ملف <code>GescomAgent-1.0.6.zip</code> الذي تنزّله من اللوحة (صفحة <b>الفروع</b> ← <b>⬇ تنزيل الوكيل</b>):</p>
 <table>
     <tr><th>الملف</th><th>دوره</th></tr>
-    <tr><td><code>install.ps1</code></td><td>التركيب: يسأل عن اسم الفرع والكود، يسجّل الفرع، ينشئ المهمة المجدولة</td></tr>
+    <tr><td><code>GescomAgent-Setup.exe</code></td><td><b>المثبّت</b>: نافذة بالعربية أو الفرنسية أو الإنجليزية. يجد قاعدة Gescomm وحده، ويركّب ويحدّث ويزيل ويشخّص</td></tr>
+    <tr><td><code>install.ps1</code></td><td>التركيب من الكونسول، إذا تعذّر المثبّت</td></tr>
     <tr><td><code>agent.ps1</code></td><td>الوكيل نفسه (يُنسخ تلقائياً إلى <code>C:\ProgramData\GescomAgent</code>)</td></tr>
     <tr><td><code>diagnose.ps1</code></td><td>فحص الحالة عند أي مشكلة (قراءة فقط)</td></tr>
     <tr><td><code>uninstall.ps1</code></td><td>الإزالة</td></tr>
@@ -74,21 +75,25 @@
             <li>اضغط <b>كود تركيب جديد</b> وانسخ الكود (مثلاً <code>ABC-DEF-GHJ</code>). صالح <b>24 ساعة</b> و<b>مرة واحدة</b>.</li>
         </ul>
     </li>
-    <li><b>على سيرفر الفرع:</b> فكّ ضغط الملف في مجلد، مثلاً <code>C:\GescomAgent-setup</code> (زر يمين ← Extraire tout).</li>
-    <li><b>افتح PowerShell كأدمين:</b> قائمة ابدأ ← اكتب <code>PowerShell</code> ← زر يمين ← <b>Exécuter en tant qu'administrateur</b>.</li>
-    <li><b>شغّل التركيب</b> (عدّل المسار إذا فككت الضغط في مكان آخر):
-        <span class="cmd">powershell -ExecutionPolicy Bypass -File C:\GescomAgent-setup\GescomAgent\install.ps1</span>
-    </li>
-    <li><b>أجب على الأسئلة:</b>
+    <li><b>على سيرفر الفرع:</b> فكّ ضغط الملف <b>كاملاً</b> في مجلد، مثلاً <code>C:\GescomAgent-setup</code> (زر يمين ← Extraire tout). لا تشغّل المثبّت من داخل الـzip مباشرة.</li>
+    <li><b>شغّل</b> <code>GescomAgent-Setup.exe</code> من المجلد، واضغط <b>Oui</b> عند طلب صلاحيات المسؤول.
         <ul>
-            <li><b>Adresse de l'API</b>: اضغط <b>Entrée</b> لقبول <code>https://stockallal.souftech.com/api</code>.</li>
-            <li><b>Nom de la branche</b>: اسم الفرع كما تريد أن يظهر في اللوحة (يمكن تغييره لاحقاً من اللوحة).</li>
-            <li><b>Code d'installation</b>: الكود من الخطوة 1.</li>
-            <li>إذا ظهر <b>Base Gescomm introuvable</b>: أدخل المسار الكامل لملف القاعدة، مثلاً <code>E:\Gescomm\LABASEN.IB</code>.</li>
+            <li>إذا ظهر <b>Windows a protégé votre ordinateur</b>: اضغط <b>Informations complémentaires</b> ثم <b>Exécuter quand même</b> (المثبّت غير موقّع).</li>
         </ul>
     </li>
-    <li><b>انتظر</b> حتى تظهر <b>Installation terminee</b>. خطوة التسجيل قد تأخذ حتى دقيقة إذا كان الإنترنت ضعيفاً — لا تغلق النافذة.</li>
+    <li><b>في النافذة:</b>
+        <ul>
+            <li><b>تحقّق من «ما وجده المثبّت»:</b> ملف القاعدة (<code>LABASEN.IB</code>)، وInterBase، وخدمته. كلها بعلامة ✓ خضراء.</li>
+            <li><b>اسم الفرع:</b> كما تريد أن يظهر في اللوحة (يمكن تغييره لاحقاً من اللوحة).</li>
+            <li><b>كود التركيب:</b> الكود من الخطوة 1.</li>
+            <li>اضغط <b>تركيب</b>.</li>
+        </ul>
+    </li>
+    <li><b>انتظر</b> حتى تظهر <b>تمّ التركيب ✓</b>. خطوة التسجيل قد تأخذ حتى دقيقة إذا كان الإنترنت ضعيفاً — لا تغلق النافذة.</li>
 </ol>
+<div class="box">إذا تعذّر المثبّت، يبقى التركيب من الكونسول ممكناً: افتح PowerShell كأدمين (قائمة ابدأ ← <code>PowerShell</code> ← زر يمين ← <b>Exécuter en tant qu'administrateur</b>) وشغّل:
+    <span class="cmd">powershell -ExecutionPolicy Bypass -File C:\GescomAgent-setup\GescomAgent\install.ps1</span>
+    ثم اضغط <b>Entrée</b> لقبول عنوان الـAPI، واكتب اسم الفرع والكود.</div>
 <div class="box">ما يحدث في الخلفية: إنشاء <code>C:\ProgramData\GescomAgent</code> (لا يقرؤه إلا SYSTEM والأدمين لأن فيه التوكن)، اختبار القاعدة <b>قبل</b> استهلاك الكود، تسجيل الفرع والحصول على توكن خاص به، ثم إنشاء المهمة المجدولة <code>GescomAgent</code> (عند الإقلاع + مراقبة كل 5 دقائق) وتشغيلها.</div>
 
 <h2>5. التحقق من أن كل شيء يعمل</h2>
@@ -101,6 +106,12 @@
 
 <h2>6. حالات خاصة</h2>
 <h3>قاعدة في مسار آخر أو كلمة سر SYSDBA مختلفة</h3>
+<ul>
+    <li><b>القاعدة غير موجودة ✗:</b> المثبّت يبحث في مجلد Gescomm المسجّل في Windows، ثم في <code>X:\Gescomm</code> على كل قرص. إذا لم يجدها، اضغط <b>إعدادات متقدمة</b> ← <b>…</b> واختر ملف <code>LABASEN.IB</code>.</li>
+    <li><b>«Gescomm موجود لكن قاعدته ليست على هذا الجهاز»:</b> أنت على جهاز عميل. ركّب الوكيل على السيرفر الذي فيه ملف القاعدة.</li>
+    <li><b>كلمة سر SYSDBA ليست <code>masterkey</code>:</b> بعد أول محاولة تظهر خانة <b>كلمة سر SYSDBA</b>. اكتبها واضغط <b>تركيب</b> من جديد (الكود لم يُستعمل بعد).</li>
+</ul>
+<p>من الكونسول:</p>
 <span class="cmd">powershell -ExecutionPolicy Bypass -File .\install.ps1 -Database 'localhost:E:\Gescomm\LABASEN.IB' -DbPassword 'xxxx'</span>
 <h3>مضاد الفيروسات (AVG، Avast...)</h3>
 <p>أضف استثناءات في إعدادات البرنامج (AVG: ☰ Menu ← Settings ← General ← Exceptions ← Add exception):</p>
@@ -110,28 +121,34 @@
     <li><code>https://stockallal.souftech.com/*</code></li>
 </ul>
 <p>وراجع الحجر (Quarantine): إذا وُجد فيه <code>agent.ps1</code> اضغط Restore. لا تستثنِ <code>powershell.exe</code> كله.</p>
+<p><b>المثبّت:</b> في أول تشغيل قد يحلّله AVG بضع ثوانٍ، والتركيب يعمل عادياً. إذا حجزه، أضف مجلد المثبّت (مثلاً <code>C:\GescomAgent-setup\*</code>) إلى الاستثناءات واستعده من الحجر.</p>
 <h3>إنترنت ضعيف أو متقطع</h3>
 <p>الوكيل يعيد المحاولة وحده (حتى 4 مرات، وكل طلب له حد أقصى 60 ثانية). قد يظهر الفرع «غير متصل» لدقائق ثم يعود. إذا تكرّر كثيراً، راجع الراوتر أو مزوّد الإنترنت.</p>
 
 <h2>7. التحديث والإزالة</h2>
-<p><b>تحديث الوكيل</b> (بعد تنزيل نسخة جديدة من اللوحة): فكّ الضغط ثم كأدمين:</p>
-<span class="cmd">powershell -ExecutionPolicy Bypass -File C:\GescomAgent-setup\GescomAgent\install.ps1 -UpdateOnly</span>
-<p>يبدّل ملف الوكيل ويعيد تشغيله، بدون تسجيل جديد ولا كود.</p>
-<p><b>الإزالة</b> كأدمين، ثم <b>عطّل الفرع أو احذفه من اللوحة</b> (وإلا يبقى توكنه صالحاً):</p>
-<span class="cmd">powershell -ExecutionPolicy Bypass -File C:\GescomAgent-setup\GescomAgent\uninstall.ps1</span>
+<p>نزّل النسخة الجديدة من اللوحة، فكّ الضغط، وشغّل <code>GescomAgent-Setup.exe</code>. إذا كان الوكيل مركّباً، تعرض النافذة الفرع والإصدار المركّب، مع ثلاثة أزرار:</p>
+<ul>
+    <li><b>تحديث الوكيل:</b> يبدّل ملف الوكيل ويعيد تشغيله، بدون تسجيل جديد ولا كود.</li>
+    <li><b>تشخيص:</b> الفحص (الفقرة 8).</li>
+    <li><b>إزالة:</b> يحذف المهمة والمجلد. بعدها <b>عطّل الفرع أو احذفه من اللوحة</b> (وإلا يبقى توكنه صالحاً).</li>
+</ul>
+<p>من الكونسول، كأدمين:</p>
+<span class="cmd">powershell -ExecutionPolicy Bypass -File C:\GescomAgent-setup\GescomAgent\install.ps1 -UpdateOnly
+powershell -ExecutionPolicy Bypass -File C:\GescomAgent-setup\GescomAgent\uninstall.ps1</span>
 
 <h2>8. حل المشاكل</h2>
-<p>أول خطوة دائماً: شغّل الفحص كأدمين، وأرسل النتيجة (تُحفظ أيضاً على سطح المكتب باسم <code>GescomAgent-diagnostic.txt</code>، بدون التوكن ولا كلمات السر):</p>
+<p>أول خطوة دائماً: <code>GescomAgent-Setup.exe</code> ← <b>تشخيص</b>، وأرسل النتيجة. تُحفظ على سطح المكتب باسم <code>GescomAgent-diagnostic.txt</code>، بدون التوكن ولا كلمات السر. أو من الكونسول كأدمين:</p>
 <span class="cmd">powershell -ExecutionPolicy Bypass -File C:\GescomAgent-setup\GescomAgent\diagnose.ps1</span>
 <table>
     <tr><th>ما تراه</th><th>السبب المحتمل</th><th>الحل</th></tr>
     <tr><td>الفرع «غير متصل» وسلع 0 بعد التركيب</td><td>المهمة لا تشتغل، أو مضاد الفيروسات أوقف الوكيل</td><td>شغّل <code>diagnose.ps1</code> واقرأ السجل؛ أضف استثناءات مضاد الفيروسات</td></tr>
     <tr><td>في السجل: <code>une autre instance tourne deja</code></td><td>نسخة أخرى من الوكيل تمسك القفل (نسخ قبل 1.0.2)</td><td>حدّث بـ <code>install.ps1 -UpdateOnly</code></td></tr>
     <tr><td>في السجل: <code>token refuse (401)</code></td><td>الفرع معطّل أو محذوف من اللوحة</td><td>فعّله من اللوحة، أو أزل الوكيل وأعد التركيب بكود جديد</td></tr>
-    <tr><td>عند التركيب: <code>HTTP 422</code></td><td>كود التركيب خاطئ أو منتهٍ أو مستعمل</td><td>أنشئ كوداً جديداً من اللوحة</td></tr>
+    <tr><td>عند التركيب: «اللوحة رفضت الكود» أو <code>HTTP 422</code></td><td>كود التركيب خاطئ أو منتهٍ أو مستعمل</td><td>أنشئ كوداً جديداً من اللوحة واكتبه في نفس النافذة</td></tr>
+    <tr><td>«ملفات الوكيل ليست بجانب المثبّت»</td><td>المثبّت شُغّل من داخل الـzip بدون فكّ الضغط</td><td>فكّ ضغط الملف كاملاً، وشغّل المثبّت من المجلد</td></tr>
     <tr><td><code>Impossible de se connecter</code> أو <code>pas de reponse en 60 s</code></td><td>الإنترنت مقطوع أو ضعيف</td><td>الوكيل يعيد وحده؛ تحقّق من الإنترنت في الفرع</td></tr>
-    <tr><td><code>Base Gescomm introuvable</code> عند التركيب</td><td>القاعدة ليست في <code>D:\Gescomm\LABASEN.IB</code></td><td>أدخل المسار الصحيح عند السؤال، أو استعمل <code>-Database</code></td></tr>
-    <tr><td><code>isql introuvable</code></td><td>InterBase مثبّت في مسار آخر</td><td>أضف <code>-Isql 'المسار\isql.exe'</code> لأمر التركيب</td></tr>
+    <tr><td>قاعدة Gescomm ✗ «غير موجود»</td><td>القاعدة ليست في مجلد Gescomm المعتاد</td><td>«إعدادات متقدمة» ← <b>…</b> واختر <code>LABASEN.IB</code>، أو <code>-Database</code> من الكونسول</td></tr>
+    <tr><td>InterBase (isql) ✗ «غير موجود»</td><td>InterBase غير مثبّت على هذا الجهاز، أو مثبّت في مسار غير معتاد</td><td>شغّل المثبّت على سيرفر Gescomm. من الكونسول: <code>-Isql 'المسار\isql.exe'</code></td></tr>
     <tr><td><code>colonnes absentes</code> (GC003)</td><td>نسخة Gescomm مختلفة في هذا الفرع</td><td>تواصل مع المطوّر مع نتيجة <code>diagnose.ps1</code></td></tr>
     <tr><td>«آخر كتابة للقاعدة» قديمة جداً في اللوحة</td><td>Gescomm يعمل على ملف قاعدة آخر (بعد استرجاع نسخة)</td><td>أعد التركيب مع <code>-Database</code> بالمسار الجديد</td></tr>
 </table>

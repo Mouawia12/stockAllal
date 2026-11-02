@@ -1,28 +1,35 @@
 <#
   Installation de GescomAgent sur le serveur Gescomm d'une branche.
-  A lancer en Administrateur, depuis le dossier qui contient agent.ps1 :
+  Le plus simple : GescomAgent-Setup.exe (une fenetre, dans le meme dossier). En console, en Administrateur,
+  depuis le dossier qui contient agent.ps1 :
 
     powershell -ExecutionPolicy Bypass -File .\install.ps1
 
-  Le script demande : l'adresse de l'API, le nom de la branche, le code d'installation
-  (genere par le tableau de bord, valable une seule fois).
+  Le script trouve seul la base Gescomm et isql (registre, puis disques) et demande : l'adresse de l'API,
+  le nom de la branche, le code d'installation (genere par le tableau de bord, valable une seule fois).
 
   Mettre a jour agent.ps1 sur une branche deja installee :
     powershell -ExecutionPolicy Bypass -File .\install.ps1 -UpdateOnly
+
+  Voir ce que le script trouve, sans rien modifier (JSON) :
+    powershell -ExecutionPolicy Bypass -File .\install.ps1 -Detect
 #>
 param(
     [string]$ApiUrl,
     [string]$BranchName,
     [string]$InstallCode,
-    [string]$Database = 'localhost:D:\Gescomm\LABASEN.IB',
-    [string]$Isql = 'C:\Program Files (x86)\Borland\InterBase\bin\isql.exe',
+    [string]$Database,
+    [string]$Isql,
     [string]$DbUser = 'SYSDBA',
     [string]$DbPassword = 'masterkey',
-    [switch]$UpdateOnly
+    [switch]$UpdateOnly,
+    [switch]$Detect
 )
 
 $ErrorActionPreference = 'Stop'
 $DefaultApiUrl = 'https://stockallal.souftech.com/api'
+# Gescomm.exe ouvre toujours LaBaseN.ib dans son propre dossier (ExtractFilePath de l'exe + '\LaBaseN.ib')
+$DbFileName = 'LABASEN.IB'
 $TaskName = 'GescomAgent'
 $Dir = Join-Path $env:ProgramData 'GescomAgent'
 $ConfigPath = Join-Path $Dir 'config.json'
@@ -39,6 +46,73 @@ function Invoke-Agent([string[]]$AgentArgs) {
     # Out-Host : la sortie de l'agent s'affiche sans se melanger a la valeur de retour
     & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $AgentPath -ConfigPath $ConfigPath @AgentArgs | Out-Host
     return $LASTEXITCODE
+}
+
+# ---------- detection : Gescomm, sa base, isql (meme logique que GescomAgent-Setup.exe) ----------
+
+# Dossiers ou Gescomm peut etre installe, du plus sur au moins sur.
+function Get-GescommDirs {
+    $keys = 'HKLM:\SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall\*',
+            'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\*'
+    foreach ($e in @(Get-ItemProperty $keys -ErrorAction SilentlyContinue | Where-Object { $_.DisplayName -like 'Gescom*' })) {
+        if ($e.InstallLocation) { $e.InstallLocation }
+        foreach ($s in @($e.DisplayIcon, $e.UninstallString)) {
+            $m = [regex]::Match([string]$s, '[A-Za-z]:\\[^"]*?\.exe')
+            if ($m.Success) { Split-Path -Parent $m.Value }
+        }
+    }
+    foreach ($p in @(Get-Process -Name 'Gescomm' -ErrorAction SilentlyContinue)) {
+        if ($p.Path) { Split-Path -Parent $p.Path }
+    }
+    foreach ($d in [IO.DriveInfo]::GetDrives()) {
+        if ($d.DriveType -ne 'Fixed' -or -not $d.IsReady) { continue }
+        foreach ($name in 'Gescomm', 'Gescom') { Join-Path $d.RootDirectory.FullName $name }
+    }
+}
+
+function Find-GescommDb {
+    foreach ($d in @(Get-GescommDirs)) {
+        if (-not $d) { continue }
+        $f = Join-Path ([string]$d).TrimEnd('\') $DbFileName
+        if (Test-Path -LiteralPath $f -PathType Leaf) { return (Get-Item -LiteralPath $f) }
+    }
+    return $null
+}
+
+function Find-Isql {
+    $roots = @()
+    foreach ($k in 'HKLM:\SOFTWARE\WOW6432Node\Borland\InterBase', 'HKLM:\SOFTWARE\Borland\InterBase') {
+        foreach ($sub in 'Servers', 'CurrentVersion') {
+            $roots += @(Get-ItemProperty "$k\$sub" -ErrorAction SilentlyContinue | ForEach-Object { $_.RootDirectory })
+            # une instance par sous-cle (Servers\gds_db) selon la version d'InterBase
+            $roots += @(Get-ChildItem "$k\$sub" -ErrorAction SilentlyContinue | Get-ItemProperty -ErrorAction SilentlyContinue |
+                ForEach-Object { $_.RootDirectory })
+        }
+    }
+    $roots += @(${env:ProgramFiles(x86)}, $env:ProgramFiles | Where-Object { $_ } | ForEach-Object { Join-Path $_ 'Borland\InterBase' })
+    foreach ($r in $roots) {
+        if (-not $r) { continue }
+        $f = Join-Path $r 'bin\isql.exe'
+        if (Test-Path -LiteralPath $f -PathType Leaf) { return $f }
+    }
+    return $null
+}
+
+if ($Detect) {
+    $db = Find-GescommDb
+    $info = [ordered]@{
+        database          = $null
+        database_mtime    = $null
+        isql              = Find-Isql
+        interbase_running = [bool]@(Get-Service -ErrorAction SilentlyContinue |
+            Where-Object { $_.Name -match '^(IBS_|InterBaseServer)' -and $_.Status -eq 'Running' }).Count
+    }
+    if ($db) {
+        $info.database = $db.FullName
+        $info.database_mtime = $db.LastWriteTime.ToString('yyyy-MM-dd HH:mm')
+    }
+    Write-Output (ConvertTo-Json $info -Compress)
+    exit 0
 }
 
 $pr = New-Object Security.Principal.WindowsPrincipal([Security.Principal.WindowsIdentity]::GetCurrent())
@@ -72,11 +146,16 @@ $ApiUrl = $ApiUrl.Trim().TrimEnd('/')
 $BranchName = $BranchName.Trim()
 $InstallCode = $InstallCode.Trim()
 if (-not $ApiUrl -or -not $BranchName -or -not $InstallCode) { Fail 'adresse API, nom de branche et code d''installation sont obligatoires.' }
-if (-not (Test-Path $Isql)) { Fail "isql introuvable : $Isql" }
-# autre branche, autre disque : si la base n'est pas au chemin par defaut, on demande ou elle est
-$dbFile = [regex]::Match($Database, '[A-Za-z]:\\.+$').Value
-if ($dbFile -and -not (Test-Path -LiteralPath $dbFile)) {
-    Write-Host "Base Gescomm introuvable : $dbFile" -ForegroundColor Yellow
+if (-not $Isql) { $Isql = Find-Isql }
+if (-not $Isql -or -not (Test-Path -LiteralPath $Isql)) { Fail "isql introuvable ($Isql). InterBase est-il installe sur ce PC ? Sinon : -Isql '...\isql.exe'" }
+if (-not $Database) {
+    $db = Find-GescommDb
+    if ($db) { $Database = "localhost:$($db.FullName)" }
+}
+# autre branche, autre disque : si la base n'est pas trouvee, on demande ou elle est
+$dbFile = [regex]::Match([string]$Database, '[A-Za-z]:\\.+$').Value
+if (-not $dbFile -or -not (Test-Path -LiteralPath $dbFile)) {
+    Write-Host "Base Gescomm ($DbFileName) introuvable sur ce PC. $dbFile" -ForegroundColor Yellow
     $typed = (Read-Host 'Chemin complet du fichier .IB de Gescomm (ex : E:\Gescomm\LABASEN.IB)').Trim().Trim('"')
     if (-not $typed -or -not (Test-Path -LiteralPath $typed)) { Fail "fichier introuvable : $typed" }
     $Database = "localhost:$typed"
@@ -84,6 +163,7 @@ if ($dbFile -and -not (Test-Path -LiteralPath $dbFile)) {
 Write-Host "Branche : $BranchName"
 Write-Host "API     : $ApiUrl"
 Write-Host "Base    : $Database"
+Write-Host "isql    : $Isql"
 
 # ---------- 2. dossier protege ----------
 Step '2/6 Dossier C:\ProgramData\GescomAgent (acces : SYSTEM et Administrateurs seulement)'
