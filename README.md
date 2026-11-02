@@ -27,6 +27,7 @@
 |---|---|
 | [DEPLOY.md](DEPLOY.md) | النشر على السيرفر: `stockallal.souftech.com` على HestiaCP، مع MySQL وHTTPS |
 | [agent/README.md](agent/README.md) | تركيب الوكيل على فرع، أوامره، و**عقد الـAPI** |
+| [docs/gescomm/](docs/gescomm/README.md) | **بنية قاعدة Gescomm**: كل الجداول والحقول وعناوينها في شاشات Gescomm، للتطوير من أي جهاز |
 | [CLAUDE.md](CLAUDE.md) | ملاحظات لكلود كود: البنية، والقواعد المهمة |
 
 ## التشغيل محلياً
