@@ -28,7 +28,7 @@ class StockController extends Controller
         return $this->page($request, true);
     }
 
-    /** Detail d'un produit dans chaque branche active (la fenetre "apercu"), avec l'etat d'un batch de mise a jour. */
+    /** Detail d'un produit dans chaque branche active visible (la fenetre "apercu"), avec l'etat d'un batch de mise a jour. */
     public function product(Request $request): JsonResponse
     {
         $key = BranchStock::keyFor((string) $request->query('code', ''));
@@ -36,8 +36,9 @@ class StockController extends Controller
         $batch = (string) $request->query('batch', '');
         $visible = $this->visiblePrices($request);
 
-        $branches = Branch::where('active', true)->orderBy('name')->get();
-        $rows = BranchStock::whereIn('code_key', $codes)->orderBy('code_key')->get()->groupBy('branch_id');
+        // seulement les branches que ce compte voit (User::stockBranchIds) : les autres n'apparaissent pas du tout
+        $branches = Branch::where('active', true)->visibleTo($request->user())->orderBy('name')->get();
+        $rows = BranchStock::whereIn('code_key', $codes)->whereIn('branch_id', $branches->pluck('id'))->orderBy('code_key')->get()->groupBy('branch_id');
         $jobs = $batch !== '' ? RefreshJob::where('batch', $batch)->get() : collect();
         $jobsByBranch = $jobs->groupBy('branch_id');
         $main = $branches->firstWhere('is_main', true);
@@ -78,7 +79,7 @@ class StockController extends Controller
     }
 
     /**
-     * Bouton "mettre a jour" : une demande par branche active, recuperee par chaque agent sous ~10 s.
+     * Bouton "mettre a jour" : une demande par branche active que le compte voit, recuperee par chaque agent sous ~10 s.
      * Code fusionne : une demande par code du groupe, l'agent ne lit toujours qu'un code a la fois.
      */
     public function refresh(Request $request): JsonResponse
@@ -91,7 +92,7 @@ class StockController extends Controller
             return response()->json(['batch' => $batch]);
         }
 
-        foreach (Branch::where('active', true)->pluck('id') as $branchId) {
+        foreach (Branch::where('active', true)->visibleTo($request->user())->pluck('id') as $branchId) {
             foreach ($codes as $code) {
                 RefreshJob::create([
                     'batch' => $batch,
@@ -125,8 +126,8 @@ class StockController extends Controller
             'mainBranch' => $main,
             'showSale' => in_array('price', $visible, true),
             'showBuy' => in_array('price_buy', $visible, true),
-            'results' => $terms === [] ? collect() : $this->search($q, $terms, $main, $visible),
-            'branchesTotal' => Branch::where('active', true)->count(),
+            'results' => $terms === [] ? collect() : $this->search($q, $terms, $main, $visible, $request->user()->stockBranchIds()),
+            'branchesTotal' => Branch::where('active', true)->visibleTo($request->user())->count(),
         ]);
     }
 
@@ -214,8 +215,9 @@ class StockController extends Controller
     /**
      * @param  list<string>  $terms
      * @param  list<string>  $visible  prix que le compte peut voir (visiblePrices)
+     * @param  list<int>|null  $branchIds  branches que le compte voit (User::stockBranchIds), null = toutes
      */
-    private function search(string $q, array $terms, ?Branch $main, array $visible): Collection
+    private function search(string $q, array $terms, ?Branch $main, array $visible, ?array $branchIds): Collection
     {
         $upper = mb_strtoupper(trim($q));
         $prefix = $this->escapeLike($upper).'%';
@@ -224,7 +226,8 @@ class StockController extends Controller
         // ESCAPE '!' : meme syntaxe en MySQL et en SQLite (le backslash ne l'est pas)
         $query = BranchStock::query()
             ->join('branches', 'branches.id', '=', 'branch_stock.branch_id')
-            ->where('branches.active', true);
+            ->where('branches.active', true)
+            ->when($branchIds !== null, fn ($w) => $w->whereIn('branch_stock.branch_id', $branchIds));
         foreach ($terms as $term) {
             $like = '%'.$this->escapeLike($term).'%';
             $query->where(fn ($w) => $w
@@ -248,6 +251,7 @@ class StockController extends Controller
         $rows = BranchStock::query()
             ->whereIn('code_key', $units->pluck('codes')->flatten())
             ->whereHas('branch', fn ($b) => $b->where('active', true))
+            ->when($branchIds !== null, fn ($w) => $w->whereIn('branch_id', $branchIds))
             ->get()
             ->groupBy('code_key');
 

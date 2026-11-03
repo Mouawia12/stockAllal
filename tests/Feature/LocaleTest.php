@@ -47,7 +47,7 @@ class LocaleTest extends TestCase
             ->assertForbidden()->assertSee('You do not have permission for this page');
 
         $admin = User::factory()->admin()->create();
-        $admin->forceFill(['created_at' => now()->subMinutes(3)])->save();
+        $admin->forceFill(['last_login_at' => now()->subMinutes(3)])->save();
         $this->withUnencryptedCookie('locale', 'fr')->actingAs($admin)->get('/users')->assertOk()
             ->assertSee('Utilisateurs')->assertSee('il y a 3 minutes');
     }

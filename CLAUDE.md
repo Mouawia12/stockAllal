@@ -21,14 +21,14 @@ For an already deployed server, use the "التحديثات لاحقاً" sectio
 | `config/apps.php` + `app/Http/Controllers/HomeController.php` | Odoo-style apps screen at `/` after login. Only المخزون (`/stock`) is built; the others show "قريباً" until their `route` is set. Names: `apps` in `lang/*/common.php`. Icons: `resources/views/partials/app-icon.blade.php`. The top bar shows the current app (picked by route name in `layouts/app.blade.php`) |
 | `app/Http/Controllers/StockController.php` | Search (one row per `code_key` or per merged group; every word must match the code or the designation), product modal JSON, "refresh now", and the "دمج الأصناف" page (same view, `$merge`). `?partial=1` returns only `stock/_results.blade.php`: the page searches while typing (debounce, abort, out-of-order guard) |
 | `app/Http/Controllers/ProductGroupController.php` + `app/Models/ProductGroup.php` | Admin merges of codes that are the same product (`820AC` + `820-AC`). `ProductGroup::codesOf()` / `expand()` give the codes a key stands for |
-| `app/Http/Controllers/BranchController.php` | Branches page, one-time install codes, rename / disable / delete, "sync now" (job type `sync` for agent 1.0.4+, see `Branch::AGENT_FEATURES`; older agents get a `waiting` job their next automatic sync answers), main branch (`is_main`, price reference shown in search) |
+| `app/Http/Controllers/BranchController.php` | Branches page (only the branches the account sees), one-time install codes (new branch, or reinstall for an existing one: `install_codes.for_branch_id`, same branch, new token), rename / disable / delete, "sync now" (job type `sync` for agent 1.0.4+, see `Branch::AGENT_FEATURES`; older agents get a `waiting` job their next automatic sync answers), main branch (`is_main`, price reference shown in search), "من يرى مخزون من" matrix (`branch_access`, `App\Models\BranchAccess`) for developer / owner |
 | `app/Http/Controllers/AgentDownloadController.php` | Agent zip download (built on the fly, needs PHP `zip`) and the PDF guide |
 | `agent/guide/` | `guide.html` = source of `agent/GescomAgent-Guide.pdf`; rebuild with `agent/guide/build-pdf.ps1` (headless Edge) after editing it |
 | `resources/views/partials/theme*.blade.php` | Day / night / auto theme (CSS variables + toggle saved in localStorage) |
 | `app/Http/Controllers/AccountController.php` | "حسابي": change display name, username (login is by username) and password |
-| `app/Http/Controllers/UserController.php` | Accounts page (admins only): create users, pick "مستخدم" / "مدير", tick each user's permissions, delete. `users.is_admin` + `users.permissions` (JSON) |
-| `app/Support/Permissions.php` | The permissions an admin ticks for a user (`GROUPS`), the defaults of a new user, `normalize()` (sync / manage / agent imply `branches.view`). One Gate each (`AppServiceProvider`), used as `can:` on routes and `@can` in views. Texts: `perms` in `lang/*/users.php`. An admin has them all |
-| `app/Http/Middleware/EnsureAdmin.php` | `admin` middleware: only the accounts pages. Managing accounts is never a permission. Everyone gets search, the product modal and their own account ("الإعدادات" on the home screen = accounts for an admin, "حسابي" for others) |
+| `app/Http/Controllers/UserController.php` + `app/Support/Roles.php` | Accounts by role: developer > owner (مدير الشركة, his branches in `branch_user`) > branch_manager > user (`users.role`, `users.branch_id`). The page is a tree by branch; the form gives role, branch (or the owner's branches), permissions, `active`. Nobody grants a role, branch or permission they lack (`User::canManage`, `assignableRoles`, `grantablePermissions`; a permission the author lacks stays as it is on the account), and nobody edits their own account here ("حسابي"). Accounts from before roles have no branch and see every branch until assigned. Changes go to `activity_log` (`App\Support\Activity`) |
+| `app/Support/Permissions.php` | The permissions ticked for a user (`GROUPS`), the defaults of a new user, `normalize()` (sync / manage / agent imply `branches.view`). One Gate each (`AppServiceProvider`), used as `can:` on routes and `@can` in views. Texts: `perms` in `lang/*/users.php`. The developer has them all |
+| `AppServiceProvider` gates `manage-users`, `manage-branch-access` | Role-based, never a checkbox: the accounts pages (developer, owner, branch manager) and who sees whose stock (developer, owner). Everyone gets search, the product modal and their own account ("الإعدادات" on the home screen = accounts for those who manage some, "حسابي" for others). `LogoutInactive` signs a disabled account out at its next click |
 | `routes/console.php` | `user:create`, `agent:install-code`, daily cleanup schedule |
 | `resources/views/` | Blade, plain CSS + vanilla JS (no Node / Vite build). Arabic (RTL, default), French and English (LTR) |
 | `lang/{ar,fr,en}/` + `app/Http/Middleware/SetLocale.php` + `LocaleController` | Interface texts. Language = `locale` cookie (plain, not httpOnly: `public/offline.html` reads it), set by the عربي / FR / EN buttons (`partials/lang-switch.blade.php`). `config('app.locales')` lists the languages and their `dir` |
@@ -40,6 +40,10 @@ For an already deployed server, use the "التحديثات لاحقاً" sectio
 
 ## Rules that matter
 
+- **Branch scope** (the user asked for this): every page or JSON that shows branch data goes through `Branch::visibleTo($user)` /
+  `User::stockBranchIds()` (developer all, owner his branches, others their branch + what `branch_access` opens for it).
+  A branch the account does not see does not exist for it (404). Each new module gets its own `branch_access.module` (stock today;
+  sales will be "own branch only" by default) and a test "a user of A never sees B" (`BranchScopeTest`).
 - **Grouping key:** `code_key = UPPER(TRIM(code))`, nothing more. `820-AC` and `820AC` are different products on purpose,
   until an admin merges them on "دمج الأصناف". Never merge codes automatically; search, modal and refresh go through `ProductGroup`.
 - **API contract:** `agent/README.md` and `AgentController` must stay in sync. The server only ever sends the agent a product code, never SQL.
@@ -111,7 +115,8 @@ For an already deployed server, use the "التحديثات لاحقاً" sectio
 composer install
 php artisan test                      # SQLite in memory
 php artisan serve                     # http://127.0.0.1:8000
-php artisan user:create <username> --name=Admin --admin   # asks for the password; without --admin = user with the default permissions
+php artisan user:create <username> --name=Admin --admin   # = --role=developer; asks for the password
+php artisan user:create <username> --role=branch_manager --branch=Oran   # roles: developer, owner, branch_manager, user (default)
 php artisan agent:install-code        # one-time code for the installer (24 h)
 ```
 

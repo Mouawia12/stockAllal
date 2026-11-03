@@ -22,4 +22,5 @@ return [
     'password_required' => 'Password is required',
     'failed' => 'Wrong username or password',
     'expired' => 'Your session ended :hours hours after you signed in. Please sign in again.',
+    'disabled' => 'This account is disabled. Contact the person who manages accounts.',
 ];

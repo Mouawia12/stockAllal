@@ -3,8 +3,8 @@
 namespace App\Support;
 
 /**
- * Permissions qu'un administrateur coche pour un compte (users.permissions, JSON).
- * Un administrateur (users.is_admin) les a toutes, plus la gestion des comptes, qui n'est jamais une case :
+ * Permissions cochees pour un compte (users.permissions, JSON), par celui qui le gere (App\Support\Roles).
+ * Le developpeur les a toutes. Gerer les comptes depend du role, jamais d'une case :
  * un compte qui pourrait gerer les comptes pourrait se donner tous les droits.
  * Chaque permission est une Gate (AppServiceProvider) : middleware can:..., @can dans les vues, $user->can().
  * Rechercher dans le stock et gerer son propre compte : toujours permis a tout compte connecte.

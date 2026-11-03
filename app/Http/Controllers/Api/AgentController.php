@@ -4,9 +4,11 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use App\Models\Branch;
+use App\Models\BranchAccess;
 use App\Models\BranchStock;
 use App\Models\InstallCode;
 use App\Models\RefreshJob;
+use App\Models\User;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
@@ -38,14 +40,26 @@ class AgentController extends Controller
             }
 
             $token = Str::random(48);
-            $branch = Branch::create([
-                'name' => trim($data['branch_name']),
+            $agent = [
                 'hostname' => $data['hostname'] ?? null,
                 'agent_version' => $data['agent_version'] ?? null,
                 'token_hash' => Branch::hashToken($token),
-                'active' => true,
                 'last_seen_at' => now(),
-            ]);
+            ];
+            if ($code->for_branch_id !== null) {
+                // reinstallation : meme branche (comptes, acces, stock), nouveau token ; l'ancien agent recoit 401
+                $branch = Branch::findOrFail($code->for_branch_id);
+                $branch->update($agent);
+            } else {
+                $branch = Branch::create(['name' => trim($data['branch_name']), 'active' => true] + $agent);
+                // comme avant les roles : elle voit les autres et les autres la voient, on restreint ensuite
+                BranchAccess::openNewBranch($branch);
+                // installee par un directeur de la societe : elle fait partie de ses branches
+                $creator = User::find($code->created_by);
+                if ($creator?->isOwner()) {
+                    $creator->branches()->syncWithoutDetaching([$branch->id]);
+                }
+            }
             $code->update(['used_at' => now(), 'branch_id' => $branch->id]);
 
             return response()->json([

@@ -47,11 +47,21 @@
     <button class="primary" type="submit">{{ __('common.save') }}</button>
 </form>
 
-{{-- lecture seule : ce que ce compte peut faire ; seul un administrateur le change (page des comptes) --}}
+{{-- lecture seule : ce que ce compte peut faire ; seul celui qui le gere le change (page des comptes) --}}
 <section class="card my-perms">
     <h2>{{ __('users.your_perms') }}</h2>
-    @if ($user->is_admin)
-        <p class="pill ok">{{ __('users.your_perms_admin') }}</p>
+    <p>
+        <span class="pill ok">{{ __("users.roles.{$user->role}.title") }}</span>
+        @if ($user->branch)
+            <span class="pill">{{ $user->branch->name }}</span>
+        @elseif ($user->isOwner())
+            @foreach ($user->branches()->orderBy('name')->get() as $b)
+                <span class="pill">{{ $b->name }}</span>
+            @endforeach
+        @endif
+    </p>
+    @if ($user->isDeveloper())
+        <p class="pill ok">{{ __('users.your_perms_developer') }}</p>
     @else
         @php($perms = __('users.perms'))
         <ul>

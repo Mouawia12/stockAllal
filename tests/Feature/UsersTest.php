@@ -39,7 +39,7 @@ class UsersTest extends TestCase
         $this->actingAs($worker)->get('/merge')->assertForbidden();
         $this->actingAs($worker)->get('/agent/download')->assertForbidden();
         $this->actingAs($worker)->get('/users')->assertForbidden()->assertSee('ليست لديك صلاحية لهذه الصفحة');
-        $this->actingAs($worker)->post('/users', ['name' => 'x', 'username' => 'x', 'password' => 'xxxxxxxx', 'is_admin' => 1])->assertForbidden();
+        $this->actingAs($worker)->post('/users', ['name' => 'x', 'username' => 'x', 'password' => 'xxxxxxxx', 'role' => 'developer'])->assertForbidden();
         $this->assertSame(1, User::count());
     }
 
@@ -63,10 +63,12 @@ class UsersTest extends TestCase
         $this->actingAs($user)->get('/branches')->assertForbidden();
     }
 
-    public function test_admin_ticks_permissions_and_they_apply_after_save(): void
+    public function test_developer_ticks_permissions_and_they_apply_after_save(): void
     {
         $admin = User::factory()->admin()->create();
-        $user = User::factory()->withPermissions([])->create(['username' => 'samir']);
+        $oran = Branch::create(['name' => 'Oran', 'active' => true]);
+        $user = User::factory()->inBranch($oran)->withPermissions([])->create(['username' => 'samir']);
+        $form = ['name' => 'Samir', 'username' => 'samir', 'role' => 'user', 'branch_id' => $oran->id, 'active' => '1'];
 
         // la page montre les cases ; un nouveau compte part des permissions par defaut
         $this->actingAs($admin)->get('/users/create')->assertOk()
@@ -74,21 +76,17 @@ class UsersTest extends TestCase
         $this->actingAs($admin)->get("/users/{$user->id}/edit")->assertOk()->assertSee('إدارة الفروع')->assertSee('سعر الشراء');
 
         // "مزامنة الفروع" sans "رؤية الفروع" : la seconde est ajoutee (pas de page des succursales sans elle)
-        $this->actingAs($admin)->put("/users/{$user->id}", [
-            'name' => 'Samir', 'username' => 'samir', 'is_admin' => '0', 'permissions' => ['branches.sync', 'prices.buy'],
-        ])->assertRedirect('/users');
+        $this->actingAs($admin)->put("/users/{$user->id}", $form + ['permissions' => ['branches.sync', 'prices.buy']])->assertRedirect('/users');
         $this->assertSame(['prices.buy', 'branches.view', 'branches.sync'], $user->fresh()->permissions);
         $this->actingAs($user->fresh())->get('/branches')->assertOk();
         $this->actingAs($admin)->get('/users')->assertSee('سعر الشراء')->assertSee('المزامنة');
 
-        $this->actingAs($admin)->put("/users/{$user->id}", [
-            'name' => 'Samir', 'username' => 'samir', 'permissions' => ['users.manage'],
-        ])->assertSessionHasErrors('permissions.0');
+        $this->actingAs($admin)->put("/users/{$user->id}", $form + ['permissions' => ['users.manage']])->assertSessionHasErrors('permissions.0');
         $this->assertSame(['prices.buy', 'branches.view', 'branches.sync'], $user->fresh()->permissions);
 
         // nouveau compte avec ses cases
         $this->actingAs($admin)->post('/users', [
-            'name' => 'Nadia', 'username' => 'nadia', 'password' => 'nadia-2026', 'is_admin' => '0', 'permissions' => ['merge.manage'],
+            'name' => 'Nadia', 'username' => 'nadia', 'password' => 'nadia-2026', 'role' => 'user', 'branch_id' => $oran->id, 'permissions' => ['merge.manage'],
         ])->assertRedirect('/users');
         $nadia = User::where('username', 'nadia')->firstOrFail();
         $this->assertSame(['merge.manage'], $nadia->permissions);
@@ -96,112 +94,126 @@ class UsersTest extends TestCase
         $this->actingAs($nadia)->get('/branches')->assertForbidden();
     }
 
-    public function test_admin_creates_a_worker_who_can_log_in(): void
+    public function test_developer_creates_a_branch_user_who_can_log_in(): void
     {
         $admin = User::factory()->admin()->create();
+        $oran = Branch::create(['name' => 'Oran', 'active' => true]);
 
         $this->actingAs($admin)->get('/users')->assertOk()->assertSee('حساب جديد');
-        $this->actingAs($admin)->post('/users', ['name' => 'Karim', 'username' => 'karim', 'password' => 'karim-2026'])
+        // employe ou directeur de branche : sa branche est obligatoire
+        $this->actingAs($admin)->post('/users', ['name' => 'Karim', 'username' => 'karim', 'password' => 'karim-2026', 'role' => 'user'])
+            ->assertSessionHasErrors('branch_id');
+        $this->actingAs($admin)->post('/users', ['name' => 'Karim', 'username' => 'karim', 'password' => 'karim-2026', 'role' => 'user', 'branch_id' => $oran->id])
             ->assertRedirect('/users')->assertSessionHas('status');
 
         $karim = User::where('username', 'karim')->firstOrFail();
-        $this->assertFalse($karim->is_admin);
+        $this->assertSame(['user', $oran->id, true, $admin->id], [$karim->role, $karim->branch_id, $karim->active, $karim->created_by]);
 
         $this->post('/logout');
         $this->post('/login', ['username' => 'karim', 'password' => 'karim-2026'])->assertRedirect('/');
-        $this->get('/branches')->assertForbidden();
+        $this->assertNotNull($karim->fresh()->last_login_at);
+        $this->get('/users')->assertForbidden();
     }
 
-    public function test_ticking_admin_promotes_the_user_after_save(): void
+    public function test_developer_changes_the_role_of_an_account(): void
     {
         $admin = User::factory()->admin()->create();
-        $worker = User::factory()->create(['username' => 'samir', 'password' => 'samir-2026']);
+        $oran = Branch::create(['name' => 'Oran', 'active' => true]);
+        $worker = User::factory()->inBranch($oran)->create(['username' => 'samir', 'password' => 'samir-2026']);
+        $form = ['name' => 'Samir', 'username' => 'samir', 'branch_id' => $oran->id];
 
-        $this->actingAs($admin)->put("/users/{$worker->id}", ['name' => 'Samir', 'username' => 'samir', 'is_admin' => '1'])
-            ->assertRedirect('/users');
+        $this->actingAs($admin)->put("/users/{$worker->id}", $form + ['role' => 'branch_manager'])->assertRedirect('/users');
         $worker->refresh();
-        $this->assertTrue($worker->is_admin);
+        $this->assertSame('branch_manager', $worker->role);
         $this->assertTrue(\Hash::check('samir-2026', $worker->password), 'mot de passe vide = inchange');
         $this->actingAs($worker)->get('/users')->assertOk();
 
-        // case decochee = retour a employe ; nouveau mot de passe pris en compte
-        $this->actingAs($admin)->put("/users/{$worker->id}", ['name' => 'Samir', 'username' => 'samir', 'password' => 'nouveau-mdp']);
+        // directeur de la societe : plus de branche a lui, ses branches a la place
+        $this->actingAs($admin)->put("/users/{$worker->id}", $form + ['role' => 'owner', 'branches' => [$oran->id], 'password' => 'nouveau-mdp']);
         $worker->refresh();
-        $this->assertFalse($worker->is_admin);
+        $this->assertSame(['owner', null, [$oran->id]], [$worker->role, $worker->branch_id, $worker->branches()->pluck('branches.id')->all()]);
         $this->assertTrue(\Hash::check('nouveau-mdp', $worker->password));
+
+        // de nouveau employe : ses branches de directeur disparaissent
+        $this->actingAs($admin)->put("/users/{$worker->id}", $form + ['role' => 'user']);
+        $this->assertSame([], $worker->branches()->pluck('branches.id')->all());
     }
 
     public function test_new_password_closes_the_other_sessions_of_the_account(): void
     {
         config(['session.driver' => 'database']);
         $admin = User::factory()->admin()->create();
-        $worker = User::factory()->create(['username' => 'samir', 'remember_token' => 'ancien-jeton']);
+        $oran = Branch::create(['name' => 'Oran', 'active' => true]);
+        $worker = User::factory()->inBranch($oran)->create(['username' => 'samir', 'remember_token' => 'ancien-jeton']);
+        $form = ['name' => 'Samir', 'username' => 'samir', 'role' => 'user', 'branch_id' => $oran->id];
         DB::table('sessions')->insert([
             ['id' => 'tel-samir', 'user_id' => $worker->id, 'payload' => '', 'last_activity' => time()],
             ['id' => 'pc-admin', 'user_id' => $admin->id, 'payload' => '', 'last_activity' => time()],
         ]);
 
         // sans nouveau mot de passe : rien ne change
-        $this->actingAs($admin)->put("/users/{$worker->id}", ['name' => 'Samir', 'username' => 'samir'])->assertRedirect('/users');
+        $this->actingAs($admin)->put("/users/{$worker->id}", $form)->assertRedirect('/users');
         $this->assertSame('ancien-jeton', $worker->fresh()->remember_token);
         $this->assertTrue(DB::table('sessions')->where('id', 'tel-samir')->exists());
 
-        $this->actingAs($admin)->put("/users/{$worker->id}", ['name' => 'Samir', 'username' => 'samir', 'password' => 'nouveau-mdp'])
-            ->assertRedirect('/users');
+        $this->actingAs($admin)->put("/users/{$worker->id}", $form + ['password' => 'nouveau-mdp'])->assertRedirect('/users');
         $this->assertNotSame('ancien-jeton', $worker->fresh()->remember_token);
         $this->assertFalse(DB::table('sessions')->where('id', 'tel-samir')->exists());
         $this->assertTrue(DB::table('sessions')->where('id', 'pc-admin')->exists());
     }
 
-    public function test_admin_box_keeps_the_submitted_value_after_an_error(): void
+    public function test_role_keeps_the_submitted_value_after_an_error(): void
     {
         $admin = User::factory()->admin()->create(['username' => 'boss']);
-        $other = User::factory()->admin()->create(['username' => 'samir']);
-        $checked = 'name="is_admin" value="1" checked';
+        $oran = Branch::create(['name' => 'Oran', 'active' => true]);
+        $other = User::factory()->inBranch($oran)->create(['username' => 'samir']);
+        $manager = 'name="role" value="branch_manager" checked';
 
-        // case decochee + nom deja pris : la page revient avec la case decochee, pas avec l'ancienne valeur
+        // role change + nom deja pris : la page revient avec le role saisi, pas avec l'ancien
         // (pas d'assertSessionHasErrors ici : il redemarre la session de test et les erreurs ne passent plus a la page suivante)
         $this->actingAs($admin)->from("/users/{$other->id}/edit")
-            ->put("/users/{$other->id}", ['name' => 'Samir', 'username' => 'boss'])
+            ->put("/users/{$other->id}", ['name' => 'Samir', 'username' => 'boss', 'role' => 'branch_manager', 'branch_id' => $oran->id])
             ->assertRedirect("/users/{$other->id}/edit");
         $this->actingAs($admin)->get("/users/{$other->id}/edit")->assertOk()
             ->assertSee('اسم المستخدم مستعمل من حساب آخر')
-            ->assertDontSee($checked, false);
-        $this->assertTrue($other->fresh()->is_admin);
+            ->assertSee($manager, false);
+        $this->assertSame('user', $other->fresh()->role);
 
         // sans erreur : la valeur enregistree
-        $this->actingAs($admin)->get("/users/{$other->id}/edit")->assertSee($checked, false);
+        $this->actingAs($admin)->get("/users/{$other->id}/edit")->assertDontSee($manager, false)->assertSee('name="role" value="user" checked', false);
     }
 
-    public function test_an_admin_cannot_demote_or_delete_himself(): void
+    public function test_nobody_edits_or_deletes_their_own_account_here(): void
     {
         $admin = User::factory()->admin()->create(['username' => 'boss']);
         $other = User::factory()->create(['username' => 'pris']);
 
-        $this->actingAs($admin)->put("/users/{$admin->id}", ['name' => 'Boss', 'username' => 'boss', 'password' => 'nouveau-mdp'])
-            ->assertSessionHasErrors('is_admin')
-            ->assertSessionHasInput('username', 'boss')
-            ->assertSessionMissing('_old_input.password');
-        $this->assertTrue($admin->fresh()->is_admin);
+        // son propre compte passe par "حسابي" : on ne change pas son role ni ses droits soi-meme
+        $this->actingAs($admin)->get("/users/{$admin->id}/edit")->assertRedirect('/account');
+        $this->actingAs($admin)->put("/users/{$admin->id}", ['name' => 'Boss', 'username' => 'boss', 'role' => 'user'])->assertForbidden();
+        $this->assertTrue($admin->fresh()->isDeveloper());
         $this->actingAs($admin)->delete("/users/{$admin->id}")->assertSessionHasErrors('user');
         $this->assertNotNull($admin->fresh());
 
-        $this->actingAs($admin)->put("/users/{$admin->id}", ['name' => 'Boss', 'username' => 'pris', 'is_admin' => '1'])->assertSessionHasErrors('username');
-        $this->actingAs($admin)->post('/users', ['name' => 'X', 'username' => 'nouveau', 'password' => 'court'])->assertSessionHasErrors('password');
+        $this->actingAs($admin)->post('/users', ['name' => 'X', 'username' => 'nouveau', 'password' => 'court', 'role' => 'developer'])->assertSessionHasErrors('password');
 
         $this->actingAs($admin)->delete("/users/{$other->id}")->assertRedirect('/users');
         $this->assertNull($other->fresh());
     }
 
-    public function test_user_create_command_admin_option(): void
+    public function test_user_create_command_roles(): void
     {
+        $oran = Branch::create(['name' => 'Oran', 'active' => true]);
         $this->artisan('user:create', ['username' => 'chef', '--password' => 'chef-2026', '--admin' => true])->assertSuccessful();
         $this->artisan('user:create', ['username' => 'agent1', '--password' => 'agent-2026'])->assertSuccessful();
-        // sans --admin, un compte existant garde ses droits
+        $this->artisan('user:create', ['username' => 'resp', '--password' => 'resp-2026', '--role' => 'branch_manager', '--branch' => 'Oran'])->assertSuccessful();
+        $this->artisan('user:create', ['username' => 'x', '--password' => 'xxxx-2026', '--role' => 'roi'])->assertFailed();
+        // sans --admin ni --role, un compte existant garde son role
         $this->artisan('user:create', ['username' => 'chef', '--password' => 'autre-2026'])->assertSuccessful();
 
-        $this->assertTrue(User::where('username', 'chef')->first()->is_admin);
-        $this->assertFalse(User::where('username', 'agent1')->first()->is_admin);
+        $this->assertTrue(User::where('username', 'chef')->first()->isDeveloper());
+        $this->assertSame('user', User::where('username', 'agent1')->first()->role);
         $this->assertSame(\App\Support\Permissions::DEFAULTS, User::where('username', 'agent1')->first()->permissions);
+        $this->assertSame(['branch_manager', $oran->id], [User::where('username', 'resp')->first()->role, User::where('username', 'resp')->first()->branch_id]);
     }
 }

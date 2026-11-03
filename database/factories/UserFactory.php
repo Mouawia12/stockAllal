@@ -2,8 +2,10 @@
 
 namespace Database\Factories;
 
+use App\Models\Branch;
 use App\Models\User;
 use App\Support\Permissions;
+use App\Support\Roles;
 use Illuminate\Database\Eloquent\Factories\Factory;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Str;
@@ -37,9 +39,27 @@ class UserFactory extends Factory
         ];
     }
 
+    /** Le developpeur (role le plus fort) : ce qu'etait l'administrateur avant les roles. */
     public function admin(): static
     {
-        return $this->state(fn (array $attributes) => ['is_admin' => true]);
+        return $this->state(fn (array $attributes) => ['role' => Roles::DEVELOPER]);
+    }
+
+    /** Directeur de la societe ; ses branches : ->hasAttached($branches) ou $user->branches()->attach(). */
+    public function owner(): static
+    {
+        return $this->state(fn (array $attributes) => ['role' => Roles::OWNER, 'permissions' => Permissions::all()]);
+    }
+
+    public function branchManager(Branch $branch): static
+    {
+        return $this->state(fn (array $attributes) => ['role' => Roles::BRANCH_MANAGER, 'branch_id' => $branch->id]);
+    }
+
+    /** Employe rattache a sa branche. */
+    public function inBranch(Branch $branch): static
+    {
+        return $this->state(fn (array $attributes) => ['role' => Roles::USER, 'branch_id' => $branch->id]);
     }
 
     /** Employe avec exactement ces permissions ([] = recherche dans le stock seulement). */

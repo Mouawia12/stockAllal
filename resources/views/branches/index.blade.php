@@ -20,6 +20,14 @@
     .sync button { padding: 3px 10px; font-size: 13px; white-space: nowrap; }
     .sync-msg { font-size: 12px; }
     tr.off td { opacity: .55; }
+    .install { display: flex; gap: 6px; flex-wrap: wrap; }
+    .install select, .access select { font: inherit; color: var(--text); background: var(--card); border: 1px solid var(--border); border-radius: 8px; padding: 6px 8px; }
+    .access-card { margin-top: 16px; }
+    .access-card h2 { font-size: 16px; margin: 0 0 4px; }
+    .access-card td, .access-card th { text-align: center; }
+    .access-card td:first-child, .access-card th:first-child { text-align: start; }
+    .access-card input[type=checkbox] { width: 18px; height: 18px; }
+    .access-card button { padding: 4px 10px; }
     .wait::before { content: ""; display: inline-block; width: 9px; height: 9px; margin-inline-end: 5px; border: 2px solid var(--muted); border-top-color: transparent; border-radius: 50%; animation: spin .8s linear infinite; vertical-align: -1px; }
     @keyframes spin { to { transform: rotate(360deg); } }
 </style>
@@ -34,8 +42,17 @@
         <a class="btn" href="{{ route('agent.guide') }}" target="_blank" rel="noopener">{{ __('branches.guide') }}</a>
     @endcan
     @can('branches.manage')
-        <form method="post" action="{{ route('branches.install-code') }}">
+        {{-- nouvelle branche, ou reinstallation de l'agent d'une branche existante (meme branche, pas de doublon) --}}
+        <form class="install" method="post" action="{{ route('branches.install-code') }}">
             @csrf
+            @if ($branches->isNotEmpty())
+                <select name="branch_id" aria-label="{{ __('branches.install_for') }}">
+                    <option value="">{{ __('branches.install_for_new') }}</option>
+                    @foreach ($branches as $b)
+                        <option value="{{ $b->id }}">{{ __('branches.install_for_branch', ['name' => $b->name]) }}</option>
+                    @endforeach
+                </select>
+            @endif
             <button class="primary" type="submit">{{ __('branches.new_code') }}</button>
         </form>
     @endcan
@@ -43,6 +60,9 @@
 
 @if (session('install_code'))
     <div class="code-box">
+        @if (session('install_code_branch'))
+            <div class="pill warn">{{ __('branches.reinstall_note', ['name' => session('install_code_branch')]) }}</div>
+        @endif
         <div class="muted small">{{ __('branches.code_once') }}</div>
         <div class="code-row">
             <div class="code">{{ session('install_code') }}</div>
@@ -157,6 +177,49 @@
         </p>
     @endif
 </div>
+
+{{-- qui voit le stock de qui (branch_access) : developpeur et directeur de la societe, parmi les branches qu'ils gerent --}}
+@if ($managed->count() > 1)
+<div class="card access-card">
+    <h2>{{ __('branches.access_title') }}</h2>
+    <p class="muted small">{{ __('branches.access_help') }}</p>
+    <table>
+        <thead>
+        <tr>
+            <th>{{ __('branches.access_row') }}</th>
+            @foreach ($managed as $col)
+                <th>{{ $col->name }}</th>
+            @endforeach
+            <th></th>
+        </tr>
+        </thead>
+        <tbody>
+        @foreach ($managed as $row)
+            <tr>
+                <td><b>{{ $row->name }}</b></td>
+                @foreach ($managed as $col)
+                    <td>
+                        @if ($col->id === $row->id)
+                            <span class="muted small" title="{{ __('branches.access_self_tip') }}">✓</span>
+                        @else
+                            <input type="checkbox" form="access-{{ $row->id }}" name="visible[]" value="{{ $col->id }}"
+                                   aria-label="{{ __('branches.access_cell', ['row' => $row->name, 'col' => $col->name]) }}"
+                                   @checked(in_array($col->id, $access[$row->id] ?? [], true))>
+                        @endif
+                    </td>
+                @endforeach
+                <td>
+                    <form id="access-{{ $row->id }}" method="post" action="{{ route('branches.access', $row) }}">
+                        @csrf @method('put')
+                        <button type="submit">{{ __('common.save') }}</button>
+                    </form>
+                </td>
+            </tr>
+        @endforeach
+        </tbody>
+    </table>
+</div>
+@endif
 @endsection
 
 @push('scripts')

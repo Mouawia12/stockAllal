@@ -29,8 +29,15 @@ class LoginController extends Controller
         if (! Auth::attempt($credentials, $request->boolean('remember'))) {
             return back()->withErrors(['username' => __('login.failed')])->onlyInput('username');
         }
+        // compte desactive : le bon mot de passe ne suffit pas, et on dit pourquoi
+        if (! $request->user()->active) {
+            Auth::logout();
+
+            return back()->withErrors(['username' => __('login.disabled')])->onlyInput('username');
+        }
 
         $request->session()->regenerate();
+        $request->user()->forceFill(['last_login_at' => now()])->saveQuietly();
         // fin de la connexion 8 h plus tard (ExpireLogin), sauf "تذكّرني"
         if (! $request->boolean('remember')) {
             $request->session()->put(ExpireLogin::KEY, now()->getTimestamp());

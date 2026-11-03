@@ -25,8 +25,8 @@ Route::middleware('auth')->group(function () {
     Route::post('logout', [LoginController::class, 'logout'])->name('logout');
     Route::get('account', [AccountController::class, 'edit'])->name('account.edit');
     Route::put('account', [AccountController::class, 'update'])->name('account.update');
-    // icone "الإعدادات" : les comptes pour un administrateur, son propre compte pour les autres
-    Route::get('settings', fn () => redirect()->route(auth()->user()->is_admin ? 'users.index' : 'account.edit'))->name('settings');
+    // icone "الإعدادات" : les comptes pour qui en gere (developer, owner, directeur de branche), son propre compte pour les autres
+    Route::get('settings', fn () => redirect()->route(auth()->user()->managesAccounts() ? 'users.index' : 'account.edit'))->name('settings');
 
     Route::get('/', [HomeController::class, 'index'])->name('home');
     Route::get('stock', [StockController::class, 'index'])->name('stock.index')->middleware('throttle:search');
@@ -44,6 +44,7 @@ Route::middleware('auth')->group(function () {
         Route::post('branches/{branch}/main', [BranchController::class, 'main'])->name('branches.main');
         Route::delete('branches/{branch}', [BranchController::class, 'destroy'])->name('branches.destroy');
     });
+    Route::put('branches/{branch}/access', [BranchController::class, 'access'])->name('branches.access')->middleware('can:manage-branch-access');
 
     Route::middleware('can:merge.manage')->group(function () {
         Route::get('merge', [StockController::class, 'merge'])->name('merge.index')->middleware('throttle:search');
@@ -57,8 +58,9 @@ Route::middleware('auth')->group(function () {
     });
 });
 
-// Administrateurs seulement : les comptes et leurs permissions (jamais une case : ce serait se donner tous les droits).
-Route::middleware(['auth', 'admin'])->group(function () {
+// Comptes : selon le role (App\Support\Roles), jamais une case (ce serait se donner tous les droits).
+// UserController verifie en plus que chaque compte touche est un compte que l'auteur gere.
+Route::middleware(['auth', 'can:manage-users'])->group(function () {
     Route::get('users', [UserController::class, 'index'])->name('users.index');
     Route::get('users/create', [UserController::class, 'create'])->name('users.create');
     Route::post('users', [UserController::class, 'store'])->name('users.store');

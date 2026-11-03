@@ -10,7 +10,7 @@ class HomeController extends Controller
 {
     public function index(Request $request): View
     {
-        $isAdmin = (bool) $request->user()->is_admin;
+        $isAdmin = $request->user()->isDeveloper();
 
         return view('home', [
             'apps' => collect(config('apps'))->filter(fn (array $app) => $isAdmin || empty($app['admin'])),

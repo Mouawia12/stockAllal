@@ -22,4 +22,5 @@ return [
     'password_required' => 'Le mot de passe est obligatoire',
     'failed' => 'Nom d\'utilisateur ou mot de passe incorrect',
     'expired' => 'Votre session a pris fin :hours h après la connexion. Reconnectez-vous.',
+    'disabled' => 'Ce compte est désactivé. Contactez la personne qui gère les comptes.',
 ];

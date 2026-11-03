@@ -5,7 +5,8 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Model;
 
-#[Fillable(['code_hash', 'expires_at', 'used_at', 'branch_id', 'created_by'])]
+// branch_id = branche creee par ce code ; for_branch_id = code de reinstallation de l'agent de cette branche
+#[Fillable(['code_hash', 'expires_at', 'used_at', 'branch_id', 'for_branch_id', 'created_by'])]
 class InstallCode extends Model
 {
     // sans 0/O ni 1/I/L : le code est recopie a la main sur le serveur de la branche
@@ -19,8 +20,11 @@ class InstallCode extends Model
         ];
     }
 
-    /** Cree un code a usage unique valable 24 h et le renvoie en clair (format XXX-XXX-XXX). */
-    public static function generate(?int $userId): string
+    /**
+     * Cree un code a usage unique valable 24 h et le renvoie en clair (format XXX-XXX-XXX).
+     * $forBranchId : reinstallation de l'agent de cette branche (meme branche, nouveau token) au lieu d'une nouvelle.
+     */
+    public static function generate(?int $userId, ?int $forBranchId = null): string
     {
         $raw = '';
         for ($i = 0; $i < 9; $i++) {
@@ -31,6 +35,7 @@ class InstallCode extends Model
             'code_hash' => self::hash($raw),
             'expires_at' => now()->addDay(),
             'created_by' => $userId,
+            'for_branch_id' => $forBranchId,
         ]);
 
         return implode('-', str_split($raw, 3));

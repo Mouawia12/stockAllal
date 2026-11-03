@@ -4,10 +4,12 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Attributes\Hidden;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 
-// is_main hors Fillable : il ne change que par BranchController::main (une seule branche principale)
+// is_main et mode hors Fillable : is_main ne change que par BranchController::main (une seule branche principale),
+// mode seulement par l'approbation d'une branche (docs/roadmap.md)
 #[Fillable(['name', 'hostname', 'token_hash', 'active', 'agent_version', 'last_seen_at', 'last_sync_at', 'db_file_mtime', 'items_count'])]
 #[Hidden(['token_hash'])]
 class Branch extends Model
@@ -21,6 +23,16 @@ class Branch extends Model
      * plus ancien (avant 1.0.4, une demande "sync" est lue comme un code vide et revient en invalid_code).
      */
     public const AGENT_FEATURES = ['sync' => '1.0.4'];
+
+    /**
+     * synced : Gescomm est la source, l'agent synchronise, le web ne fait que lire.
+     * native : branche approuvee, elle travaille dans le web (plus tard, docs/roadmap.md).
+     */
+    public const MODES = ['synced', 'native'];
+
+    protected $attributes = [
+        'mode' => 'synced',
+    ];
 
     protected function casts(): array
     {
@@ -37,6 +49,20 @@ class Branch extends Model
     public function stock(): HasMany
     {
         return $this->hasMany(BranchStock::class);
+    }
+
+    /** Branches dont ce compte voit le stock (User::stockBranchIds). */
+    public function scopeVisibleTo(Builder $query, User $user): void
+    {
+        $ids = $user->stockBranchIds();
+        if ($ids !== null) {
+            $query->whereKey($ids);
+        }
+    }
+
+    public function isNative(): bool
+    {
+        return $this->mode === 'native';
     }
 
     public function isOnline(): bool

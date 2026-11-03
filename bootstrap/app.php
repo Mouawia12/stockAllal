@@ -16,13 +16,12 @@ return Application::configure(basePath: dirname(__DIR__))
     ->withMiddleware(function (Middleware $middleware): void {
         $middleware->alias([
             'agent' => \App\Http\Middleware\AuthenticateAgent::class,
-            'admin' => \App\Http\Middleware\EnsureAdmin::class,
         ]);
         // langue choisie (cookie en clair) : avant tout le reste, pour que les pages d'erreur soient traduites aussi
         $middleware->prepend(\App\Http\Middleware\SetLocale::class);
         $middleware->encryptCookies(except: ['locale']);
-        // une connexion dure 8 h (config session.lifetime), meme si le compte s'en sert encore
-        $middleware->web(append: [\App\Http\Middleware\ExpireLogin::class]);
+        // une connexion dure 8 h (config session.lifetime), meme si le compte s'en sert encore ; un compte desactive sort tout de suite
+        $middleware->web(append: [\App\Http\Middleware\ExpireLogin::class, \App\Http\Middleware\LogoutInactive::class]);
         $middleware->redirectGuestsTo(fn () => route('login'));
         $middleware->redirectUsersTo(fn () => route('home'));
     })
