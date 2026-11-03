@@ -3,8 +3,8 @@
 return [
     'forbidden' => [
         'title' => 'Accès refusé',
-        'heading' => 'Cette page est réservée à l\'administrateur',
-        'message' => 'Votre compte permet seulement la recherche dans le stock. Si vous avez besoin de plus de droits, demandez-les à l\'administrateur.',
+        'heading' => 'Vous n\'avez pas la permission d\'ouvrir cette page',
+        'message' => 'L\'administrateur choisit les permissions de chaque compte. Si vous avez besoin de cette page, demandez-la-lui.',
         'back' => 'Retour aux applications',
     ],
     'server' => [

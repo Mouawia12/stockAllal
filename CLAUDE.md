@@ -26,8 +26,9 @@ For an already deployed server, use the "التحديثات لاحقاً" sectio
 | `agent/guide/` | `guide.html` = source of `agent/GescomAgent-Guide.pdf`; rebuild with `agent/guide/build-pdf.ps1` (headless Edge) after editing it |
 | `resources/views/partials/theme*.blade.php` | Day / night / auto theme (CSS variables + toggle saved in localStorage) |
 | `app/Http/Controllers/AccountController.php` | "حسابي": change display name, username (login is by username) and password |
-| `app/Http/Controllers/UserController.php` | Accounts page (admins only): create workers, edit, tick "مدير" to promote, delete. `users.is_admin` |
-| `app/Http/Middleware/EnsureAdmin.php` | `admin` middleware: branches, merge page, agent download/guide, accounts. Workers (`is_admin = false`) only get search, product modal, "تحديث الآن" and their own account |
+| `app/Http/Controllers/UserController.php` | Accounts page (admins only): create users, pick "مستخدم" / "مدير", tick each user's permissions, delete. `users.is_admin` + `users.permissions` (JSON) |
+| `app/Support/Permissions.php` | The permissions an admin ticks for a user (`GROUPS`), the defaults of a new user, `normalize()` (sync / manage / agent imply `branches.view`). One Gate each (`AppServiceProvider`), used as `can:` on routes and `@can` in views. Texts: `perms` in `lang/*/users.php`. An admin has them all |
+| `app/Http/Middleware/EnsureAdmin.php` | `admin` middleware: only the accounts pages. Managing accounts is never a permission. Everyone gets search, the product modal and their own account ("الإعدادات" on the home screen = accounts for an admin, "حسابي" for others) |
 | `routes/console.php` | `user:create`, `agent:install-code`, daily cleanup schedule |
 | `resources/views/` | Blade, plain CSS + vanilla JS (no Node / Vite build). Arabic (RTL, default), French and English (LTR) |
 | `lang/{ar,fr,en}/` + `app/Http/Middleware/SetLocale.php` + `LocaleController` | Interface texts. Language = `locale` cookie (plain, not httpOnly: `public/offline.html` reads it), set by the عربي / FR / EN buttons (`partials/lang-switch.blade.php`). `config('app.locales')` lists the languages and their `dir` |
@@ -58,8 +59,8 @@ For an already deployed server, use the "التحديثات لاحقاً" sectio
   After a Gescomm update, rerun `agent/tools/dump-schema.ps1` there and commit the new `docs/gescomm/`.
 - **Prices** = the columns of Gescomm's article list (`GC003`): `PUGROS` "Pu Detail" -> `price` (retail, التجزئة),
   `PRIXVNFACT` "Prix Vente Gros" -> `price_wholesale` (الجملة), `PRIX` "Pu Achat" -> `price_buy` (الشراء).
-  Column names do not match their meaning; trust the captions. `price_buy` is admins only: `StockController` never puts it
-  in a worker's page or JSON. Price columns are optional in the agent (a branch with an older Gescomm still syncs).
+  Column names do not match their meaning; trust the captions. `price_buy` needs the `prices.buy` permission and retail / wholesale need
+  `prices.sale`: `StockController` never puts a price the user may not see in the page or the JSON. Price columns are optional in the agent (a branch with an older Gescomm still syncs).
 - **Rate limiters:** use the named ones in `AppServiceProvider`. An anonymous `throttle:N,1` shares one counter per IP across routes,
   so a branch agent would lock out logins from the same office.
 - **MySQL:** code columns use `utf8mb4_bin` (see the `branch_stock` migration), so codes that differ only by case or accent never collide.
@@ -81,7 +82,7 @@ For an already deployed server, use the "التحديثات لاحقاً" sectio
 composer install
 php artisan test                      # SQLite in memory
 php artisan serve                     # http://127.0.0.1:8000
-php artisan user:create <username> --name=Admin --admin   # asks for the password; without --admin = worker (stock only)
+php artisan user:create <username> --name=Admin --admin   # asks for the password; without --admin = user with the default permissions
 php artisan agent:install-code        # one-time code for the installer (24 h)
 ```
 

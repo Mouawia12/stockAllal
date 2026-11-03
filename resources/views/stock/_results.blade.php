@@ -25,9 +25,12 @@
             <th>{{ __('stock.col_designation') }}</th>
             <th>{{ __('stock.col_total') }}</th>
             @if ($mainBranch)
-                {{-- prix de la branche principale, comme dans la liste des articles de Gescomm (noms de colonnes Gescomm en francais) --}}
-                <th title="Pu Detail — {{ __('stock.main_branch_price', ['name' => $mainBranch->name]) }}">{{ __('stock.col_retail') }}</th>
-                <th class="hide-sm" title="Prix Vente Gros — {{ __('stock.main_branch_price', ['name' => $mainBranch->name]) }}">{{ __('stock.col_wholesale') }}</th>
+                {{-- prix de la branche principale, comme dans la liste des articles de Gescomm (noms de colonnes Gescomm en francais) ;
+                     chaque colonne seulement avec sa permission (prices.sale, prices.buy) --}}
+                @if ($showSale)
+                    <th title="Pu Detail — {{ __('stock.main_branch_price', ['name' => $mainBranch->name]) }}">{{ __('stock.col_retail') }}</th>
+                    <th class="hide-sm" title="Prix Vente Gros — {{ __('stock.main_branch_price', ['name' => $mainBranch->name]) }}">{{ __('stock.col_wholesale') }}</th>
+                @endif
                 @if ($showBuy)
                     <th class="hide-sm" title="Pu Achat — {{ __('stock.admin_only') }}">{{ __('stock.col_buy') }}</th>
                 @endif
@@ -56,13 +59,15 @@
                 <td><bdi>{{ Highlight::html($r->designation, $terms) }}</bdi></td>
                 <td><span class="num total {{ $r->total < 0 ? 'neg' : '' }}">{{ number_format($r->total, 2, ',', ' ') }}</span></td>
                 @if ($mainBranch)
-                    <td>
-                        <span class="num">{{ $r->price === null ? '—' : number_format($r->price, 2, ',', ' ') }}</span>
-                        @if ($r->price_differs)
-                            <span class="pill warn" title="{{ __('stock.price_differs_tip') }}">{{ __('stock.price_differs') }}</span>
-                        @endif
-                    </td>
-                    <td class="hide-sm"><span class="num">{{ $r->wholesale === null ? '—' : number_format($r->wholesale, 2, ',', ' ') }}</span></td>
+                    @if ($showSale)
+                        <td>
+                            <span class="num">{{ $r->price === null ? '—' : number_format($r->price, 2, ',', ' ') }}</span>
+                            @if ($r->price_differs)
+                                <span class="pill warn" title="{{ __('stock.price_differs_tip') }}">{{ __('stock.price_differs') }}</span>
+                            @endif
+                        </td>
+                        <td class="hide-sm"><span class="num">{{ $r->wholesale === null ? '—' : number_format($r->wholesale, 2, ',', ' ') }}</span></td>
+                    @endif
                     @if ($showBuy)
                         <td class="hide-sm"><span class="num muted">{{ $r->buy === null ? '—' : number_format($r->buy, 2, ',', ' ') }}</span></td>
                     @endif
@@ -76,7 +81,7 @@
     @if ($results->count() >= 100)
         <p class="muted small">{{ __('stock.too_many', ['count' => 100]) }}</p>
     @endif
-    @if (! $mainBranch && auth()->user()->is_admin)
+    @if (! $mainBranch && auth()->user()->can('branches.manage'))
         <p class="muted small">{!! __('stock.no_main', ['link' => '<a href="'.route('branches.index').'">'.e(__('common.nav.branches')).'</a>']) !!}</p>
     @endif
 @endif

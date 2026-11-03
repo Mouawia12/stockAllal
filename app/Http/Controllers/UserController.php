@@ -3,14 +3,16 @@
 namespace App\Http\Controllers;
 
 use App\Models\User;
+use App\Support\Permissions;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Validation\Rule;
 use Illuminate\View\View;
 
 /**
- * Comptes du tableau de bord (page reservee aux administrateurs).
- * Employe = recherche et consultation du stock ; administrateur = tout (branches, agent, comptes).
+ * Comptes du tableau de bord et leurs permissions (page reservee aux administrateurs).
+ * Utilisateur = recherche dans le stock + les permissions cochees (App\Support\Permissions) ;
+ * administrateur = tout, plus la gestion des comptes.
  * Un administrateur ne peut ni se retirer ses droits ni supprimer son propre compte : il en reste toujours un.
  */
 class UserController extends Controller
@@ -22,12 +24,18 @@ class UserController extends Controller
         ]);
     }
 
+    public function create(): View
+    {
+        return view('users.create');
+    }
+
     public function store(Request $request): RedirectResponse
     {
         $data = $this->validated($request, null);
 
         $user = new User(['name' => $data['name'], 'username' => $data['username'], 'password' => $data['password']]);
         $user->is_admin = $request->boolean('is_admin');
+        $user->permissions = Permissions::normalize($data['permissions'] ?? []);
         $user->save();
 
         return redirect()->route('users.index')->with('status', __('users.created_flash', ['username' => $user->username]));
@@ -54,6 +62,8 @@ class UserController extends Controller
             $user->password = $data['password'];
         }
         $user->is_admin = $isAdmin;
+        // gardees meme pour un administrateur : si on lui retire ce role, il retrouve ces cases
+        $user->permissions = Permissions::normalize($data['permissions'] ?? []);
         $user->save();
 
         if ($passwordChanged) {
@@ -80,12 +90,15 @@ class UserController extends Controller
             'name' => ['required', 'string', 'max:100'],
             'username' => ['required', 'string', 'max:50', Rule::unique('users', 'username')->ignore($user?->id)],
             'password' => [$user ? 'nullable' : 'required', 'string', 'min:8'],
+            'permissions' => ['nullable', 'array'],
+            'permissions.*' => ['string', Rule::in(Permissions::all())],
         ], [
             'name.required' => __('users.name_required'),
             'username.required' => __('users.username_required'),
             'username.unique' => __('users.username_taken'),
             'password.required' => __('users.password_required'),
             'password.min' => __('users.password_min'),
+            'permissions.*.in' => __('users.permission_invalid'),
         ]);
     }
 }

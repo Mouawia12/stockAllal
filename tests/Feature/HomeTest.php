@@ -28,19 +28,26 @@ class HomeTest extends TestCase
         $page = $this->actingAs($worker)->get('/')->assertOk()
             ->assertSee(route('stock.index'))
             ->assertSee(['المخزون', 'المبيعات', 'المشتريات', 'الموردون', 'الزبائن'])
-            ->assertDontSee('الإعدادات');
+            // "الإعدادات" pour tous : un employe y trouve son propre compte
+            ->assertSee('الإعدادات')->assertSee(route('settings'));
         $this->assertSame(4, substr_count($page->getContent(), 'class="soon-pill"'), 'المبيعات، المشتريات، الموردون، الزبائن');
 
         // dans l'application : son nom et le bouton de retour aux applications
         $this->actingAs($worker)->get('/stock')->assertOk()->assertSee('المخزون')->assertSee('aria-label="التطبيقات"', false);
     }
 
-    public function test_admins_also_get_the_settings_app(): void
+    public function test_settings_opens_the_accounts_for_an_admin_and_his_own_account_for_others(): void
     {
         $admin = User::factory()->admin()->create();
+        $worker = User::factory()->create();
 
-        $this->actingAs($admin)->get('/')->assertOk()->assertSee('الإعدادات')->assertSee(route('users.index'));
+        $this->actingAs($admin)->get('/')->assertOk()->assertSee('الإعدادات')->assertSee(route('settings'));
+        $this->actingAs($admin)->get('/settings')->assertRedirect(route('users.index'));
         $this->actingAs($admin)->get('/users')->assertOk()->assertSee('الإعدادات');
+
+        $this->actingAs($worker)->get('/settings')->assertRedirect(route('account.edit'));
+        // dans l'application "الإعدادات" : son compte, sans le menu des comptes
+        $this->actingAs($worker)->get('/account')->assertOk()->assertSee('الإعدادات')->assertDontSee(route('users.index'));
     }
 
     public function test_every_page_shows_the_inventory_box_in_the_browser_tab(): void

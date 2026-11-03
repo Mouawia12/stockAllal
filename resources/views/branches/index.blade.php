@@ -28,12 +28,17 @@
 @section('content')
 <div class="top">
     <h1>{{ __('branches.title') }}</h1>
-    <a class="btn" href="{{ route('agent.download') }}">⬇ {{ __('branches.download_agent') }} <span class="ltr small">v{{ $agentVersion }}</span></a>
-    <a class="btn" href="{{ route('agent.guide') }}" target="_blank" rel="noopener">{{ __('branches.guide') }}</a>
-    <form method="post" action="{{ route('branches.install-code') }}">
-        @csrf
-        <button class="primary" type="submit">{{ __('branches.new_code') }}</button>
-    </form>
+    {{-- chaque bouton seulement avec sa permission (App\Support\Permissions) --}}
+    @can('agent.download')
+        <a class="btn" href="{{ route('agent.download') }}">⬇ {{ __('branches.download_agent') }} <span class="ltr small">v{{ $agentVersion }}</span></a>
+        <a class="btn" href="{{ route('agent.guide') }}" target="_blank" rel="noopener">{{ __('branches.guide') }}</a>
+    @endcan
+    @can('branches.manage')
+        <form method="post" action="{{ route('branches.install-code') }}">
+            @csrf
+            <button class="primary" type="submit">{{ __('branches.new_code') }}</button>
+        </form>
+    @endcan
 </div>
 
 @if (session('install_code'))
@@ -75,11 +80,15 @@
                 @php($dbStale = $b->db_file_mtime && $b->db_file_mtime->lt(now()->subDay()))
                 <tr class="{{ $b->active ? '' : 'off' }}">
                     <td>
-                        <form class="rename" method="post" action="{{ route('branches.update', $b) }}">
-                            @csrf @method('patch')
-                            <input type="text" name="name" value="{{ $b->name }}" maxlength="100" required>
-                            <button type="submit">{{ __('common.save') }}</button>
-                        </form>
+                        @can('branches.manage')
+                            <form class="rename" method="post" action="{{ route('branches.update', $b) }}">
+                                @csrf @method('patch')
+                                <input type="text" name="name" value="{{ $b->name }}" maxlength="100" required>
+                                <button type="submit">{{ __('common.save') }}</button>
+                            </form>
+                        @else
+                            <b>{{ $b->name }}</b>
+                        @endcan
                     </td>
                     <td>
                         @if ($b->is_main)
@@ -97,7 +106,7 @@
                     <td>
                         <div class="sync">
                             <span class="small last-sync">{{ $b->last_sync_at?->diffForHumans() ?? '—' }}</span>
-                            @if ($b->active)
+                            @if ($b->active && auth()->user()->can('branches.sync'))
                                 <button type="button" data-sync="{{ route('branches.sync', $b) }}" title="{{ __('branches.sync_tip') }}">⟳ {{ __('branches.sync_now') }}</button>
                             @endif
                             <span class="sync-msg muted"></span>
@@ -113,6 +122,7 @@
                     </td>
                     <td class="hide-sm small muted"><span class="ltr">{{ $b->hostname }}</span>@if ($b->agent_version)<br><span class="ltr">v{{ $b->agent_version }}</span>@endif</td>
                     <td>
+                        @can('branches.manage')
                         <div class="actions">
                             <form method="post" action="{{ route('branches.main', $b) }}">
                                 @csrf
@@ -132,6 +142,7 @@
                                 <button class="danger" type="submit">{{ __('common.delete') }}</button>
                             </form>
                         </div>
+                        @endcan
                     </td>
                 </tr>
             @endforeach

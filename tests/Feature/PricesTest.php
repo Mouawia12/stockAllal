@@ -135,6 +135,11 @@ class PricesTest extends TestCase
         $this->assertTrue($data['show_buy']);
         $this->assertEquals(['price' => 550, 'price_wholesale' => 400, 'price_buy' => 380], $data['main_prices']);
         $this->assertEquals(390, collect($data['branches'])->firstWhere('branch', 'Setif')['rows'][0]['price_buy']);
+
+        // employe avec la case "سعر الشراء" : comme l'administrateur
+        $buyer = User::factory()->withPermissions(['prices.sale', 'prices.buy'])->create();
+        $this->actingAs($buyer)->get('/stock?q=820AC')->assertSee('الشراء')->assertSee('380,00');
+        $this->assertTrue($this->actingAs($buyer)->getJson('/product?code=820AC')->json('show_buy'));
     }
 
     public function test_agent_105_sends_three_prices_and_a_wholesale_change_is_written(): void

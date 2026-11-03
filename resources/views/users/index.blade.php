@@ -4,26 +4,23 @@
 
 @push('head')
 <style>
-    .page-title { font-size: 20px; margin: 0 0 16px; }
-    .new-user { margin-bottom: 16px; }
-    .new-user h2 { font-size: 16px; margin: 0 0 12px; }
-    .new-user .submit { margin-top: 14px; }
+    .top { display: flex; align-items: center; gap: 8px; margin-bottom: 16px; flex-wrap: wrap; }
+    .top h1 { font-size: 20px; margin: 0; flex: 1; }
+    a.btn.primary { background: var(--accent); border-color: var(--accent); color: var(--on-accent); }
+    .chips { display: flex; flex-wrap: wrap; gap: 4px; }
     .actions { display: flex; gap: 6px; justify-content: flex-end; }
     .actions .btn, .actions button { padding: 4px 12px; }
 </style>
 @endpush
 
 @section('content')
-<h1 class="page-title">{{ __('users.title') }}</h1>
-
-<form class="card new-user" method="post" action="{{ route('users.store') }}">
-    @csrf
-    <h2>{{ __('users.new') }}</h2>
-    @include('users.form', ['user' => null])
-    <div class="submit"><button class="primary" type="submit">{{ __('users.create') }}</button></div>
-</form>
+<div class="top">
+    <h1>{{ __('users.title') }}</h1>
+    <a class="btn primary" href="{{ route('users.create') }}">+ {{ __('users.new') }}</a>
+</div>
 
 <div class="card">
+    @php($perms = __('users.perms'))
     <table>
         <thead>
         <tr>
@@ -42,8 +39,14 @@
                 <td>
                     @if ($u->is_admin)
                         <span class="pill ok">{{ __('users.admin') }}</span>
+                    @elseif (empty($u->permissions))
+                        <span class="pill">{{ __('users.no_perms') }}</span>
                     @else
-                        <span class="pill">{{ __('users.worker') }}</span>
+                        <span class="chips">
+                            @foreach ($u->permissions as $p)
+                                <span class="pill" title="{{ $perms[$p]['help'] ?? '' }}">{{ $perms[$p]['short'] ?? $p }}</span>
+                            @endforeach
+                        </span>
                     @endif
                 </td>
                 <td class="hide-sm small muted">{{ $u->created_at?->diffForHumans() }}</td>

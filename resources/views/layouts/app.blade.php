@@ -72,7 +72,7 @@
     $user = auth()->user();
     $current = match (true) {
         request()->routeIs('stock.*', 'merge.*', 'branches.*') => 'stock',
-        request()->routeIs('users.*') => 'settings',
+        request()->routeIs('users.*', 'account.*') => 'settings',
         default => null,
     };
     $currentApp = $current ? config("apps.{$current}") : null;
@@ -88,12 +88,17 @@
         <nav>
             @if ($current === 'stock')
                 <a href="{{ route('stock.index') }}" class="{{ request()->routeIs('stock.*') ? 'on' : '' }}">{{ __('common.nav.search') }}</a>
-                @if ($user->is_admin)
+                @can('merge.manage')
                     <a href="{{ route('merge.index') }}" class="{{ request()->routeIs('merge.*') ? 'on' : '' }}">{{ __('common.nav.merge') }}</a>
+                @endcan
+                @can('branches.view')
                     <a href="{{ route('branches.index') }}" class="{{ request()->routeIs('branches.*') ? 'on' : '' }}">{{ __('common.nav.branches') }}</a>
-                @endif
+                @endcan
             @elseif ($current === 'settings')
-                <a href="{{ route('users.index') }}" class="on">{{ __('common.nav.users') }}</a>
+                @if ($user->is_admin)
+                    <a href="{{ route('users.index') }}" class="{{ request()->routeIs('users.*') ? 'on' : '' }}">{{ __('common.nav.users') }}</a>
+                @endif
+                <a href="{{ route('account.edit') }}" class="{{ request()->routeIs('account.*') ? 'on' : '' }}">{{ __('common.account') }}</a>
             @endif
         </nav>
         @include('partials.lang-switch')

@@ -18,7 +18,7 @@ return [
     'col_buy' => 'Purchase',
     'col_branches' => 'Branches',
     'main_branch_price' => 'Price at the main branch “:name”',
-    'admin_only' => 'shown to admins only',
+    'admin_only' => 'shown only with the “Purchase price” permission',
     'merged_with_code' => 'Merged with :code',
     'price_differs' => 'Different price',
     'price_differs_tip' => 'At least one branch sells at another price (retail or wholesale) — details in “Preview”',

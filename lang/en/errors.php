@@ -3,8 +3,8 @@
 return [
     'forbidden' => [
         'title' => 'Not allowed',
-        'heading' => 'This page is for admins only',
-        'message' => 'Your account can only search the stock. If you need more access, ask an admin.',
+        'heading' => 'You do not have permission for this page',
+        'message' => 'An admin chooses the permissions of each account. If you need this page, ask an admin.',
         'back' => 'Back to apps',
     ],
     'server' => [

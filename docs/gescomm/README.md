@@ -71,7 +71,7 @@
 | `STOCKREEL` | Stock | الكمية |
 | `PUGROS` | Pu Detail | التجزئة |
 | `PRIXVNFACT` | Prix Vente Gros | الجملة |
-| `PRIX` | Pu Achat | الشراء، للمدير فقط |
+| `PRIX` | Pu Achat | الشراء، للمدير ولمن عنده صلاحية «سعر الشراء» |
 
 **حقول أخرى في `GC003` يمكن مزامنتها لاحقاً:**
 - `PRIXDEMIGROS`: Prix Vente Demi Gros.

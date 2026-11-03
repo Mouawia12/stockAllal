@@ -13,5 +13,6 @@ return [
     'purchases' => ['route' => null],
     'suppliers' => ['route' => null],
     'customers' => ['route' => null],
-    'settings' => ['route' => 'users.index', 'admin' => true],
+    // pour tous : la route "settings" mene un administrateur aux comptes, les autres a leur propre compte
+    'settings' => ['route' => 'settings'],
 ];

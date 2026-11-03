@@ -3,6 +3,7 @@
 use App\Models\InstallCode;
 use App\Models\RefreshJob;
 use App\Models\User;
+use App\Support\Permissions;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\Schedule;
 
@@ -19,8 +20,12 @@ Artisan::command('user:create {username} {--name=} {--password=} {--admin : droi
     $user->password = $password;
     // --admin donne les droits ; sans l'option, un compte existant garde les siens
     $user->is_admin = $this->option('admin') || $user->is_admin;
+    if (! $user->exists && ! $user->is_admin) {
+        // nouvel employe : les permissions cochees par defaut sur la page des comptes
+        $user->permissions = Permissions::DEFAULTS;
+    }
     $user->save();
-    $this->info(sprintf('Utilisateur %s pret (%s).', $user->username, $user->is_admin ? 'administrateur' : 'employe : stock seulement'));
+    $this->info(sprintf('Utilisateur %s pret (%s).', $user->username, $user->is_admin ? 'administrateur' : 'permissions : '.implode(', ', $user->permissions ?? [])));
 })->purpose('Cree ou met a jour un utilisateur du tableau de bord');
 
 Artisan::command('agent:install-code', function () {

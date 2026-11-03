@@ -42,9 +42,9 @@ class LocaleTest extends TestCase
     {
         $this->withUnencryptedCookie('locale', 'en')->post('/login', [])->assertSessionHasErrors(['username' => 'Username is required']);
 
-        $worker = User::factory()->create();
+        $worker = User::factory()->withPermissions([])->create();
         $this->withUnencryptedCookie('locale', 'en')->actingAs($worker)->get('/branches')
-            ->assertForbidden()->assertSee('This page is for admins only');
+            ->assertForbidden()->assertSee('You do not have permission for this page');
 
         $admin = User::factory()->admin()->create();
         $admin->forceFill(['created_at' => now()->subMinutes(3)])->save();

@@ -75,7 +75,9 @@
         <div class="modal-head">
             <span class="code ltr" id="m-code"></span>
             <span class="grow"></span>
-            <button type="button" class="primary" id="m-refresh">{{ __('stock.refresh_now') }}</button>
+            @can('stock.refresh')
+                <button type="button" class="primary" id="m-refresh">{{ __('stock.refresh_now') }}</button>
+            @endcan
             <button type="button" class="link" id="m-close" aria-label="{{ __('stock.close') }}">✕</button>
         </div>
         <p class="desig muted"><bdi id="m-desig"></bdi></p>
@@ -87,8 +89,10 @@
                 <th>{{ __('stock.col_code_there') }}</th>
                 <th class="hide-sm">{{ __('stock.col_designation_there') }}</th>
                 <th>{{ __('stock.col_quantity') }}</th>
-                <th title="Pu Detail">{{ __('stock.col_retail') }}</th>
-                <th title="Prix Vente Gros">{{ __('stock.col_wholesale') }}</th>
+                @if ($showSale)
+                    <th title="Pu Detail">{{ __('stock.col_retail') }}</th>
+                    <th title="Prix Vente Gros">{{ __('stock.col_wholesale') }}</th>
+                @endif
                 @if ($showBuy)
                     <th class="hide-sm" title="Pu Achat — {{ __('stock.admin_only') }}">{{ __('stock.col_buy') }}</th>
                 @endif
@@ -151,8 +155,9 @@
             : '<span class="num">' + fmt(value) + '</span>') + '</td>';
     }
 
+    // seulement les prix que ce compte peut voir (show_sale / show_buy viennent du serveur)
     function priceCells(data, b, r) {
-        return priceCell(data, b, r, 'price') + priceCell(data, b, r, 'price_wholesale')
+        return (data.show_sale ? priceCell(data, b, r, 'price') + priceCell(data, b, r, 'price_wholesale') : '')
             + (data.show_buy ? priceCell(data, b, r, 'price_buy', 'hide-sm') : '');
     }
 
@@ -165,7 +170,7 @@
         for (const b of data.branches) {
             const name = esc(b.branch) + (b.main ? ' <span class="pill ok">' + esc(T.main) + '</span>' : '');
             if (!b.rows.length) {
-                const dashes = '<td class="muted">—</td><td class="muted">—</td>' + (data.show_buy ? '<td class="muted hide-sm">—</td>' : '');
+                const dashes = (data.show_sale ? '<td class="muted">—</td><td class="muted">—</td>' : '') + (data.show_buy ? '<td class="muted hide-sm">—</td>' : '');
                 html.push('<tr><td>' + name + '</td><td class="muted">—</td><td class="muted hide-sm">' + esc(T.not_found) + '</td>'
                     + '<td class="muted">—</td>' + dashes + '<td>' + statusCell(b, null) + '</td></tr>');
                 continue;
@@ -194,6 +199,7 @@
     function stopPolling() {
         clearTimeout(timer);
         timer = null;
+        if (!mRefresh) return;   // compte sans "تحديث الآن" (permission stock.refresh) : pas de bouton
         mRefresh.disabled = false;
         mRefresh.textContent = T.refresh_now;
     }
@@ -212,7 +218,7 @@
     }
 
     async function refresh() {
-        if (timer || !current) return;
+        if (timer || !current || !mRefresh) return;
         mRefresh.disabled = true;
         mRefresh.textContent = T.refreshing;
         mNote.textContent = T.reading;
@@ -278,7 +284,7 @@
         if (i < 0) input.focus();
         else list[Math.min(i, list.length - 1)].focus();
     });
-    mRefresh.addEventListener('click', refresh);
+    mRefresh?.addEventListener('click', refresh);
     document.getElementById('m-close').addEventListener('click', close);
     bg.addEventListener('click', e => { if (e.target === bg) close(); });
     document.addEventListener('keydown', e => {

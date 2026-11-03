@@ -3,6 +3,7 @@
 namespace Database\Factories;
 
 use App\Models\User;
+use App\Support\Permissions;
 use Illuminate\Database\Eloquent\Factories\Factory;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Str;
@@ -31,12 +32,20 @@ class UserFactory extends Factory
             'email_verified_at' => now(),
             'password' => static::$password ??= Hash::make('password'),
             'remember_token' => Str::random(10),
+            // employe "normal" : les permissions cochees par defaut pour un nouveau compte
+            'permissions' => Permissions::DEFAULTS,
         ];
     }
 
     public function admin(): static
     {
         return $this->state(fn (array $attributes) => ['is_admin' => true]);
+    }
+
+    /** Employe avec exactement ces permissions ([] = recherche dans le stock seulement). */
+    public function withPermissions(array $permissions): static
+    {
+        return $this->state(fn (array $attributes) => ['permissions' => $permissions]);
     }
 
     /**

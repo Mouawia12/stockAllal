@@ -19,36 +19,48 @@ Route::middleware('guest')->group(function () {
     Route::post('login', [LoginController::class, 'login'])->middleware('throttle:login');
 });
 
-// Tous les comptes (employes compris) : ecran des applications, consulter le stock et gerer son propre compte.
+// Tous les comptes (employes compris) : ecran des applications, rechercher dans le stock et gerer son propre compte.
+// Le reste depend des permissions cochees par un administrateur (App\Support\Permissions, middleware "can:").
 Route::middleware('auth')->group(function () {
     Route::post('logout', [LoginController::class, 'logout'])->name('logout');
     Route::get('account', [AccountController::class, 'edit'])->name('account.edit');
     Route::put('account', [AccountController::class, 'update'])->name('account.update');
+    // icone "الإعدادات" : les comptes pour un administrateur, son propre compte pour les autres
+    Route::get('settings', fn () => redirect()->route(auth()->user()->is_admin ? 'users.index' : 'account.edit'))->name('settings');
 
     Route::get('/', [HomeController::class, 'index'])->name('home');
     Route::get('stock', [StockController::class, 'index'])->name('stock.index')->middleware('throttle:search');
     Route::get('product', [StockController::class, 'product'])->name('stock.product');
-    Route::post('refresh', [StockController::class, 'refresh'])->name('stock.refresh')->middleware('throttle:refresh');
+    Route::post('refresh', [StockController::class, 'refresh'])->name('stock.refresh')->middleware(['can:stock.refresh', 'throttle:refresh']);
+
+    Route::get('branches', [BranchController::class, 'index'])->name('branches.index')->middleware('can:branches.view');
+    Route::middleware('can:branches.sync')->group(function () {
+        Route::post('branches/{branch}/sync', [BranchController::class, 'sync'])->name('branches.sync')->middleware('throttle:refresh');
+        Route::get('branches/{branch}/sync/{job}', [BranchController::class, 'syncStatus'])->name('branches.sync-status');
+    });
+    Route::middleware('can:branches.manage')->group(function () {
+        Route::post('branches/install-code', [BranchController::class, 'installCode'])->name('branches.install-code');
+        Route::patch('branches/{branch}', [BranchController::class, 'update'])->name('branches.update');
+        Route::post('branches/{branch}/main', [BranchController::class, 'main'])->name('branches.main');
+        Route::delete('branches/{branch}', [BranchController::class, 'destroy'])->name('branches.destroy');
+    });
+
+    Route::middleware('can:merge.manage')->group(function () {
+        Route::get('merge', [StockController::class, 'merge'])->name('merge.index')->middleware('throttle:search');
+        Route::post('merge', [ProductGroupController::class, 'store'])->name('merge.store');
+        Route::delete('merge', [ProductGroupController::class, 'destroy'])->name('merge.destroy');
+    });
+
+    Route::middleware('can:agent.download')->group(function () {
+        Route::get('agent/download', [AgentDownloadController::class, 'zip'])->name('agent.download');
+        Route::get('agent/guide', [AgentDownloadController::class, 'guide'])->name('agent.guide');
+    });
 });
 
-// Administrateurs seulement : branches, fusion des codes, agent et comptes.
+// Administrateurs seulement : les comptes et leurs permissions (jamais une case : ce serait se donner tous les droits).
 Route::middleware(['auth', 'admin'])->group(function () {
-    Route::get('branches', [BranchController::class, 'index'])->name('branches.index');
-    Route::post('branches/install-code', [BranchController::class, 'installCode'])->name('branches.install-code');
-    Route::patch('branches/{branch}', [BranchController::class, 'update'])->name('branches.update');
-    Route::post('branches/{branch}/main', [BranchController::class, 'main'])->name('branches.main');
-    Route::delete('branches/{branch}', [BranchController::class, 'destroy'])->name('branches.destroy');
-    Route::post('branches/{branch}/sync', [BranchController::class, 'sync'])->name('branches.sync')->middleware('throttle:refresh');
-    Route::get('branches/{branch}/sync/{job}', [BranchController::class, 'syncStatus'])->name('branches.sync-status');
-
-    Route::get('merge', [StockController::class, 'merge'])->name('merge.index')->middleware('throttle:search');
-    Route::post('merge', [ProductGroupController::class, 'store'])->name('merge.store');
-    Route::delete('merge', [ProductGroupController::class, 'destroy'])->name('merge.destroy');
-
-    Route::get('agent/download', [AgentDownloadController::class, 'zip'])->name('agent.download');
-    Route::get('agent/guide', [AgentDownloadController::class, 'guide'])->name('agent.guide');
-
     Route::get('users', [UserController::class, 'index'])->name('users.index');
+    Route::get('users/create', [UserController::class, 'create'])->name('users.create');
     Route::post('users', [UserController::class, 'store'])->name('users.store');
     Route::get('users/{user}/edit', [UserController::class, 'edit'])->name('users.edit');
     Route::put('users/{user}', [UserController::class, 'update'])->name('users.update');

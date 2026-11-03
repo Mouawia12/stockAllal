@@ -35,7 +35,7 @@
 <div class="meta">نسخة الوكيل 1.0.6 — نوفمبر 2026</div>
 
 <h2>1. ما هو الوكيل؟</h2>
-<p>برنامج صغير (سكريبت PowerShell) يُركَّب مرة واحدة على <b>السيرفر الذي فيه قاعدة Gescomm</b> في كل فرع. يقرأ من القاعدة <b>قراءة فقط</b> (الكود، التسمية، الكمية، وأسعار التجزئة والجملة والشراء) ويرسلها إلى اللوحة. سعر الشراء لا يظهر في اللوحة إلا للمدير:</p>
+<p>برنامج صغير (سكريبت PowerShell) يُركَّب مرة واحدة على <b>السيرفر الذي فيه قاعدة Gescomm</b> في كل فرع. يقرأ من القاعدة <b>قراءة فقط</b> (الكود، التسمية، الكمية، وأسعار التجزئة والجملة والشراء) ويرسلها إلى اللوحة. سعر الشراء لا يظهر في اللوحة إلا للمدير ولمن أعطاه صلاحية «سعر الشراء»:</p>
 <ul>
     <li>كل 5 دقائق: المخزون كاملاً.</li>
     <li>عند الضغط على «تحديث الآن» في اللوحة: كمية منتج واحد خلال 10 إلى 20 ثانية.</li>
@@ -160,7 +160,7 @@ powershell -ExecutionPolicy Bypass -File C:\GescomAgent-setup\GescomAgent\uninst
     <tr><td>السجل</td><td><code>C:\ProgramData\GescomAgent\logs\agent-YYYYMMDD.log</code> (يُحذف بعد 14 يوماً)</td></tr>
     <tr><td>المهمة المجدولة</td><td><code>GescomAgent</code> — حساب SYSTEM</td></tr>
     <tr><td>عنوان الـAPI</td><td><code>https://stockallal.souftech.com/api</code></td></tr>
-    <tr><td>ما يُقرأ من القاعدة</td><td>الجدول <code>GC003</code>، قراءة فقط: <code>CODEA</code>، <code>DESIGNATIONF2</code>، <code>STOCKREEL</code>، والأسعار كما في قائمة الأصناف في Gescomm: <code>PUGROS</code> (Pu Detail = التجزئة)، <code>PRIXVNFACT</code> (Prix Vente Gros = الجملة)، <code>PRIX</code> (Pu Achat = الشراء، يظهر في اللوحة للمدير فقط)</td></tr>
+    <tr><td>ما يُقرأ من القاعدة</td><td>الجدول <code>GC003</code>، قراءة فقط: <code>CODEA</code>، <code>DESIGNATIONF2</code>، <code>STOCKREEL</code>، والأسعار كما في قائمة الأصناف في Gescomm: <code>PUGROS</code> (Pu Detail = التجزئة)، <code>PRIXVNFACT</code> (Prix Vente Gros = الجملة)، <code>PRIX</code> (Pu Achat = الشراء، يظهر في اللوحة للمدير ولمن عنده صلاحية «سعر الشراء»)</td></tr>
 </table>
 
 </body>

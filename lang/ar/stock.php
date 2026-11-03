@@ -19,7 +19,7 @@ return [
     'col_buy' => 'الشراء',
     'col_branches' => 'الفروع',
     'main_branch_price' => 'سعر الفرع الرئيسي «:name»',
-    'admin_only' => 'يظهر للمدير فقط',
+    'admin_only' => 'يظهر فقط لمن عنده صلاحية «سعر الشراء»',
     'merged_with_code' => 'مدمج مع :code',
     'price_differs' => 'سعر مختلف',
     'price_differs_tip' => 'فرع واحد على الأقل يبيع بسعر آخر (تجزئة أو جملة) — التفاصيل في «معاينة»',

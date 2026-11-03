@@ -12,23 +12,87 @@ class UsersTest extends TestCase
 {
     use RefreshDatabase;
 
-    public function test_workers_see_stock_but_not_admin_pages(): void
+    public function test_default_user_sees_and_syncs_branches_but_cannot_change_them(): void
     {
-        $worker = User::factory()->create();
+        $worker = User::factory()->create();   // permissions par defaut
         $branch = Branch::create(['name' => 'Oran', 'active' => true]);
 
-        $this->actingAs($worker)->get('/')->assertOk()->assertDontSee('المستخدمون')->assertDontSee(route('branches.index'));
+        $this->actingAs($worker)->get('/')->assertOk()->assertDontSee('المستخدمون');
         $this->actingAs($worker)->getJson('/product?code=820AC')->assertOk();
         $this->actingAs($worker)->postJson('/refresh', ['code' => '820AC'])->assertOk();
-        $this->actingAs($worker)->get('/account')->assertOk();
+        $this->actingAs($worker)->get('/account')->assertOk()->assertSee('صلاحياتك');
 
-        $this->actingAs($worker)->get('/branches')->assertForbidden()->assertSee('هذه الصفحة للمدير فقط');
-        $this->actingAs($worker)->get('/users')->assertForbidden();
-        $this->actingAs($worker)->get('/agent/download')->assertForbidden();
+        // succursales : voir et "مزامنة الآن", sans aucun bouton de gestion
+        $this->actingAs($worker)->get('/stock')->assertSee(route('branches.index'))->assertDontSee(route('merge.index'));
+        $this->actingAs($worker)->get('/branches')->assertOk()
+            ->assertSee('data-sync=', false)
+            ->assertDontSee(route('branches.install-code'))->assertDontSee('action="'.route('branches.destroy', $branch).'"', false)
+            ->assertDontSee(route('agent.download'))->assertDontSee('name="name"', false);
+        $this->actingAs($worker)->postJson("/branches/{$branch->id}/sync")->assertOk();
+
         $this->actingAs($worker)->post('/branches/install-code')->assertForbidden();
-        $this->actingAs($worker)->postJson("/branches/{$branch->id}/sync")->assertForbidden();
+        $this->actingAs($worker)->patch("/branches/{$branch->id}", ['name' => 'X'])->assertForbidden();
+        $this->actingAs($worker)->post("/branches/{$branch->id}/main")->assertForbidden();
+        $this->actingAs($worker)->delete("/branches/{$branch->id}")->assertForbidden();
+        $this->assertSame('Oran', $branch->fresh()->name);
+        $this->actingAs($worker)->get('/merge')->assertForbidden();
+        $this->actingAs($worker)->get('/agent/download')->assertForbidden();
+        $this->actingAs($worker)->get('/users')->assertForbidden()->assertSee('ليست لديك صلاحية لهذه الصفحة');
         $this->actingAs($worker)->post('/users', ['name' => 'x', 'username' => 'x', 'password' => 'xxxxxxxx', 'is_admin' => 1])->assertForbidden();
         $this->assertSame(1, User::count());
+    }
+
+    public function test_a_user_without_permissions_only_searches(): void
+    {
+        $user = User::factory()->withPermissions([])->create();
+        $oran = Branch::create(['name' => 'Oran', 'active' => true]);
+        $oran->forceFill(['is_main' => true])->save();
+        \App\Models\BranchStock::create(['branch_id' => $oran->id, 'code_raw' => '820AC', 'code_key' => '820AC', 'designation' => 'BOULLON',
+            'stock' => 5, 'price' => 550, 'price_wholesale' => 400, 'price_buy' => 380, 'seen_at' => now(), 'updated_at' => now()]);
+
+        $page = $this->actingAs($user)->get('/stock?q=820AC')->assertOk()->assertSee('820AC')
+            ->assertDontSee('550,00')->assertDontSee('380,00')->assertDontSee('id="m-refresh"', false)->assertDontSee(route('branches.index'));
+        $row = $page->viewData('results')[0];
+        $this->assertEquals([null, null, null], [$row->price, $row->wholesale, $row->buy]);
+        $data = $this->actingAs($user)->getJson('/product?code=820AC')->assertOk()->json();
+        $this->assertSame(['code', 'designation', 'stock', 'updated'], array_keys($data['branches'][0]['rows'][0]));
+        $this->assertFalse($data['show_sale']);
+
+        $this->actingAs($user)->postJson('/refresh', ['code' => '820AC'])->assertForbidden();
+        $this->actingAs($user)->get('/branches')->assertForbidden();
+    }
+
+    public function test_admin_ticks_permissions_and_they_apply_after_save(): void
+    {
+        $admin = User::factory()->admin()->create();
+        $user = User::factory()->withPermissions([])->create(['username' => 'samir']);
+
+        // la page montre les cases ; un nouveau compte part des permissions par defaut
+        $this->actingAs($admin)->get('/users/create')->assertOk()
+            ->assertSee('value="branches.sync" checked', false)->assertDontSee('value="branches.manage" checked', false);
+        $this->actingAs($admin)->get("/users/{$user->id}/edit")->assertOk()->assertSee('إدارة الفروع')->assertSee('سعر الشراء');
+
+        // "مزامنة الفروع" sans "رؤية الفروع" : la seconde est ajoutee (pas de page des succursales sans elle)
+        $this->actingAs($admin)->put("/users/{$user->id}", [
+            'name' => 'Samir', 'username' => 'samir', 'is_admin' => '0', 'permissions' => ['branches.sync', 'prices.buy'],
+        ])->assertRedirect('/users');
+        $this->assertSame(['prices.buy', 'branches.view', 'branches.sync'], $user->fresh()->permissions);
+        $this->actingAs($user->fresh())->get('/branches')->assertOk();
+        $this->actingAs($admin)->get('/users')->assertSee('سعر الشراء')->assertSee('المزامنة');
+
+        $this->actingAs($admin)->put("/users/{$user->id}", [
+            'name' => 'Samir', 'username' => 'samir', 'permissions' => ['users.manage'],
+        ])->assertSessionHasErrors('permissions.0');
+        $this->assertSame(['prices.buy', 'branches.view', 'branches.sync'], $user->fresh()->permissions);
+
+        // nouveau compte avec ses cases
+        $this->actingAs($admin)->post('/users', [
+            'name' => 'Nadia', 'username' => 'nadia', 'password' => 'nadia-2026', 'is_admin' => '0', 'permissions' => ['merge.manage'],
+        ])->assertRedirect('/users');
+        $nadia = User::where('username', 'nadia')->firstOrFail();
+        $this->assertSame(['merge.manage'], $nadia->permissions);
+        $this->actingAs($nadia)->get('/merge')->assertOk();
+        $this->actingAs($nadia)->get('/branches')->assertForbidden();
     }
 
     public function test_admin_creates_a_worker_who_can_log_in(): void
@@ -137,5 +201,6 @@ class UsersTest extends TestCase
 
         $this->assertTrue(User::where('username', 'chef')->first()->is_admin);
         $this->assertFalse(User::where('username', 'agent1')->first()->is_admin);
+        $this->assertSame(\App\Support\Permissions::DEFAULTS, User::where('username', 'agent1')->first()->permissions);
     }
 }

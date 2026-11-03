@@ -2,9 +2,12 @@
 
 namespace App\Providers;
 
+use App\Models\User;
+use App\Support\Permissions;
 use Illuminate\Cache\RateLimiting\Limit;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
+use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Support\ServiceProvider;
 
@@ -34,5 +37,10 @@ class AppServiceProvider extends ServiceProvider
         RateLimiter::for('refresh', fn (Request $request) => Limit::perMinute(30)->by('refresh|'.($request->user()?->id ?? $request->ip())));
         // recherche pendant la frappe : quelques requetes par mot tape, large pour un humain, borne un script
         RateLimiter::for('search', fn (Request $request) => Limit::perMinute(240)->by('search|'.($request->user()?->id ?? $request->ip())));
+
+        // une Gate par permission cochable (App\Support\Permissions) : routes "can:...", @can dans les vues
+        foreach (Permissions::all() as $permission) {
+            Gate::define($permission, fn (User $user) => $user->hasPermission($permission));
+        }
     }
 }

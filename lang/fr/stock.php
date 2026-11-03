@@ -18,7 +18,7 @@ return [
     'col_buy' => 'Achat',
     'col_branches' => 'Succursales',
     'main_branch_price' => 'Prix de la succursale principale « :name »',
-    'admin_only' => 'visible par l\'administrateur uniquement',
+    'admin_only' => 'visible seulement avec la permission « Prix d\'achat »',
     'merged_with_code' => 'Fusionné avec :code',
     'price_differs' => 'Prix différent',
     'price_differs_tip' => 'Au moins une succursale vend à un autre prix (détail ou gros) — détails dans « Aperçu »',

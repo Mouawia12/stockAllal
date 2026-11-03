@@ -34,7 +34,7 @@ class StockController extends Controller
         $key = BranchStock::keyFor((string) $request->query('code', ''));
         $codes = ProductGroup::codesOf($key);
         $batch = (string) $request->query('batch', '');
-        $showBuy = (bool) $request->user()?->is_admin;
+        $visible = $this->visiblePrices($request);
 
         $branches = Branch::where('active', true)->orderBy('name')->get();
         $rows = BranchStock::whereIn('code_key', $codes)->orderBy('code_key')->get()->groupBy('branch_id');
@@ -43,7 +43,7 @@ class StockController extends Controller
         $main = $branches->firstWhere('is_main', true);
         $mainRow = $main ? $this->mainRow($rows->get($main->id, collect())) : null;
 
-        $list = $branches->map(function (Branch $branch) use ($rows, $jobsByBranch, $showBuy) {
+        $list = $branches->map(function (Branch $branch) use ($rows, $jobsByBranch, $visible) {
             return [
                 'branch' => $branch->name,
                 'main' => $branch->is_main,
@@ -54,7 +54,7 @@ class StockController extends Controller
                     'code' => $row->code_raw,
                     'designation' => $row->designation,
                     'stock' => $row->stock,
-                    ...$this->prices($row, $showBuy),
+                    ...$this->prices($row, $visible),
                     // une synchro complete n'ecrit que les lignes changees : la valeur est confirmee a la derniere synchro
                     'updated' => collect([$row->updated_at, $branch->last_sync_at])->filter()->max()?->diffForHumans(),
                 ])->values(),
@@ -68,9 +68,10 @@ class StockController extends Controller
             'code' => $key,
             'codes' => $codes,
             // prix de reference : la fenetre signale les branches dont un prix en differe
-            'main_price' => $mainRow?->price,
-            'main_prices' => $mainRow ? $this->prices($mainRow, $showBuy) : null,
-            'show_buy' => $showBuy,
+            'main_price' => in_array('price', $visible, true) ? $mainRow?->price : null,
+            'main_prices' => $mainRow && $visible !== [] ? $this->prices($mainRow, $visible) : null,
+            'show_sale' => in_array('price', $visible, true),
+            'show_buy' => in_array('price_buy', $visible, true),
             'branches' => $list,
             'done' => $done,
         ]);
@@ -115,15 +116,16 @@ class StockController extends Controller
         $terms = $this->terms($q);
         $main = Branch::main();
 
-        $showBuy = (bool) $request->user()?->is_admin;
+        $visible = $this->visiblePrices($request);
 
         return view($request->boolean('partial') ? 'stock._results' : 'stock.index', [
             'q' => $q,
             'terms' => $terms,
             'merge' => $merge,
             'mainBranch' => $main,
-            'showBuy' => $showBuy,
-            'results' => $terms === [] ? collect() : $this->search($q, $terms, $main, $showBuy),
+            'showSale' => in_array('price', $visible, true),
+            'showBuy' => in_array('price_buy', $visible, true),
+            'results' => $terms === [] ? collect() : $this->search($q, $terms, $main, $visible),
             'branchesTotal' => Branch::where('active', true)->count(),
         ]);
     }
@@ -148,19 +150,34 @@ class StockController extends Controller
     }
 
     /**
-     * Prix d'une ligne pour l'affichage. Le prix d'achat ne sort que pour un administrateur :
-     * il n'est meme pas envoye a la page d'un employe.
+     * Prix que ce compte peut voir : detail + gros avec "prices.sale", achat avec "prices.buy".
+     * Un prix non permis n'est meme pas envoye a la page.
      *
-     * @return array<string, ?float>
+     * @return list<string>
      */
-    private function prices(BranchStock $row, bool $showBuy): array
+    private function visiblePrices(Request $request): array
     {
-        $prices = ['price' => $row->price, 'price_wholesale' => $row->price_wholesale];
-        if ($showBuy) {
-            $prices['price_buy'] = $row->price_buy;
+        $user = $request->user();
+        $fields = [];
+        if ($user?->can('prices.sale')) {
+            array_push($fields, 'price', 'price_wholesale');
+        }
+        if ($user?->can('prices.buy')) {
+            $fields[] = 'price_buy';
         }
 
-        return $prices;
+        return $fields;
+    }
+
+    /**
+     * Prix d'une ligne pour l'affichage, seulement ceux que le compte peut voir.
+     *
+     * @param  list<string>  $visible
+     * @return array<string, ?float>
+     */
+    private function prices(BranchStock $row, array $visible): array
+    {
+        return collect($visible)->mapWithKeys(fn (string $field) => [$field => $row->{$field}])->all();
     }
 
     /** Une branche vend-elle a un autre prix (detail ou gros) que la principale ? Les prix inconnus ne comptent pas. */
@@ -194,8 +211,11 @@ class StockController extends Controller
         return 'not_found';
     }
 
-    /** @param  list<string>  $terms */
-    private function search(string $q, array $terms, ?Branch $main, bool $showBuy): Collection
+    /**
+     * @param  list<string>  $terms
+     * @param  list<string>  $visible  prix que le compte peut voir (visiblePrices)
+     */
+    private function search(string $q, array $terms, ?Branch $main, array $visible): Collection
     {
         $upper = mb_strtoupper(trim($q));
         $prefix = $this->escapeLike($upper).'%';
@@ -231,7 +251,10 @@ class StockController extends Controller
             ->get()
             ->groupBy('code_key');
 
-        return $units->map(function (array $unit) use ($rows, $main, $showBuy) {
+        $sale = in_array('price', $visible, true);
+        $buy = in_array('price_buy', $visible, true);
+
+        return $units->map(function (array $unit) use ($rows, $main, $sale, $buy) {
             $group = collect($unit['codes'])->flatMap(fn (string $code) => $rows->get($code, collect()));
             $mainRow = $main ? $this->mainRow($group->where('branch_id', $main->id)) : null;
 
@@ -243,12 +266,12 @@ class StockController extends Controller
                 'designation' => $group->sortByDesc('stock')->first()?->designation,
                 'total' => round($group->sum('stock'), 2),
                 'branches' => $group->pluck('branch_id')->unique()->count(),
-                // prix de la branche principale : detail (تجزئة), gros (جملة), achat (administrateur seulement)
-                'price' => $mainRow?->price,
-                'wholesale' => $mainRow?->price_wholesale,
-                'buy' => $showBuy ? $mainRow?->price_buy : null,
+                // prix de la branche principale : detail (تجزئة) et gros (جملة) avec "prices.sale", achat avec "prices.buy"
+                'price' => $sale ? $mainRow?->price : null,
+                'wholesale' => $sale ? $mainRow?->price_wholesale : null,
+                'buy' => $buy ? $mainRow?->price_buy : null,
                 // une branche au moins vend a un autre prix que la principale (prix pas encore mis a jour ?)
-                'price_differs' => $mainRow !== null
+                'price_differs' => $sale && $mainRow !== null
                     && $group->contains(fn (BranchStock $row) => $this->salePricesDiffer($row, $mainRow)),
             ];
         });
