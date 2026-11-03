@@ -107,7 +107,9 @@
                         <div class="sync">
                             <span class="small last-sync">{{ $b->last_sync_at?->diffForHumans() ?? '—' }}</span>
                             @if ($b->active && auth()->user()->can('branches.sync'))
-                                <button type="button" data-sync="{{ route('branches.sync', $b) }}" title="{{ __('branches.sync_tip') }}">⟳ {{ __('branches.sync_now') }}</button>
+                                {{-- agent avant 1.0.4 : le bouton attend sa prochaine synchro automatique (RefreshJob "waiting") --}}
+                                <button type="button" data-sync="{{ route('branches.sync', $b) }}"
+                                        title="{{ $b->agentSupports('sync') ? __('branches.sync_tip') : __('branches.sync_tip_old', ['version' => \App\Models\Branch::AGENT_FEATURES['sync']]) }}">⟳ {{ __('branches.sync_now') }}</button>
                             @endif
                             <span class="sync-msg muted"></span>
                         </div>
@@ -189,7 +191,6 @@
 
 (() => {
     const CSRF = document.querySelector('meta[name=csrf-token]').content;
-    const MAX_WAIT_MS = 130000;
     const texts = @json(__('branches.sync'));
     const REQUEST_FAILED = @json(__('common.request_failed'));
 
@@ -210,6 +211,9 @@
             if (!res.ok) throw new Error(data.error || ('HTTP ' + res.status));
             const statusUrl = btn.dataset.sync + '/' + data.job;
             const started = Date.now();
+            // delai donne par le serveur : ~2 min, ou ~7 min pour un agent ancien qui attend sa synchro automatique
+            const MAX_WAIT_MS = (Number(data.wait_seconds) || 120) * 1000 + 10000;
+            show(texts[data.status] || texts.pending, 'wait muted');
             const tick = async () => {
                 let s;
                 try {
@@ -235,7 +239,7 @@
                     return;
                 }
                 show(texts[s.status] || texts.pending, 'wait muted');
-                setTimeout(tick, 2000);
+                setTimeout(tick, s.status === 'waiting' ? 5000 : 2000);
             };
             setTimeout(tick, 1500);
         } catch (e) {

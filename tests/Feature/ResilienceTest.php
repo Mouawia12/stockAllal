@@ -2,6 +2,7 @@
 
 namespace Tests\Feature;
 
+use App\Http\Controllers\AgentDownloadController;
 use App\Models\Branch;
 use App\Models\BranchStock;
 use App\Models\InstallCode;
@@ -21,7 +22,7 @@ class ResilienceTest extends TestCase
     /** @return array{0: string, 1: Branch} */
     private function registerBranch(string $name = 'Oran'): array
     {
-        $res = $this->postJson('/api/agents/register', ['install_code' => InstallCode::generate(null), 'branch_name' => $name])->assertCreated();
+        $res = $this->postJson('/api/agents/register', ['install_code' => InstallCode::generate(null), 'branch_name' => $name, 'agent_version' => AgentDownloadController::version()])->assertCreated();
 
         return [$res->json('token'), Branch::findOrFail($res->json('branch_id'))];
     }

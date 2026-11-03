@@ -31,6 +31,7 @@ return [
     'never' => 'Jamais',
     'sync_now' => 'Synchroniser',
     'sync_tip' => 'Demande à l\'agent de la succursale d\'envoyer tout le stock maintenant',
+    'sync_tip_old' => 'L\'agent de cette succursale est antérieur à :version et ne sait pas synchroniser à la demande : le bouton attend sa prochaine synchronisation automatique (toutes les 5 minutes). Mettez-le à jour avec GescomAgent-Setup.exe → « Mettre à jour l\'agent » pour une synchronisation immédiate.',
     'main_tip' => 'Les prix de la succursale principale s\'affichent dans la recherche, et l\'aperçu signale les succursales dont le prix diffère',
     'unset_main' => 'Retirer « principale »',
     'set_main' => 'Définir comme principale',
@@ -38,7 +39,7 @@ return [
     'enable' => 'Activer',
     'confirm_delete' => 'Supprimer la succursale « :name » et tout son stock ? Son agent sera ensuite refusé.',
     'help' => [
-        '« Synchroniser » = demande à l\'agent d\'envoyer tout le stock tout de suite, sans attendre la synchronisation automatique (toutes les 5 minutes). Nécessite l\'agent 1.0.4 ou plus récent.',
+        '« Synchroniser » = demande à l\'agent d\'envoyer tout le stock tout de suite, sans attendre la synchronisation automatique (toutes les 5 minutes). Avec un agent antérieur à 1.0.4, le bouton attend sa prochaine synchronisation automatique puis indique si elle a réussi.',
         '« Dernière écriture de la base » = dernière modification du fichier de base Gescomm de la succursale. Si cela dépasse une journée entière un jour ouvré, le logiciel travaille peut-être sur un autre fichier (après une restauration) — vérifiez le chemin de la base dans la configuration de l\'agent.',
         'L\'agent d\'une succursale désactivée est refusé et elle n\'apparaît pas dans la recherche.',
         '« Succursale principale » = référence des prix : son prix s\'affiche sur la ligne de chaque article dans la recherche, et l\'aperçu montre le prix de chaque succursale en signalant ceux qui diffèrent. Nécessite l\'agent 1.0.5 ou plus récent (prix).',
@@ -46,6 +47,7 @@ return [
 
     'sync' => [
         'pending' => 'En attente de l\'agent…',
+        'waiting' => 'Agent ancien : en attente de sa synchronisation automatique (toutes les 5 min)…',
         'taken' => 'L\'agent envoie le stock…',
         'done' => 'Synchronisé ✓',
         'error' => 'La synchronisation a échoué dans la succursale',

@@ -31,6 +31,7 @@ return [
     'never' => 'Never',
     'sync_now' => 'Sync now',
     'sync_tip' => 'Asks the branch agent to send all of its stock now',
+    'sync_tip_old' => 'This branch\'s agent is older than :version and cannot sync on demand: the button waits for its next automatic sync (every 5 minutes). Update it with GescomAgent-Setup.exe → "Update the agent" for an immediate sync.',
     'main_tip' => 'The main branch\'s prices are shown in search, and the preview highlights branches with a different price',
     'unset_main' => 'Unset main',
     'set_main' => 'Make main',
@@ -38,7 +39,7 @@ return [
     'enable' => 'Enable',
     'confirm_delete' => 'Delete the branch “:name” and all its stock? Its agent will be rejected afterwards.',
     'help' => [
-        '“Sync now” = asks the branch agent to send all of its stock right away, instead of waiting for the automatic sync (every 5 minutes). Needs agent 1.0.4 or newer.',
+        '“Sync now” = asks the branch agent to send all of its stock right away, instead of waiting for the automatic sync (every 5 minutes). With an agent older than 1.0.4, the button waits for its next automatic sync, then says whether it worked.',
         '“Last database write” = the last change to the branch\'s Gescomm database file. If it goes over a full day on a working day, the software may be using another file (after a backup restore) — check the database path in the agent settings.',
         'A disabled branch has its agent rejected and does not appear in search.',
         '“Main branch” = the price reference: its price is shown on each item\'s row in search, and the preview shows every branch\'s price and highlights the ones that differ. Needs agent 1.0.5 or newer (prices).',
@@ -46,6 +47,7 @@ return [
 
     'sync' => [
         'pending' => 'Waiting for the agent…',
+        'waiting' => 'Older agent: waiting for its automatic sync (every 5 min)…',
         'taken' => 'The agent is sending the stock…',
         'done' => 'Synced ✓',
         'error' => 'Sync failed at the branch',

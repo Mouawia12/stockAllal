@@ -2,6 +2,7 @@
 
 namespace Tests\Feature;
 
+use App\Http\Controllers\AgentDownloadController;
 use App\Models\Branch;
 use App\Models\BranchStock;
 use App\Models\InstallCode;
@@ -22,7 +23,7 @@ class AgentApiTest extends TestCase
             'install_code' => $code,
             'branch_name' => $name,
             'hostname' => 'DESKTOP-TEST',
-            'agent_version' => '1.0.0',
+            'agent_version' => AgentDownloadController::version(),
         ])->assertCreated();
 
         return [$res->json('token'), Branch::findOrFail($res->json('branch_id'))];

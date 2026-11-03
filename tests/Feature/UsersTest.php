@@ -2,6 +2,7 @@
 
 namespace Tests\Feature;
 
+use App\Http\Controllers\AgentDownloadController;
 use App\Models\Branch;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -15,7 +16,7 @@ class UsersTest extends TestCase
     public function test_default_user_sees_and_syncs_branches_but_cannot_change_them(): void
     {
         $worker = User::factory()->create();   // permissions par defaut
-        $branch = Branch::create(['name' => 'Oran', 'active' => true]);
+        $branch = Branch::create(['name' => 'Oran', 'active' => true, 'agent_version' => AgentDownloadController::version()]);
 
         $this->actingAs($worker)->get('/')->assertOk()->assertDontSee('المستخدمون');
         $this->actingAs($worker)->getJson('/product?code=820AC')->assertOk();

@@ -15,6 +15,13 @@ class Branch extends Model
     /** L'agent interroge l'API toutes les 10 s : sans nouvelle depuis 60 s, il est considere hors ligne. */
     public const ONLINE_SECONDS = 60;
 
+    /**
+     * Demandes que le serveur envoie a un agent => premiere version d'agent qui les comprend.
+     * Les branches mettent leur agent a jour a la main, quand on le decide : une demande n'est jamais envoyee a un agent
+     * plus ancien (avant 1.0.4, une demande "sync" est lue comme un code vide et revient en invalid_code).
+     */
+    public const AGENT_FEATURES = ['sync' => '1.0.4'];
+
     protected function casts(): array
     {
         return [
@@ -35,6 +42,13 @@ class Branch extends Model
     public function isOnline(): bool
     {
         return $this->last_seen_at !== null && $this->last_seen_at->gt(now()->subSeconds(self::ONLINE_SECONDS));
+    }
+
+    /** L'agent de la branche comprend-il cette demande (AGENT_FEATURES) ? Version inconnue = non. */
+    public function agentSupports(string $feature): bool
+    {
+        return $this->agent_version !== null
+            && version_compare($this->agent_version, self::AGENT_FEATURES[$feature], '>=');
     }
 
     /** Branche de reference des prix, si elle est active. */

@@ -66,7 +66,10 @@ class BranchController extends Controller
         return back()->with('status', __('branches.deleted', ['name' => $name]));
     }
 
-    /** Bouton "مزامنة الآن" : l'agent renvoie tout le stock de la branche des qu'il recupere la demande (~10 s). */
+    /**
+     * Bouton "مزامنة الآن" : l'agent renvoie tout le stock de la branche des qu'il recupere la demande (~10 s).
+     * Agent trop ancien pour la demande "sync" : pas d'erreur, la page attend sa prochaine synchro automatique (statut waiting).
+     */
     public function sync(Request $request, Branch $branch): JsonResponse
     {
         if (! $branch->active) {
@@ -74,21 +77,17 @@ class BranchController extends Controller
         }
         // batch choisi par la page : une requete rejouee apres une coupure retrouve sa demande au lieu d'en recreer une
         $batch = $request->validate(['batch' => ['nullable', 'uuid']])['batch'] ?? (string) Str::uuid();
-        $existing = RefreshJob::where('batch', $batch)->where('branch_id', $branch->id)->where('type', 'sync')->first();
-        if ($existing) {
-            return response()->json(['job' => $existing->id]);
-        }
+        $job = RefreshJob::where('batch', $batch)->where('branch_id', $branch->id)->where('type', 'sync')->first()
+            ?? RefreshJob::create([
+                'batch' => $batch,
+                'type' => 'sync',
+                'branch_id' => $branch->id,
+                'code_key' => null,
+                'status' => $branch->agentSupports('sync') ? 'pending' : 'waiting',
+                'requested_by' => $request->user()->id,
+            ]);
 
-        $job = RefreshJob::create([
-            'batch' => $batch,
-            'type' => 'sync',
-            'branch_id' => $branch->id,
-            'code_key' => null,
-            'status' => 'pending',
-            'requested_by' => $request->user()->id,
-        ]);
-
-        return response()->json(['job' => $job->id]);
+        return response()->json(['job' => $job->id, 'status' => $job->status, 'wait_seconds' => $job->timeoutSeconds()]);
     }
 
     public function syncStatus(Branch $branch, RefreshJob $job): JsonResponse
