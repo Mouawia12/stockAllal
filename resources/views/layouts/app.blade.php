@@ -125,6 +125,7 @@
     // Lignes internet instables (jusqu'a une connexion sur deux perdue) : chaque appel a un delai et, sans reponse,
     // il est refait sur une nouvelle connexion. A reserver aux requetes qu'on peut rejouer sans effet de bord.
     // options.signal (facultatif) : annulation par l'appelant, sans nouvel essai (ex. recherche remplacee par une plus recente).
+    const LOGIN_PATH = new URL(@json(route('login'))).pathname;
     window.fetchRetry = async (url, options = {}, tries = 3, timeoutMs = 8000) => {
         const outer = options.signal;
         for (let attempt = 1; ; attempt++) {
@@ -132,19 +133,27 @@
             const timer = setTimeout(() => ctrl.abort(), timeoutMs);
             const cancel = () => ctrl.abort();
             outer?.addEventListener('abort', cancel);
+            let res;
             try {
                 if (outer?.aborted) throw new DOMException('annule', 'AbortError');
-                const res = await fetch(url, {...options, signal: ctrl.signal});
+                res = await fetch(url, {...options, signal: ctrl.signal});
                 if (res.status >= 502 && res.status <= 504 && attempt < tries) throw new Error('HTTP ' + res.status);
-                return res;
             } catch (e) {
                 if (outer?.aborted) throw new DOMException('annule', 'AbortError');
                 if (attempt >= tries) throw (e.name === 'AbortError' ? new Error(@json(__('common.no_response'))) : e);
                 await new Promise(r => setTimeout(r, 500 * attempt));
+                continue;
             } finally {
                 clearTimeout(timer);
                 outer?.removeEventListener('abort', cancel);
             }
+            // connexion terminee (8 h, ExpireLogin) : la page se recharge et mene a la connexion,
+            // au lieu d'une erreur ou de la page de connexion affichee dans les resultats
+            if (res.status === 401 || res.status === 419 || (res.redirected && new URL(res.url).pathname === LOGIN_PATH)) {
+                location.reload();
+                throw new DOMException('session', 'AbortError');
+            }
+            return res;
         }
     };
     // identifiant choisi par la page : une requete POST rejouee est reconnue par le serveur et n'agit qu'une fois

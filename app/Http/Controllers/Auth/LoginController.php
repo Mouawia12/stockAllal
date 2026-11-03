@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Auth;
 
 use App\Http\Controllers\Controller;
+use App\Http\Middleware\ExpireLogin;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
@@ -30,6 +31,10 @@ class LoginController extends Controller
         }
 
         $request->session()->regenerate();
+        // fin de la connexion 8 h plus tard (ExpireLogin), sauf "تذكّرني"
+        if (! $request->boolean('remember')) {
+            $request->session()->put(ExpireLogin::KEY, now()->getTimestamp());
+        }
         // rappel affiche tant que le mot de passe initial (= nom d'utilisateur) n'a pas ete change
         $request->session()->put('weak_password', $credentials['password'] === $credentials['username']);
 

@@ -99,7 +99,9 @@ DB_USERNAME=user_stock
 DB_PASSWORD=<محتوى /root/.stockallal-db-pass.txt>
 
 SESSION_SECURE_COOKIE=true
+SESSION_LIFETIME=480
 ```
+- **`SESSION_LIFETIME=480`:** الدخول يدوم 8 ساعات (يوم عمل) ثم يطلب البرنامج تسجيل الدخول من جديد، إلا لمن أشّر «تذكّرني».
 - **أسطر قاعدة البيانات:** في `.env.example` أسطر `DB_*` معلّقة بـ `#`. أزل `#` واملأها، وغيّر `DB_CONNECTION=sqlite` إلى `mysql`.
 - **صلاحيات `.env`:** `chmod 640 .env`.
 

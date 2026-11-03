@@ -74,6 +74,9 @@ For an already deployed server, use the "التحديثات لاحقاً" sectio
   (`LocaleTest` fails otherwise). JavaScript gets them through `@json(...)` (build arrays in `@php` first: `@json` splits its argument on commas).
   CSS must work both ways: `text-align: start`, `inset-inline-*`, `margin-inline-*`, never `left` / `right`.
   The language buttons are a POST on purpose: `sw.js` replays GET navigations with a `/sw.js` Referer, so `back()` would land there.
+- **A login lasts a workday:** `SESSION_LIFETIME` minutes (480 = 8 h), counted from the last click (Laravel) *and* from
+  the login (`ExpireLogin`), so the shop PC is signed out around the end of the shift. "تذكّرني" opts out on purpose.
+  `fetchRetry` reloads the page on 401 / 419 / a redirect to the login page, so the login page never lands inside the results.
 - **Never commit** `.env` or `database/*.sqlite`.
 
 ## Commands

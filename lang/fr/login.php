@@ -21,4 +21,5 @@ return [
     'username_required' => 'Le nom d\'utilisateur est obligatoire',
     'password_required' => 'Le mot de passe est obligatoire',
     'failed' => 'Nom d\'utilisateur ou mot de passe incorrect',
+    'expired' => 'Votre session a pris fin :hours h après la connexion. Reconnectez-vous.',
 ];

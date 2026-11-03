@@ -21,6 +21,8 @@ return Application::configure(basePath: dirname(__DIR__))
         // langue choisie (cookie en clair) : avant tout le reste, pour que les pages d'erreur soient traduites aussi
         $middleware->prepend(\App\Http\Middleware\SetLocale::class);
         $middleware->encryptCookies(except: ['locale']);
+        // une connexion dure 8 h (config session.lifetime), meme si le compte s'en sert encore
+        $middleware->web(append: [\App\Http\Middleware\ExpireLogin::class]);
         $middleware->redirectGuestsTo(fn () => route('login'));
         $middleware->redirectUsersTo(fn () => route('home'));
     })

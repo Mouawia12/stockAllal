@@ -32,7 +32,8 @@ return [
     |
     */
 
-    'lifetime' => (int) env('SESSION_LIFETIME', 120),
+    // 480 = 8 h, une journee de travail. Compte aussi depuis la connexion : App\Http\Middleware\ExpireLogin
+    'lifetime' => (int) env('SESSION_LIFETIME', 480),
 
     'expire_on_close' => env('SESSION_EXPIRE_ON_CLOSE', false),
 
