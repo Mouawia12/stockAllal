@@ -6,10 +6,11 @@
     <meta name="csrf-token" content="{{ csrf_token() }}">
     <title>@yield('title', __('common.app_name'))</title>
     @include('partials.favicon')
+    @include('partials.fonts')
     @include('partials.theme')
     <style>
         * { box-sizing: border-box; }
-        body { margin: 0; background: var(--bg); color: var(--text); font: 15px/1.6 "Segoe UI", Tahoma, "Noto Sans Arabic", Arial, sans-serif; }
+        body { margin: 0; background: var(--bg); color: var(--text); font: 15px/1.6 var(--font); }
         a { color: var(--accent); text-decoration: none; }
         header { background: var(--card); border-bottom: 1px solid var(--border); position: sticky; top: 0; z-index: 5; }
         header .in { max-width: 1100px; margin: 0 auto; padding: 8px 16px; min-height: 56px; display: flex; align-items: center; gap: 12px; }
@@ -43,6 +44,17 @@
         button.danger { color: var(--bad); }
         button.link { border: 0; background: none; color: var(--muted); padding: 4px; }
         .ltr { direction: ltr; unicode-bidi: isolate; }
+        :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+        /* codes d'articles : condense, comme les panneaux d'un depot (partials/fonts) */
+        .code { font-family: var(--font-code); font-weight: 600; font-size: 1.1em; letter-spacing: .02em; line-height: 1.2; }
+        /* quantite ; ses etats ont les couleurs de Gescomm (App\Support\StockState) : 0 rouge, negatif jaune, alerte vert, max orange */
+        .qty { display: inline-block; direction: ltr; unicode-bidi: isolate; font-variant-numeric: tabular-nums; white-space: nowrap; font-weight: 600; }
+        .qty.zero, .qty.negative, .qty.low, .qty.over { padding: 0 8px; border-radius: 6px; }
+        .qty.zero { color: var(--zero); background: var(--zero-bg); }
+        .qty.negative { color: var(--negative); background: var(--negative-bg); }
+        .qty.low { color: var(--low); background: var(--low-bg); }
+        .qty.over { color: var(--over); background: var(--over-bg); }
+        kbd { font: 600 11.5px/1.6 var(--font); border: 1px solid var(--border); border-bottom-width: 2px; border-radius: 5px; padding: 0 6px; background: var(--card); color: var(--muted); white-space: nowrap; direction: ltr; unicode-bidi: isolate; }
         .num { direction: ltr; unicode-bidi: isolate; font-variant-numeric: tabular-nums; white-space: nowrap; }
         .neg { color: var(--bad); }
         .muted { color: var(--muted); }
@@ -101,6 +113,11 @@
                 <a href="{{ route('account.edit') }}" class="{{ request()->routeIs('account.*') ? 'on' : '' }}">{{ __('common.account') }}</a>
             @endif
         </nav>
+        @include('partials.branch-switch')
+        <button type="button" class="link palette-open" data-palette title="{{ __('common.palette.title') }}" aria-label="{{ __('common.palette.title') }}">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/></svg>
+            <span class="palette-label">{{ __('common.palette.button') }}</span><kbd>Ctrl K</kbd>
+        </button>
         @include('partials.lang-switch')
         @include('partials.theme-toggle')
         <a href="{{ route('account.edit') }}" class="user {{ request()->routeIs('account.*') ? 'on' : '' }}" title="{{ __('common.account') }}">
@@ -160,6 +177,7 @@
     window.newId = () => (crypto.randomUUID ? crypto.randomUUID()
         : '10000000-1000-4000-8000-100000000000'.replace(/[018]/g, c => (c ^ crypto.getRandomValues(new Uint8Array(1))[0] & 15 >> c / 4).toString(16)));
 </script>
+@include('partials.palette')
 @stack('scripts')
 @include('partials.sw')
 </body>

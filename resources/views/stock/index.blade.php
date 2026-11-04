@@ -15,19 +15,21 @@
     .search.busy .live-spin { display: block; }
     .search.offline input { border-color: var(--warn); }
     .live-hint { margin: -8px 0 12px; }
-    kbd { font: 12px Consolas, monospace; border: 1px solid var(--border); border-bottom-width: 2px; border-radius: 5px; padding: 0 5px; background: var(--card); }
-    mark { background: var(--warn-bg); color: inherit; border-radius: 3px; padding: 0 1px; }
+    /* pas en jaune : le jaune veut dire "stock negatif" (couleurs de Gescomm) */
+    mark { background: var(--accent-soft); color: inherit; border-radius: 3px; padding: 0 1px; box-shadow: inset 0 -2px 0 var(--accent); }
     #results { transition: opacity .15s; }
     #results[aria-busy="true"] { opacity: .6; }
     #results tbody tr:focus-within { background: var(--row-hover); }
-    .code { font-family: Consolas, "Courier New", monospace; font-weight: 600; }
+    a.code { color: var(--text); }
+    a.code:hover { color: var(--accent); text-decoration: underline; text-underline-offset: 3px; }
     .total { font-weight: 600; }
     .empty { padding: 30px; text-align: center; color: var(--muted); }
     .codes { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; }
-    .codes .pill { font-family: Consolas, "Courier New", monospace; }
+    .codes .pill { font-family: var(--font-code); font-size: 13px; }
     .codes button.link { padding: 0 3px; font-size: 12px; }
     .codes button.link:hover { color: var(--bad); background: none; }
     .page-title { font-size: 20px; margin: 0 0 4px; }
+    .legend { display: flex; gap: 16px; flex-wrap: wrap; align-items: center; margin: 12px 0 0; }
     .merge-help { margin: 0 0 14px; }
     .merge-bar { display: flex; align-items: center; gap: 10px; margin-bottom: 12px; }
     .merge-bar button:disabled { opacity: .45; cursor: not-allowed; }
@@ -54,7 +56,7 @@
 
 <form class="search" method="get" action="{{ route($merge ? 'merge.index' : 'stock.index') }}" data-title="{{ $baseTitle }}">
     <div class="q-wrap">
-        <input type="search" name="q" value="{{ $q }}" placeholder="{{ __('stock.placeholder') }}" autofocus autocomplete="off" aria-controls="results">
+        <input type="search" name="q" dir="auto" value="{{ $q }}" placeholder="{{ __('stock.placeholder') }}" autofocus autocomplete="off" aria-controls="results">
         <span class="live-spin" aria-hidden="true"></span>
     </div>
     <button class="primary" type="submit">{{ __('stock.search') }}</button>
@@ -75,6 +77,7 @@
         <div class="modal-head">
             <span class="code ltr" id="m-code"></span>
             <span class="grow"></span>
+            <a class="btn" id="m-page" href="{{ route('stock.item') }}">{{ __('stock.item.open_page') }}</a>
             @can('stock.refresh')
                 <button type="button" class="primary" id="m-refresh">{{ __('stock.refresh_now') }}</button>
             @endcan
@@ -126,6 +129,8 @@
     const mBody = document.getElementById('m-body');
     const mNote = document.getElementById('m-note');
     const mRefresh = document.getElementById('m-refresh');
+    const mPage = document.getElementById('m-page');
+    const PAGE_URL = @json(route('stock.item'));
     let current = null, timer = null, startedAt = 0;
 
     const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'}[c]));
@@ -145,11 +150,11 @@
         return row ? '<span class="muted small">' + esc(row.updated) + '</span>' : '';
     }
 
-    // un prix d'une branche ("price", "price_wholesale", "price_buy"), en evidence s'il differe de la branche principale
+    // un prix d'une branche ("price", "price_wholesale", "price_buy"), en evidence s'il differe de la branche de reference
     function priceCell(data, b, r, field, cls) {
         const ref = data.main_prices ? data.main_prices[field] : null;
         const value = r[field] ?? null;
-        const differs = !b.main && ref !== null && ref !== undefined && value !== null && Math.abs(value - ref) >= 0.005;
+        const differs = !b.ref && ref !== null && ref !== undefined && value !== null && Math.abs(value - ref) >= 0.005;
         return '<td class="' + (cls || '') + '">' + (differs
             ? '<span class="pill warn num" title="' + esc(t(T.main_price, {price: fmt(ref)})) + '">' + fmt(value) + '</span>'
             : '<span class="num">' + fmt(value) + '</span>') + '</td>';
@@ -179,7 +184,7 @@
                 html.push('<tr><td>' + name + '</td>'
                     + '<td><span class="code ltr">' + esc(r.code) + '</span></td>'
                     + '<td class="hide-sm"><bdi>' + esc(r.designation) + '</bdi></td>'
-                    + '<td><span class="num total' + (r.stock < 0 ? ' neg' : '') + '">' + fmt(r.stock) + '</span></td>'
+                    + '<td><span class="qty total ' + (r.state || '') + '">' + fmt(r.stock) + '</span></td>'
                     + priceCells(data, b, r)
                     + '<td>' + statusCell(b, r) + '</td></tr>');
             }
@@ -208,6 +213,7 @@
         stopPolling();
         current = code;
         mCode.textContent = code;
+        mPage.href = PAGE_URL + '?code=' + encodeURIComponent(code);
         mDesig.textContent = designation || '';
         mMerged.hidden = true;
         mNote.textContent = '';

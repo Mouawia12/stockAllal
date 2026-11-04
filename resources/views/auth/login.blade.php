@@ -5,10 +5,11 @@
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>{{ __('login.title') }} — {{ __('common.app_name') }}</title>
     @include('partials.favicon')
+    @include('partials.fonts')
     @include('partials.theme')
     <style>
         * { box-sizing: border-box; }
-        body { margin: 0; min-height: 100vh; background: var(--card); color: var(--text); font: 15px/1.6 "Segoe UI", Tahoma, "Noto Sans Arabic", Arial, sans-serif; }
+        body { margin: 0; min-height: 100vh; background: var(--card); color: var(--text); font: 15px/1.6 var(--font); }
         .shell { min-height: 100vh; display: grid; grid-template-columns: minmax(400px, 1fr) 1.15fr; }
 
         /* formulaire */

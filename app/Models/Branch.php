@@ -60,6 +60,14 @@ class Branch extends Model
         }
     }
 
+    /** Ces branches seulement (BranchScope::ids) ; null = toutes. */
+    public function scopeAmong(Builder $query, ?array $ids): void
+    {
+        if ($ids !== null) {
+            $query->whereKey($ids);
+        }
+    }
+
     public function isNative(): bool
     {
         return $this->mode === 'native';

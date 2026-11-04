@@ -4,6 +4,7 @@ use App\Http\Controllers\AccountController;
 use App\Http\Controllers\AgentDownloadController;
 use App\Http\Controllers\Auth\LoginController;
 use App\Http\Controllers\BranchController;
+use App\Http\Controllers\BranchScopeController;
 use App\Http\Controllers\HomeController;
 use App\Http\Controllers\LocaleController;
 use App\Http\Controllers\ProductGroupController;
@@ -31,6 +32,11 @@ Route::middleware('auth')->group(function () {
     Route::get('/', [HomeController::class, 'index'])->name('home');
     Route::get('stock', [StockController::class, 'index'])->name('stock.index')->middleware('throttle:search');
     Route::get('product', [StockController::class, 'product'])->name('stock.product');
+    Route::get('stock/item', [StockController::class, 'item'])->name('stock.item');
+    // barre Ctrl+K (partials/palette) : articles qui correspondent, dans les branches affichees
+    Route::get('palette', [StockController::class, 'palette'])->name('palette')->middleware('throttle:search');
+    // selecteur de branche de la barre du haut (App\Support\BranchScope) ; un POST comme les boutons de langue
+    Route::post('branch-scope', BranchScopeController::class)->name('branch-scope');
     Route::post('refresh', [StockController::class, 'refresh'])->name('stock.refresh')->middleware(['can:stock.refresh', 'throttle:refresh']);
 
     Route::get('branches', [BranchController::class, 'index'])->name('branches.index')->middleware('can:branches.view');

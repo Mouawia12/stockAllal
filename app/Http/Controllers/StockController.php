@@ -6,6 +6,8 @@ use App\Models\Branch;
 use App\Models\BranchStock;
 use App\Models\ProductGroup;
 use App\Models\RefreshJob;
+use App\Support\BranchScope;
+use App\Support\StockState;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Collection;
@@ -28,26 +30,75 @@ class StockController extends Controller
         return $this->page($request, true);
     }
 
-    /** Detail d'un produit dans chaque branche active visible (la fenetre "apercu"), avec l'etat d'un batch de mise a jour. */
+    /** Detail d'un produit dans chaque branche affichee (la fenetre "apercu"), avec l'etat d'un batch de mise a jour. */
     public function product(Request $request): JsonResponse
     {
-        $key = BranchStock::keyFor((string) $request->query('code', ''));
+        return response()->json($this->productData($request, (string) $request->query('code', ''), (string) $request->query('batch', '')));
+    }
+
+    /**
+     * Page d'un article : son etiquette de rayon, puis son stock dans chaque branche affichee (le "rayon").
+     * ?partial=1&batch=... : seulement le rayon, relu par la page pendant "تحديث الآن".
+     */
+    public function item(Request $request): View
+    {
+        $data = $this->productData($request, (string) $request->query('code', ''), (string) $request->query('batch', ''));
+        if ($request->boolean('partial')) {
+            return view('stock._shelf', $data);
+        }
+
+        return view('stock.item', $data + ['scope' => BranchScope::selected($request)]);
+    }
+
+    /**
+     * Barre Ctrl+K : les articles qui correspondent (8 au plus) dans les branches affichees, comme la recherche.
+     * Jamais de prix ici : la barre sert a ouvrir la page d'un article.
+     */
+    public function palette(Request $request): JsonResponse
+    {
+        $q = trim(mb_substr((string) $request->query('q', ''), 0, 60));
+        $terms = $this->terms($q);
+        $items = $terms === [] ? collect() : $this->search($q, $terms, null, [], BranchScope::ids($request), 8);
+
+        return response()->json([
+            'products' => $items->map(fn (object $r) => [
+                'code' => $r->code,
+                'merged' => $r->merged,
+                'designation' => $r->designation,
+                'total' => $r->total,
+                'state' => StockState::of($r->total),
+                'url' => route('stock.item', ['code' => $r->code]),
+            ])->values(),
+        ]);
+    }
+
+    /**
+     * Ce que la fenetre "apercu" et la page d'un article montrent : chaque branche affichee (BranchScope : la branche
+     * choisie en haut, sinon toutes celles que le compte voit), ses lignes et les prix que le compte peut voir.
+     *
+     * @return array<string, mixed>
+     */
+    private function productData(Request $request, string $code, string $batch): array
+    {
+        $key = BranchStock::keyFor($code);
         $codes = ProductGroup::codesOf($key);
-        $batch = (string) $request->query('batch', '');
         $visible = $this->visiblePrices($request);
 
-        // seulement les branches que ce compte voit (User::stockBranchIds) : les autres n'apparaissent pas du tout
-        $branches = Branch::where('active', true)->visibleTo($request->user())->orderBy('name')->get();
+        // les branches que ce compte ne voit pas n'apparaissent pas du tout
+        $ids = BranchScope::ids($request);
+        $branches = Branch::where('active', true)->among($ids)->orderBy('name')->get();
         $rows = BranchStock::whereIn('code_key', $codes)->whereIn('branch_id', $branches->pluck('id'))->orderBy('code_key')->get()->groupBy('branch_id');
         $jobs = $batch !== '' ? RefreshJob::where('batch', $batch)->get() : collect();
         $jobsByBranch = $jobs->groupBy('branch_id');
-        $main = $branches->firstWhere('is_main', true);
-        $mainRow = $main ? $this->mainRow($rows->get($main->id, collect())) : null;
+        $ref = $this->priceBranch($request, $ids);
+        $mainRow = $ref ? $this->mainRow($rows->get($ref->id, collect())) : null;
 
-        $list = $branches->map(function (Branch $branch) use ($rows, $jobsByBranch, $visible) {
+        $list = $branches->map(function (Branch $branch) use ($rows, $jobsByBranch, $visible, $ref) {
             return [
                 'branch' => $branch->name,
                 'main' => $branch->is_main,
+                // reference des prix : les autres branches dont un prix en differe sont signalees
+                'ref' => $branch->id === $ref?->id,
                 'online' => $branch->isOnline(),
                 'last_seen' => $branch->last_seen_at?->diffForHumans(),
                 'status' => $this->branchStatus($jobsByBranch->get($branch->id)),
@@ -55,6 +106,7 @@ class StockController extends Controller
                     'code' => $row->code_raw,
                     'designation' => $row->designation,
                     'stock' => $row->stock,
+                    'state' => StockState::of($row->stock),
                     ...$this->prices($row, $visible),
                     // une synchro complete n'ecrit que les lignes changees : la valeur est confirmee a la derniere synchro
                     'updated' => collect([$row->updated_at, $branch->last_sync_at])->filter()->max()?->diffForHumans(),
@@ -62,12 +114,21 @@ class StockController extends Controller
             ];
         })->sortByDesc(fn (array $b) => $b['rows']->isEmpty() ? -INF : $b['rows']->max('stock'))->values();
 
+        $all = $rows->flatten(1);
+        $total = round($all->sum('stock'), 2);
         $done = $jobs->isNotEmpty()
             && $jobs->every(fn (RefreshJob $job) => ! in_array($job->displayStatus(), ['pending', 'taken'], true));
 
-        return response()->json([
+        return [
             'code' => $key,
             'codes' => $codes,
+            // la designation de la branche qui a le plus de stock, comme dans la recherche
+            'designation' => $all->sortByDesc('stock')->first()?->designation,
+            'total' => $total,
+            'total_state' => $all->isEmpty() ? null : StockState::of($total),
+            'branches_with_stock' => $list->filter(fn (array $b) => $b['rows']->sum('stock') > 0)->count(),
+            'branches_count' => $branches->count(),
+            'price_branch' => $ref?->name,
             // prix de reference : la fenetre signale les branches dont un prix en differe
             'main_price' => in_array('price', $visible, true) ? $mainRow?->price : null,
             'main_prices' => $mainRow && $visible !== [] ? $this->prices($mainRow, $visible) : null,
@@ -75,11 +136,11 @@ class StockController extends Controller
             'show_buy' => in_array('price_buy', $visible, true),
             'branches' => $list,
             'done' => $done,
-        ]);
+        ];
     }
 
     /**
-     * Bouton "mettre a jour" : une demande par branche active que le compte voit, recuperee par chaque agent sous ~10 s.
+     * Bouton "mettre a jour" : une demande par branche active affichee (BranchScope), recuperee par chaque agent sous ~10 s.
      * Code fusionne : une demande par code du groupe, l'agent ne lit toujours qu'un code a la fois.
      */
     public function refresh(Request $request): JsonResponse
@@ -92,7 +153,7 @@ class StockController extends Controller
             return response()->json(['batch' => $batch]);
         }
 
-        foreach (Branch::where('active', true)->visibleTo($request->user())->pluck('id') as $branchId) {
+        foreach (Branch::where('active', true)->among(BranchScope::ids($request))->pluck('id') as $branchId) {
             foreach ($codes as $code) {
                 RefreshJob::create([
                     'batch' => $batch,
@@ -115,7 +176,8 @@ class StockController extends Controller
     {
         $q = trim((string) $request->query('q', ''));
         $terms = $this->terms($q);
-        $main = Branch::main();
+        $ids = BranchScope::ids($request);
+        $main = $this->priceBranch($request, $ids);
 
         $visible = $this->visiblePrices($request);
 
@@ -126,8 +188,9 @@ class StockController extends Controller
             'mainBranch' => $main,
             'showSale' => in_array('price', $visible, true),
             'showBuy' => in_array('price_buy', $visible, true),
-            'results' => $terms === [] ? collect() : $this->search($q, $terms, $main, $visible, $request->user()->stockBranchIds()),
-            'branchesTotal' => Branch::where('active', true)->visibleTo($request->user())->count(),
+            'results' => $terms === [] ? collect() : $this->search($q, $terms, $main, $visible, $ids),
+            'branchesTotal' => Branch::where('active', true)->among($ids)->count(),
+            'noMain' => Branch::main() === null,
         ]);
     }
 
@@ -144,7 +207,28 @@ class StockController extends Controller
         return array_slice($words, 0, 5);
     }
 
-    /** Ligne de reference des prix dans la branche principale ; si le groupe y a plusieurs codes, la mieux stockee. */
+    /**
+     * Branche de reference des prix parmi celles affichees : la principale si elle en fait partie ; sinon la seule
+     * branche affichee (selecteur du haut), ou la branche du compte. Sinon aucune : pas de prix dans la recherche.
+     *
+     * @param  list<int>|null  $ids  BranchScope::ids
+     */
+    private function priceBranch(Request $request, ?array $ids): ?Branch
+    {
+        $main = Branch::main();
+        if ($main && ($ids === null || in_array($main->id, $ids, true))) {
+            return $main;
+        }
+        $id = match (true) {
+            $ids !== null && count($ids) === 1 => $ids[0],
+            $ids !== null && in_array($request->user()->branch_id, $ids, true) => $request->user()->branch_id,
+            default => null,
+        };
+
+        return $id ? Branch::where('active', true)->find($id) : null;
+    }
+
+    /** Ligne de reference des prix dans la branche de reference ; si le groupe y a plusieurs codes, la mieux stockee. */
     private function mainRow(Collection $mainRows): ?BranchStock
     {
         return $mainRows->sortByDesc('stock')->first();
@@ -215,9 +299,9 @@ class StockController extends Controller
     /**
      * @param  list<string>  $terms
      * @param  list<string>  $visible  prix que le compte peut voir (visiblePrices)
-     * @param  list<int>|null  $branchIds  branches que le compte voit (User::stockBranchIds), null = toutes
+     * @param  list<int>|null  $branchIds  branches affichees (BranchScope::ids), null = toutes
      */
-    private function search(string $q, array $terms, ?Branch $main, array $visible, ?array $branchIds): Collection
+    private function search(string $q, array $terms, ?Branch $main, array $visible, ?array $branchIds, int $limit = self::MAX_RESULTS): Collection
     {
         $upper = mb_strtoupper(trim($q));
         $prefix = $this->escapeLike($upper).'%';
@@ -239,7 +323,7 @@ class StockController extends Controller
             // code exact, puis code qui commence par la recherche, puis code qui la contient, puis designation seule
             ->orderByRaw("CASE WHEN branch_stock.code_key = ? THEN 0 WHEN branch_stock.code_key LIKE ? ESCAPE '!' THEN 1 WHEN branch_stock.code_key LIKE ? ESCAPE '!' THEN 2 ELSE 3 END", [$upper, $prefix, $firstInCode])
             ->orderBy('branch_stock.code_key')
-            ->limit(self::MAX_RESULTS)
+            ->limit($limit)
             ->pluck('branch_stock.code_key');
 
         // codes fusionnes : une ligne par groupe, affichee sous le premier de ses codes trouve par la recherche

@@ -46,4 +46,30 @@ return [
         'light' => 'Light',
         'dark' => 'Dark',
     ],
+
+    'scope' => [
+        'title' => 'Branches shown: all of yours or a single one',
+        'all' => 'All my branches',
+        'count' => ':count',
+    ],
+    'palette' => [
+        'title' => 'Search everything',
+        'button' => 'Search',
+        'placeholder' => 'Product code or name, or a page…',
+        'products' => 'Products',
+        'pages' => 'Pages',
+        'shortcuts' => 'Shortcuts',
+        'searching' => 'Searching…',
+        'nothing' => 'Nothing matches “:q”.',
+        'failed' => 'Weak connection. Type another letter to try again.',
+        'key_palette' => 'Search everything, from any page',
+        'key_search' => 'Search box of the stock page',
+        'key_move' => 'Move through the results',
+        'key_open' => 'Open',
+        'key_close' => 'Close',
+    ],
+    'keys' => [
+        'enter' => 'Enter',
+        'esc' => 'Esc',
+    ],
 ];

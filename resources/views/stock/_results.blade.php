@@ -47,7 +47,8 @@
                 @endif
                 <td>
                     <span class="codes">
-                        <span class="code ltr">{{ Highlight::html($r->code, $terms) }}</span>
+                        {{-- le code ouvre la page de l'article ; "معاينة" garde l'apercu rapide --}}
+                        <a class="code ltr" href="{{ route('stock.item', ['code' => $r->code]) }}">{{ Highlight::html($r->code, $terms) }}</a>
                         @if ($merge && $r->merged)
                             <button type="submit" class="link" form="unmerge-form" name="code" value="{{ $r->code }}" title="{{ __('stock.merge.remove', ['code' => $r->code]) }}">✕</button>
                         @endif
@@ -57,7 +58,8 @@
                     </span>
                 </td>
                 <td><bdi>{{ Highlight::html($r->designation, $terms) }}</bdi></td>
-                <td><span class="num total {{ $r->total < 0 ? 'neg' : '' }}">{{ number_format($r->total, 2, ',', ' ') }}</span></td>
+                @php($state = App\Support\StockState::of($r->total))
+                <td><span class="qty total {{ $state }}" @if ($state) title="{{ __("stock.state.{$state}") }}" @endif>{{ number_format($r->total, 2, ',', ' ') }}</span></td>
                 @if ($mainBranch)
                     @if ($showSale)
                         <td>
@@ -78,10 +80,15 @@
         @endforeach
         </tbody>
     </table>
+    {{-- memes couleurs que la liste des articles de Gescomm (App\Support\StockState) --}}
+    <p class="legend muted small">
+        <span><span class="qty zero">0,00</span> {{ __('stock.state.zero') }}</span>
+        <span><span class="qty negative">-3,00</span> {{ __('stock.state.negative') }}</span>
+    </p>
     @if ($results->count() >= 100)
         <p class="muted small">{{ __('stock.too_many', ['count' => 100]) }}</p>
     @endif
-    @if (! $mainBranch && auth()->user()->can('branches.manage'))
+    @if ($noMain && auth()->user()->can('branches.manage'))
         <p class="muted small">{!! __('stock.no_main', ['link' => '<a href="'.route('branches.index').'">'.e(__('common.nav.branches')).'</a>']) !!}</p>
     @endif
 @endif

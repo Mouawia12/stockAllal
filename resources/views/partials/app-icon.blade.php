@@ -65,10 +65,10 @@
         @break
     @case('logo')
         <svg viewBox="0 0 48 48" aria-hidden="true">
-            <rect width="48" height="48" rx="13" fill="#714b67"/>
-            <polygon points="24,10 37,16.5 24,23 11,16.5" fill="#f6d9ee"/>
-            <polygon points="11,16.5 24,23 24,37.5 11,31" fill="#e3aed4"/>
-            <polygon points="24,23 37,16.5 37,31 24,37.5" fill="#c792bb"/>
+            <rect width="48" height="48" rx="13" fill="#146c84"/>
+            <polygon points="24,10 37,16.5 24,23 11,16.5" fill="#fbe3a0"/>
+            <polygon points="11,16.5 24,23 24,37.5 11,31" fill="#f4c542"/>
+            <polygon points="24,23 37,16.5 37,31 24,37.5" fill="#d9a91c"/>
         </svg>
         @break
 @endswitch

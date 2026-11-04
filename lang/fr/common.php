@@ -46,4 +46,30 @@ return [
         'light' => 'Clair',
         'dark' => 'Sombre',
     ],
+
+    'scope' => [
+        'title' => 'Succursales affichées : toutes les vôtres ou une seule',
+        'all' => 'Toutes mes succursales',
+        'count' => ':count',
+    ],
+    'palette' => [
+        'title' => 'Recherche globale',
+        'button' => 'Rechercher',
+        'placeholder' => 'Code ou désignation d\'un article, ou nom d\'une page…',
+        'products' => 'Articles',
+        'pages' => 'Pages',
+        'shortcuts' => 'Raccourcis',
+        'searching' => 'Recherche…',
+        'nothing' => 'Rien ne correspond à « :q ».',
+        'failed' => 'Connexion faible. Tapez une autre lettre pour réessayer.',
+        'key_palette' => 'Recherche globale, depuis n\'importe quelle page',
+        'key_search' => 'Champ de recherche de la page du stock',
+        'key_move' => 'Se déplacer dans les résultats',
+        'key_open' => 'Ouvrir',
+        'key_close' => 'Fermer',
+    ],
+    'keys' => [
+        'enter' => 'Entrée',
+        'esc' => 'Échap',
+    ],
 ];

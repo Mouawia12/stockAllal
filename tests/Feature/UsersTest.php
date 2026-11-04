@@ -56,7 +56,7 @@ class UsersTest extends TestCase
         $row = $page->viewData('results')[0];
         $this->assertEquals([null, null, null], [$row->price, $row->wholesale, $row->buy]);
         $data = $this->actingAs($user)->getJson('/product?code=820AC')->assertOk()->json();
-        $this->assertSame(['code', 'designation', 'stock', 'updated'], array_keys($data['branches'][0]['rows'][0]));
+        $this->assertSame(['code', 'designation', 'stock', 'state', 'updated'], array_keys($data['branches'][0]['rows'][0]), 'no price field');
         $this->assertFalse($data['show_sale']);
 
         $this->actingAs($user)->postJson('/refresh', ['code' => '820AC'])->assertForbidden();

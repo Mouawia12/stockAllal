@@ -7,7 +7,7 @@
     .top { display: flex; align-items: center; gap: 8px; margin-bottom: 16px; flex-wrap: wrap; }
     .top h1 { font-size: 20px; margin: 0; flex: 1; }
     .code-box { border: 2px dashed var(--accent); border-radius: 10px; padding: 14px 16px; margin-bottom: 16px; background: var(--card); }
-    .code-box .code { font: 600 26px/1.3 Consolas, "Courier New", monospace; letter-spacing: 2px; direction: ltr; unicode-bidi: isolate; user-select: all; }
+    .code-box .code { font: 700 32px/1.2 var(--font-code); letter-spacing: 2px; direction: ltr; unicode-bidi: isolate; user-select: all; }
     .code-row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin: 4px 0 6px; }
     .copy { display: inline-flex; align-items: center; gap: 6px; padding: 5px 12px; }
     .copy svg { width: 17px; height: 17px; flex: none; }
