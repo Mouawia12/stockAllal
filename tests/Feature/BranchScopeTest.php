@@ -8,6 +8,7 @@ use App\Models\BranchAccess;
 use App\Models\BranchStock;
 use App\Models\Document;
 use App\Models\InstallCode;
+use App\Models\Partner;
 use App\Models\RefreshJob;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -146,6 +147,12 @@ class BranchScopeTest extends TestCase
                 ['key' => (string) $number, 'digest' => $number, 'number' => $number, 'lines' => [['code' => '820AC', 'qty' => $qty, 'total' => $qty * 100]]],
             ]]])->assertOk();
         }
+        // le meme code de client dans les deux branches : deux clients differents
+        foreach ([[$oranToken, 'Ets Oran'], [$setifToken, 'Ets Setif']] as [$token, $name]) {
+            $this->withToken($token)->postJson('/api/agent/records', ['dataset' => 'customers', 'groups' => ['p01' => [
+                ['key' => 'C001', 'digest' => 1, 'code' => 'C001', 'name' => $name],
+            ]]])->assertOk();
+        }
         $karim = User::factory()->inBranch($oran)->withPermissions(['prices.sale', 'sales.view'])->create();
 
         // il voit le stock de Setif (nouvelle branche = ouverte a toutes), pas ses ventes
@@ -160,6 +167,10 @@ class BranchScopeTest extends TestCase
         $this->actingAs($karim)->get('/sales')->assertOk()->assertSee('40501')->assertDontSee('70777');
         $this->actingAs($karim)->get('/sales/'.Document::where('number', 40501)->value('id'))->assertOk();
         $this->actingAs($karim)->get("/sales/{$setifBon}")->assertNotFound();
+        // ses clients : ceux de sa branche ; la fiche du client de Setif n'existe pas pour lui
+        $setifCustomer = Partner::where('name', 'Ets Setif')->value('id');
+        $this->actingAs($karim)->get('/customers')->assertOk()->assertSee('Ets Oran')->assertDontSee('Ets Setif');
+        $this->actingAs($karim)->get("/customers/{$setifCustomer}")->assertNotFound();
         // choisir Setif en haut (il en voit le stock) ne montre pas ses bons
         $this->actingAs($karim)->post('/branch-scope', ['branch_id' => $setif->id]);
         $this->actingAs($karim)->get('/sales')->assertOk()->assertDontSee('70777')->assertDontSee('40501')
@@ -172,6 +183,7 @@ class BranchScopeTest extends TestCase
         $this->assertStringContainsString('70777', $this->actingAs($karim)->get('/stock/item?code=820AC')->getContent());
         $this->actingAs($karim)->get('/sales')->assertOk()->assertSee('70777');
         $this->actingAs($karim)->get("/sales/{$setifBon}")->assertOk();
+        $this->actingAs($karim)->get("/customers/{$setifCustomer}")->assertOk()->assertSee('Ets Setif');
 
         // un compte sans branche (d'avant les roles) voit le stock de tout le monde, les ventes de personne
         $old = User::factory()->withPermissions(['sales.view'])->create();

@@ -13,7 +13,7 @@ class HomeTest extends TestCase
 
     public function test_login_lands_on_the_apps_screen(): void
     {
-        $this->get('/login')->assertOk()->assertSee('تسجيل الدخول')->assertSee('قريباً');
+        $this->get('/login')->assertOk()->assertSee('تسجيل الدخول')->assertSee(__('common.available'));
 
         User::factory()->create(['username' => 'karim', 'password' => 'karim-2026']);
         $this->post('/login', ['username' => 'karim', 'password' => 'karim-2026'])->assertRedirect('/');
@@ -21,23 +21,23 @@ class HomeTest extends TestCase
         $this->get('/login')->assertRedirect('/');
     }
 
-    public function test_inventory_opens_and_the_other_apps_are_coming_soon(): void
+    public function test_inventory_opens_and_the_sales_apps_need_sales_view(): void
     {
         $worker = User::factory()->create();
 
         $page = $this->actingAs($worker)->get('/')->assertOk()
-            ->assertSee(route('stock.index'))
-            ->assertSee(['المخزون', 'الموردون', 'الزبائن'])
+            ->assertSee(route('stock.index'))->assertSee('المخزون')
             // "الإعدادات" pour tous : un employe y trouve son propre compte
             ->assertSee('الإعدادات')->assertSee(route('settings'))
-            // sans sales.view : ni les ventes ni les achats
-            ->assertDontSee(route('sales.index'))->assertDontSee('المبيعات');
-        $this->assertSame(2, substr_count($page->getContent(), 'class="soon-pill"'), 'الموردون، الزبائن');
+            // sans sales.view : ni ventes, ni achats, ni clients, ni fournisseurs
+            ->assertDontSee(route('sales.index'))->assertDontSee('المبيعات')->assertDontSee(route('customers.index'))->assertDontSee('الموردون');
+        $this->assertSame(0, substr_count($page->getContent(), 'class="soon-pill"'));
 
-        // avec sales.view : les bons de vente et d'achat s'ouvrent
+        // avec sales.view : les quatre s'ouvrent
         $seller = User::factory()->withPermissions(['sales.view'])->create();
-        $this->actingAs($seller)->get('/')->assertOk()->assertSee(['المبيعات', 'المشتريات'])
-            ->assertSee(route('sales.index'))->assertSee(route('purchases.index'));
+        $this->actingAs($seller)->get('/')->assertOk()->assertSee(['المبيعات', 'المشتريات', 'الزبائن', 'الموردون'])
+            ->assertSee(route('sales.index'))->assertSee(route('purchases.index'))
+            ->assertSee(route('customers.index'))->assertSee(route('suppliers.index'));
 
         // dans l'application : son nom et le bouton de retour aux applications
         $this->actingAs($worker)->get('/stock')->assertOk()->assertSee('المخزون')->assertSee('aria-label="التطبيقات"', false);

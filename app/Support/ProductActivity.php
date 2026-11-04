@@ -3,6 +3,7 @@
 namespace App\Support;
 
 use App\Http\Controllers\DocumentController;
+use App\Http\Controllers\PartnerController;
 use App\Models\Branch;
 use App\Models\DocumentLine;
 use App\Models\User;
@@ -121,7 +122,7 @@ final class ProductActivity
             ->when($since, fn ($q) => $q->where('document_lines.date', '>=', $since))
             ->orderByDesc('document_lines.date')->orderByDesc('documents.time')->orderByDesc('documents.number')
             ->limit(self::LIST_LIMIT)
-            ->get(['document_lines.*', 'documents.number', 'documents.time', 'documents.partner_code', 'partners.name as partner_name'])
+            ->get(['document_lines.*', 'documents.number', 'documents.time', 'documents.partner_code', 'partners.name as partner_name', 'partners.id as partner_id'])
             ->map(fn (DocumentLine $line) => [
                 'date' => $line->date?->format('d/m/Y'),
                 'time' => $line->time ? substr($line->time, 0, 5) : null,
@@ -132,6 +133,7 @@ final class ProductActivity
                 'code' => $line->code_raw,
                 'partner' => $line->partner_name ?? $line->partner_code,
                 'partner_code' => $line->partner_name ? $line->partner_code : null,
+                'partner_url' => $line->partner_id ? route(PartnerController::ROUTES[self::PARTNER_KIND[$kind]].'.show', $line->partner_id) : null,
                 'qty' => $line->qty,
                 'back' => $line->qty !== null && $line->qty < 0,
                 'price' => $money ? $line->price : null,

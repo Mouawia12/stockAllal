@@ -76,7 +76,7 @@ class DocumentController extends Controller
             ->leftJoin('partners', fn ($join) => $join->on('partners.branch_id', '=', 'documents.branch_id')
                 ->on('partners.code', '=', 'documents.partner_code')
                 ->where('partners.kind', '=', self::PARTNER_KIND[$kind]))
-            ->select(['documents.*', 'partners.name as partner_name'])
+            ->select(['documents.*', 'partners.name as partner_name', 'partners.id as partner_id'])
             ->selectSub($lines(), 'lines_count')
             ->selectSub($lines()->where('document_lines.qty', '<', 0), 'returns_count')
             ->orderByDesc('documents.date')->orderByDesc('documents.time')->orderByDesc('documents.number')
@@ -114,6 +114,7 @@ class DocumentController extends Controller
                         'hue' => Branch::hueFor($d->branch_id),
                         'partner' => $d->partner_name ?? $d->partner_code,
                         'partner_code' => $d->partner_name ? $d->partner_code : null,
+                        'partner_url' => $d->partner_id ? route(PartnerController::ROUTES[self::PARTNER_KIND[$kind]].'.show', $d->partner_id) : null,
                         'lines' => (int) $d->lines_count,
                         'returns' => (int) $d->returns_count,
                         'amount' => $money ? $d->amount : null,
@@ -156,6 +157,7 @@ class DocumentController extends Controller
             'branch' => $branch,
             'day' => $this->dayLabel($document->date?->toDateString() ?? ''),
             'partner' => $partner,
+            'partnerUrl' => $partner ? route(PartnerController::ROUTES[self::PARTNER_KIND[$kind]].'.show', $partner) : null,
             'money' => $money,
             'seesStock' => $seesStock,
             'lines' => $lines->map(function (DocumentLine $line) use ($stock, $money, $seesStock) {

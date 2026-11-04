@@ -21,7 +21,8 @@
     .bon-head { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.2fr); gap: 16px; margin-bottom: 16px; }
     .bon-id { display: flex; flex-direction: column; gap: 6px; }
     .bon-kind { margin: 0; color: var(--muted); font-weight: 600; }
-    .bon-number { margin: 0; font: 700 clamp(40px, 6vw, 56px)/1 var(--font-code); letter-spacing: .01em; direction: ltr; unicode-bidi: isolate; text-align: start; }
+    /* ltr pour le numero, mais place au debut de la ligne de la page (a droite en arabe) */
+    .bon-number { margin: 0; font: 700 clamp(40px, 6vw, 56px)/1 var(--font-code); letter-spacing: .01em; direction: ltr; unicode-bidi: isolate; align-self: flex-start; }
     .bon-when { margin: 4px 0 0; font-size: 15px; }
     .bon-when .num { color: var(--muted); }
     .bon-branch { display: inline-flex; align-items: center; gap: 8px; margin: 0; font-weight: 600; }
@@ -34,6 +35,8 @@
     .lines th.n, .lines td.n { text-align: end; }
     .lines tr.back td { color: var(--muted); }
     .lines a.code { color: var(--text); }
+    .facts a.who { color: var(--text); text-decoration: underline dotted var(--muted); text-underline-offset: 3px; }
+    .facts a.who:hover { color: var(--accent); }
     .lines a.code:hover { color: var(--accent); text-decoration: underline; text-underline-offset: 3px; }
     /* les totaux sous la colonne des montants, comme le pied d'un bon */
     .totals { display: grid; grid-template-columns: auto auto; justify-content: end; gap: 6px 28px; margin: 14px 0 0; padding-top: 12px; border-top: 2px solid var(--border); }
@@ -70,7 +73,7 @@
         <dl class="facts">
             <div>
                 <dt>{{ $D['col_partner'][$kind] }}</dt>
-                <dd><bdi>{{ $partnerName ?? $document->partner_code ?? '—' }}</bdi>@if ($partnerName && $document->partner_code) <span class="muted small ltr">{{ $document->partner_code }}</span>@endif</dd>
+                <dd>@if ($partnerUrl)<a class="who" href="{{ $partnerUrl }}"><bdi>{{ $partnerName ?? $document->partner_code }}</bdi></a>@else<bdi>{{ $partnerName ?? $document->partner_code ?? '—' }}</bdi>@endif @if ($partnerName && $document->partner_code) <span class="muted small ltr">{{ $document->partner_code }}</span>@endif</dd>
             </div>
             @if ($phones !== '')<div><dt>{{ $D['phone'] }}</dt><dd class="num">{{ $phones }}</dd></div>@endif
             @if ($partner?->wilaya)<div><dt>{{ $D['wilaya'] }}</dt><dd><bdi>{{ $partner->wilaya }}</bdi></dd></div>@endif
@@ -113,9 +116,9 @@
                         <span class="num">{{ $fmt($l['qty']) }}</span>
                     </td>
                     @if ($money)
-                        <td class="n num hide-sm">{{ $fmt($l['price']) }}</td>
-                        <td class="n num hide-sm muted">{{ $l['discount'] ? $fmt($l['discount']) : '' }}</td>
-                        <td class="n num">{{ $fmt($l['total']) }}</td>
+                        <td class="n hide-sm"><span class="num">{{ $fmt($l['price']) }}</span></td>
+                        <td class="n hide-sm muted"><span class="num">{{ $l['discount'] ? $fmt($l['discount']) : '' }}</span></td>
+                        <td class="n"><span class="num">{{ $fmt($l['total']) }}</span></td>
                     @endif
                     @if ($seesStock)
                         <td class="n hide-sm">@if ($l['stock'] !== null)<span class="qty {{ $l['state'] }}">{{ $fmt($l['stock']) }}</span>@else<span class="muted">—</span>@endif</td>

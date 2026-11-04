@@ -95,6 +95,8 @@
         request()->routeIs('stock.*', 'merge.*', 'branches.*') => 'stock',
         request()->routeIs('sales.*') => 'sales',
         request()->routeIs('purchases.*') => 'purchases',
+        request()->routeIs('customers.*') => 'customers',
+        request()->routeIs('suppliers.*') => 'suppliers',
         request()->routeIs('users.*', 'account.*', 'activity.*') => 'settings',
         default => null,
     };
@@ -119,6 +121,8 @@
                 @endcan
             @elseif ($current === 'sales' || $current === 'purchases')
                 <a href="{{ route("{$current}.index") }}" class="on">{{ __('documents.title.'.($current === 'sales' ? 'sale' : 'purchase')) }}</a>
+            @elseif ($current === 'customers' || $current === 'suppliers')
+                <a href="{{ route("{$current}.index") }}" class="on">{{ __('partners.title.'.($current === 'customers' ? 'customer' : 'supplier')) }}</a>
             @elseif ($current === 'settings')
                 @if ($user->managesAccounts())
                     <a href="{{ route('users.index') }}" class="{{ request()->routeIs('users.*') ? 'on' : '' }}">{{ __('common.nav.users') }}</a>

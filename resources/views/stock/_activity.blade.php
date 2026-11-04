@@ -43,31 +43,31 @@
                     <tbody>
                     <tr>
                         <th scope="row">{{ $A["out_{$kind}"] }}</th>
-                        <td class="n num">{{ $fmt($s['out']) }}</td>
-                        @if ($money[$kind])<td class="n num">{{ $fmt($s['out_amount']) }}</td>@endif
+                        <td class="n"><span class="num">{{ $fmt($s['out']) }}</span></td>
+                        @if ($money[$kind])<td class="n"><span class="num">{{ $fmt($s['out_amount']) }}</span></td>@endif
                     </tr>
                     <tr class="back">
                         <th scope="row">{{ $A["back_{$kind}"] }}</th>
-                        <td class="n num">{{ $s['back'] > 0 ? '− '.$fmt($s['back']) : $fmt(0) }}</td>
-                        @if ($money[$kind])<td class="n num">{{ $s['back_amount'] > 0 ? '− '.$fmt($s['back_amount']) : $fmt(0) }}</td>@endif
+                        <td class="n"><span class="num">{{ $s['back'] > 0 ? '− '.$fmt($s['back']) : $fmt(0) }}</span></td>
+                        @if ($money[$kind])<td class="n"><span class="num">{{ $s['back_amount'] > 0 ? '− '.$fmt($s['back_amount']) : $fmt(0) }}</span></td>@endif
                     </tr>
                     <tr class="net">
                         <th scope="row">{{ $A['net'] }}</th>
-                        <td class="n num">{{ $fmt($s['net']) }}</td>
-                        @if ($money[$kind])<td class="n num">{{ $fmt($s['amount']) }}</td>@endif
+                        <td class="n"><span class="num">{{ $fmt($s['net']) }}</span></td>
+                        @if ($money[$kind])<td class="n"><span class="num">{{ $fmt($s['amount']) }}</span></td>@endif
                     </tr>
                     @if ($money[$kind])
                         <tr class="avg">
                             <th scope="row">{{ $A["avg_{$kind}"] }}</th>
                             <td></td>
-                            <td class="n num">{{ $fmt($s['average']) }}</td>
+                            <td class="n"><span class="num">{{ $fmt($s['average']) }}</span></td>
                         </tr>
                     @endif
                     @if ($kind === 'sale' && $s['margin'] !== null)
                         <tr class="avg">
                             <th scope="row" title="{{ $A['margin_help'] }}">{{ $A['margin'] }}@if ($s['margin_partial'])<span class="muted small" title="{{ $A['margin_partial'] }}"> *</span>@endif</th>
                             <td></td>
-                            <td class="n num">{{ $fmt($s['margin']) }}</td>
+                            <td class="n"><span class="num">{{ $fmt($s['margin']) }}</span></td>
                         </tr>
                     @endif
                     </tbody>
@@ -94,10 +94,10 @@
                 @foreach ($activity['per_branch'] as $row)
                     <tr class="bt" style="--bh: {{ $row['hue'] }}">
                         <td><b>{{ $row['branch'] }}</b></td>
-                        <td class="n num">{{ $fmt($row['sale']['net']) }}</td>
-                        <td class="n num hide-sm">{{ $fmt($row['sale']['back']) }}</td>
-                        @if ($money['sale'])<td class="n num">{{ $fmt($row['sale']['amount']) }}</td>@endif
-                        <td class="n num hide-sm">{{ $fmt($row['purchase']['net']) }}</td>
+                        <td class="n"><span class="num">{{ $fmt($row['sale']['net']) }}</span></td>
+                        <td class="n hide-sm"><span class="num">{{ $fmt($row['sale']['back']) }}</span></td>
+                        @if ($money['sale'])<td class="n"><span class="num">{{ $fmt($row['sale']['amount']) }}</span></td>@endif
+                        <td class="n hide-sm"><span class="num">{{ $fmt($row['purchase']['net']) }}</span></td>
                     </tr>
                 @endforeach
                 </tbody>
@@ -139,15 +139,15 @@
                                 <td class="num">{{ $l['date'] }} <span class="muted small">{{ $l['time'] }}</span></td>
                                 <td class="num"><a class="bon-link" href="{{ $l['url'] }}">{{ $l['number'] }}</a>@if (count($codes) > 1) <span class="code ltr small muted">{{ $l['code'] }}</span>@endif</td>
                                 @if ($activity['several'])<td class="hide-sm">{{ $l['branch'] }}</td>@endif
-                                <td><bdi>{{ $l['partner'] ?? '—' }}</bdi>@if ($l['partner_code']) <span class="muted small ltr">{{ $l['partner_code'] }}</span>@endif</td>
+                                <td>@if ($l['partner_url'])<a class="bon-link" href="{{ $l['partner_url'] }}"><bdi>{{ $l['partner'] }}</bdi></a>@else<bdi>{{ $l['partner'] ?? '—' }}</bdi>@endif @if ($l['partner_code']) <span class="muted small ltr">{{ $l['partner_code'] }}</span>@endif</td>
                                 <td class="n">
                                     @if ($l['back'])<span class="pill">{{ $A['return'] }}</span>@endif
                                     <span class="num">{{ $fmt($l['qty']) }}</span>
                                 </td>
                                 @if ($money[$kind])
-                                    <td class="n num hide-sm">{{ $fmt($l['price']) }}</td>
-                                    <td class="n num hide-sm muted">{{ $l['discount'] ? $fmt($l['discount']) : '' }}</td>
-                                    <td class="n num">{{ $fmt($l['total']) }}</td>
+                                    <td class="n hide-sm"><span class="num">{{ $fmt($l['price']) }}</span></td>
+                                    <td class="n hide-sm muted"><span class="num">{{ $l['discount'] ? $fmt($l['discount']) : '' }}</span></td>
+                                    <td class="n"><span class="num">{{ $fmt($l['total']) }}</span></td>
                                 @endif
                             </tr>
                         @endforeach

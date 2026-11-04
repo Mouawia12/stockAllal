@@ -57,7 +57,7 @@ return [
         'stock.refresh' => ['title' => 'Refresh now', 'short' => 'Refresh now', 'help' => 'Asks every branch for the live quantity of a product.'],
         'prices.sale' => ['title' => 'Selling prices', 'short' => 'Selling prices', 'help' => 'Sees the retail and wholesale prices in search and preview.'],
         'prices.buy' => ['title' => 'Purchase price', 'short' => 'Purchase price', 'help' => 'Sees the purchase price (Pu Achat). Sensitive information.'],
-        'sales.view' => ['title' => 'Product sales and purchases', 'short' => 'Sales', 'help' => 'Sees on a product page what was sold and bought, slip by slip, in their own branch only (the owner: their branches). Amounts need “Selling prices”, the margin “Purchase price”.'],
+        'sales.view' => ['title' => 'Sales, purchases, customers and suppliers', 'short' => 'Sales', 'help' => 'Opens the Sales, Purchases, Customers and Suppliers apps, and sees on a product page what was sold and bought, in their own branch only (the owner: their branches). Sale and customer amounts need “Selling prices”; purchase and supplier amounts and the margin, “Purchase price”.'],
         'branches.view' => ['title' => 'See branches', 'short' => 'Branches', 'help' => 'Opens the branches page: status, last sync, number of items.'],
         'branches.sync' => ['title' => 'Sync branches', 'short' => 'Sync', 'help' => '“Sync now” button: the branch sends its whole stock right away.'],
         'branches.manage' => ['title' => 'Manage branches', 'short' => 'Branch management', 'help' => 'Rename, disable, delete, main branch and install codes.'],

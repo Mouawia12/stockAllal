@@ -39,6 +39,8 @@
     .bons tbody:first-of-type tr.day th { padding-top: 8px; }
     a.bon { font-family: var(--font-code); font-weight: 600; font-size: 17px; color: var(--text); letter-spacing: .02em; }
     a.bon:hover { color: var(--accent); text-decoration: underline; text-underline-offset: 3px; }
+    a.who { color: inherit; }
+    a.who:hover { color: var(--accent); text-decoration: underline; text-underline-offset: 3px; }
     .bons tbody tr:focus-within > td { background: var(--row-hover); }
     .bons td.neg-amount { color: var(--muted); }
     .pager { display: flex; justify-content: space-between; gap: 8px; margin-top: 12px; }
@@ -121,12 +123,12 @@
                         <td><a class="bon ltr" href="{{ $r['url'] }}">{{ $r['number'] }}</a></td>
                         <td class="num muted hide-sm">{{ $r['time'] }}</td>
                         @if ($several)<td>{{ $r['branch'] }}</td>@endif
-                        <td><bdi>{{ $r['partner'] ?? '—' }}</bdi>@if ($r['partner_code']) <span class="muted small ltr hide-sm">{{ $r['partner_code'] }}</span>@endif</td>
+                        <td>@if ($r['partner_url'])<a class="who" href="{{ $r['partner_url'] }}"><bdi>{{ $r['partner'] }}</bdi></a>@else<bdi>{{ $r['partner'] ?? '—' }}</bdi>@endif @if ($r['partner_code']) <span class="muted small ltr hide-sm">{{ $r['partner_code'] }}</span>@endif</td>
                         <td class="n">
                             @if ($r['returns'] > 0)<span class="pill" title="{{ trans_choice('documents.return_lines', $r['returns'], ['count' => $r['returns']]) }}">{{ $D['return'] }}</span>@endif
                             <span class="num">{{ $r['lines'] }}</span>
                         </td>
-                        @if ($money)<td class="n num">{{ $fmt($r['amount']) }}</td>@endif
+                        @if ($money)<td class="n"><span class="num">{{ $fmt($r['amount']) }}</span></td>@endif
                         <td class="hide-sm muted"><bdi>{{ $kind === 'sale' ? $r['served_by'] : $r['payment'] }}</bdi></td>
                     </tr>
                 @endforeach

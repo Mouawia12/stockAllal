@@ -11,8 +11,8 @@ return [
     'stock' => ['route' => 'stock.index'],
     'sales' => ['route' => 'sales.index', 'can' => 'sales.view'],
     'purchases' => ['route' => 'purchases.index', 'can' => 'sales.view'],
-    'suppliers' => ['route' => null],
-    'customers' => ['route' => null],
+    'suppliers' => ['route' => 'suppliers.index', 'can' => 'sales.view'],
+    'customers' => ['route' => 'customers.index', 'can' => 'sales.view'],
     // pour tous : la route "settings" mene aux comptes qui en gere (App\Support\Roles), les autres a leur propre compte
     'settings' => ['route' => 'settings'],
 ];
