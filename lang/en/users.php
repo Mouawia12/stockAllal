@@ -49,6 +49,7 @@ return [
     'perms_always' => 'Always allowed: searching the stock and seeing quantities, changing their name and password in “My account”.',
     'perm_groups' => [
         'stock' => 'Stock and prices',
+        'sales' => 'Sales and purchases',
         'branches' => 'Branches and agent',
         'products' => 'Products',
     ],
@@ -56,6 +57,7 @@ return [
         'stock.refresh' => ['title' => 'Refresh now', 'short' => 'Refresh now', 'help' => 'Asks every branch for the live quantity of a product.'],
         'prices.sale' => ['title' => 'Selling prices', 'short' => 'Selling prices', 'help' => 'Sees the retail and wholesale prices in search and preview.'],
         'prices.buy' => ['title' => 'Purchase price', 'short' => 'Purchase price', 'help' => 'Sees the purchase price (Pu Achat). Sensitive information.'],
+        'sales.view' => ['title' => 'Product sales and purchases', 'short' => 'Sales', 'help' => 'Sees on a product page what was sold and bought, slip by slip, in their own branch only (the owner: their branches). Amounts need “Selling prices”, the margin “Purchase price”.'],
         'branches.view' => ['title' => 'See branches', 'short' => 'Branches', 'help' => 'Opens the branches page: status, last sync, number of items.'],
         'branches.sync' => ['title' => 'Sync branches', 'short' => 'Sync', 'help' => '“Sync now” button: the branch sends its whole stock right away.'],
         'branches.manage' => ['title' => 'Manage branches', 'short' => 'Branch management', 'help' => 'Rename, disable, delete, main branch and install codes.'],

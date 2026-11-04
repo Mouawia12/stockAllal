@@ -124,6 +124,18 @@ try {
         Assert ([int]$rows[0].items -gt 0) 'aucun article recu en 3 minutes (voir le journal dans le dossier de test)'
         Write-Host "        $($rows[0].items) articles recus, agent $($rows[0].agent_version)"
     }
+    Test-Case 'agent 1.0.7 : les ventes, achats et clients arrivent, sans erreur de tache' {
+        $deadline = (Get-Date).AddSeconds(240)
+        do {
+            Start-Sleep -Seconds 10
+            $counts = @(Invoke-Sql "select (select count(*) from documents where kind = 'sale') as sales, (select count(*) from documents where kind = 'purchase') as purchases, (select count(*) from partners where kind = 'customer') as customers, (select count(*) from document_lines) as lines")
+        } while (([int]$counts[0].sales -eq 0 -or [int]$counts[0].customers -eq 0) -and (Get-Date) -lt $deadline)
+        Assert ([int]$counts[0].customers -gt 0) 'aucun client recu en 4 minutes (voir le journal dans le dossier de test)'
+        Assert ([int]$counts[0].sales -gt 0) 'aucun bon de vente recu en 4 minutes'
+        $failing = @(Invoke-Sql 'select task, last_error from branch_tasks where last_error_at is not null and (last_ok_at is null or last_error_at > last_ok_at)')
+        Assert ($failing.Count -eq 0) ('taches en erreur : ' + (@($failing | ForEach-Object { "$($_.task) ($($_.last_error))" }) -join ', '))
+        Write-Host "        $($counts[0].sales) bons de vente, $($counts[0].purchases) d'achat, $($counts[0].lines) lignes, $($counts[0].customers) clients"
+    }
     Test-Case 'mise a jour de l''agent' {
         Click-Element (Wait-Element $script:p '^Mettre . jour l''agent$')
         [void](Wait-Element $script:p '^Agent mis . jour' 60)

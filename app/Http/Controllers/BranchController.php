@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Models\Branch;
 use App\Models\BranchAccess;
+use App\Models\BranchTask;
 use App\Models\InstallCode;
 use App\Models\RefreshJob;
 use App\Support\Activity;
@@ -29,6 +30,8 @@ class BranchController extends Controller
 
         return view('branches.index', [
             'branches' => $branches,
+            // ventes, clients... (agent 1.0.7) : ou en est chaque tache de chaque branche
+            'tasks' => BranchTask::whereIn('branch_id', $branches->pluck('id'))->get()->groupBy('branch_id'),
             'agentVersion' => AgentDownloadController::version(),
             'managed' => $canAccess ? $user->managedBranches() : collect(),
             'access' => $canAccess

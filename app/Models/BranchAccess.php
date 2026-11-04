@@ -5,14 +5,22 @@ namespace App\Models;
 use Illuminate\Support\Facades\DB;
 
 /**
- * Qui voit quoi entre les branches (table branch_access) : la branche A voit le stock de la branche B.
+ * Qui voit quoi entre les branches (table branch_access) : la branche A voit le stock (ou les ventes) de la branche B.
  * Une ligne = une permission ; sa propre branche, chacun la voit toujours (pas de ligne).
  * Une nouvelle branche voit toutes les autres et toutes la voient, comme avant les roles : on restreint ensuite.
  */
 final class BranchAccess
 {
-    /** @var list<string> modules ou l'acces se regle ; plus tard sales, customers... */
-    public const MODULES = ['stock'];
+    /** @var list<string> modules ou l'acces se regle ; plus tard customers... */
+    public const MODULES = ['stock', 'sales'];
+
+    /**
+     * Ouverts a toutes les branches quand une branche arrive (comme avant les roles) ; les autres modules :
+     * chaque branche ne voit que la sienne tant qu'on ne lui ouvre pas une autre (ventes : decision du 04/11/2026).
+     *
+     * @var list<string>
+     */
+    public const OPEN_FOR_NEW = ['stock'];
 
     /** @return list<int> branches que la branche $branchId voit dans ce module */
     public static function visibleFrom(int $branchId, string $module): array
@@ -39,12 +47,12 @@ final class BranchAccess
         });
     }
 
-    /** Nouvelle branche : elle voit toutes les autres et toutes la voient, dans chaque module. */
+    /** Nouvelle branche : elle voit toutes les autres et toutes la voient, dans les modules de OPEN_FOR_NEW. */
     public static function openNewBranch(Branch $branch): void
     {
         $others = Branch::whereKeyNot($branch->id)->pluck('id');
         $rows = [];
-        foreach (self::MODULES as $module) {
+        foreach (self::OPEN_FOR_NEW as $module) {
             foreach ($others as $id) {
                 $rows[] = ['branch_id' => $branch->id, 'visible_branch_id' => $id, 'module' => $module];
                 $rows[] = ['branch_id' => $id, 'visible_branch_id' => $branch->id, 'module' => $module];

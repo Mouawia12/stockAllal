@@ -130,4 +130,40 @@ class BranchScopeTest extends TestCase
         $this->withToken($newToken)->getJson('/api/agent/ping')->assertOk();
         $this->withToken($oldToken)->getJson('/api/agent/ping')->assertUnauthorized();
     }
+
+    /** Ventes : sa branche seulement, meme quand le stock d'une autre lui est ouvert (decision du 04/11/2026). */
+    public function test_a_user_of_a_never_sees_the_sales_of_b(): void
+    {
+        [$oranToken, $oran] = $this->register('Oran');
+        [$setifToken, $setif] = $this->register('Setif');
+        $oran->forceFill(['agent_version' => '1.0.7'])->save();
+        $setif->forceFill(['agent_version' => '1.0.7'])->save();
+        $this->stock($oran, 10);
+        $this->stock($setif, 20);
+        foreach ([[$oranToken, 40501, 3], [$setifToken, 70777, 9]] as [$token, $number, $qty]) {
+            $this->withToken($token)->postJson('/api/agent/records', ['dataset' => 'sales', 'groups' => [now()->toDateString() => [
+                ['key' => (string) $number, 'digest' => $number, 'number' => $number, 'lines' => [['code' => '820AC', 'qty' => $qty, 'total' => $qty * 100]]],
+            ]]])->assertOk();
+        }
+        $karim = User::factory()->inBranch($oran)->withPermissions(['prices.sale', 'sales.view'])->create();
+
+        // il voit le stock de Setif (nouvelle branche = ouverte a toutes), pas ses ventes
+        $this->assertContains($setif->id, $karim->stockBranchIds());
+        $this->assertSame([$oran->id], $karim->salesBranchIds());
+        $html = $this->actingAs($karim)->get('/stock/item?code=820AC')->assertOk()->assertSee('Setif')->getContent();
+        $this->assertStringContainsString('40501', $html);
+        $this->assertStringNotContainsString('70777', $html);
+        $this->assertStringNotContainsString('9,00', $html);
+
+        // une nouvelle branche n'ouvre pas ses ventes ; on peut les ouvrir une par une
+        $this->assertSame(0, DB::table('branch_access')->where('module', 'sales')->count());
+        BranchAccess::set($oran->id, 'sales', [$setif->id], [$oran->id, $setif->id]);
+        $this->assertStringContainsString('70777', $this->actingAs($karim)->get('/stock/item?code=820AC')->getContent());
+
+        // un compte sans branche (d'avant les roles) voit le stock de tout le monde, les ventes de personne
+        $old = User::factory()->withPermissions(['sales.view'])->create();
+        $this->assertNull($old->stockBranchIds());
+        $this->assertSame([], $old->salesBranchIds());
+        $this->assertStringNotContainsString('40501', $this->actingAs($old)->get('/stock/item?code=820AC')->getContent());
+    }
 }

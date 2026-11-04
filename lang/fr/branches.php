@@ -69,4 +69,16 @@ return [
     'no_longer_main' => '« :name » n\'est plus la succursale principale',
     'deleted' => 'Succursale « :name » et son stock supprimés',
     'is_disabled' => 'La succursale est désactivée',
+    'data_old' => 'Ventes : nécessite l\'agent :version',
+    'data_waiting' => 'Ventes : en attente du premier envoi',
+    'data_ok' => 'Ventes et clients : à jour :time',
+    'data_error' => 'Erreur : :tasks',
+    'tasks' => [
+        'sales' => 'Ventes',
+        'purchases' => 'Achats',
+        'customers' => 'Clients',
+        'suppliers' => 'Fournisseurs',
+        'customer_payments' => 'Versements clients',
+        'supplier_payments' => 'Versements fournisseurs',
+    ],
 ];

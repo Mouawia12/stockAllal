@@ -18,11 +18,12 @@ class Branch extends Model
     public const ONLINE_SECONDS = 60;
 
     /**
-     * Demandes que le serveur envoie a un agent => premiere version d'agent qui les comprend.
+     * Demandes que le serveur envoie a un agent, et donnees qu'il envoie => premiere version d'agent qui les connait.
      * Les branches mettent leur agent a jour a la main, quand on le decide : une demande n'est jamais envoyee a un agent
-     * plus ancien (avant 1.0.4, une demande "sync" est lue comme un code vide et revient en invalid_code).
+     * plus ancien (avant 1.0.4, une demande "sync" est lue comme un code vide et revient en invalid_code), et une page
+     * qui a besoin des ventes dit "mettre a jour l'agent de cette branche" au lieu d'afficher zero.
      */
-    public const AGENT_FEATURES = ['sync' => '1.0.4'];
+    public const AGENT_FEATURES = ['sync' => '1.0.4', 'documents' => '1.0.7'];
 
     /**
      * synced : Gescomm est la source, l'agent synchronise, le web ne fait que lire.

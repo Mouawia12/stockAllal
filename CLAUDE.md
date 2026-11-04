@@ -16,7 +16,9 @@ For an already deployed server, use the "التحديثات لاحقاً" sectio
 
 | Path | What |
 |---|---|
-| `app/Http/Controllers/Api/AgentController.php` | Agent API: `agents/register`, `agent/ping`, `agent/sync`, `agent/pending`, `agent/result` |
+| `app/Http/Controllers/Api/AgentController.php` | Agent API: `agents/register`, `agent/ping`, `agent/sync`, `agent/pending`, `agent/result`, and since 1.0.7 `agent/digest` + `agent/records` |
+| `app/Support/AgentDatasets.php` + `DatasetSync.php` | Agent 1.0.7 data: sales / purchases (`documents` + `document_lines`), customers / suppliers (`partners`), payments (`payments`). The agent sends a digest per group (a day, or a bucket of customers), the server answers the groups that differ, the agent sends them whole; each group replaces the server's (only changed digests are written). `BranchTask` keeps each task's last success / error per branch (branches page) |
+| `app/Support/ProductActivity.php` + `stock/_activity.blade.php` | Product page "Fiche de Stock": sold / returned / net, amount, average price, margin (`prices.buy`), per branch for the owner, then the lines. Needs `sales.view`; branches from `User::salesBranchIds()` among those shown; a branch whose agent is older than 1.0.7 is named ("update its agent"), never shown as zero |
 | `app/Http/Middleware/AuthenticateAgent.php` | Branch identified by `Authorization: Bearer <token>` (sha256 stored, never the token) |
 | `config/apps.php` + `app/Http/Controllers/HomeController.php` | Odoo-style apps screen at `/` after login. Only المخزون (`/stock`) is built; the others show "قريباً" until their `route` is set. Names: `apps` in `lang/*/common.php`. Icons: `resources/views/partials/app-icon.blade.php`. The top bar shows the current app (picked by route name in `layouts/app.blade.php`) |
 | `app/Http/Controllers/StockController.php` | Search (one row per `code_key` or per merged group; every word must match the code or the designation), product modal JSON, "refresh now", and the "دمج الأصناف" page (same view, `$merge`). Filters `?f=` (`FILTERS`: all / available / zero / negative, on each product's total in the branches shown, with counts, and they work without a word). `?partial=1` returns only `stock/_results.blade.php`: the page searches while typing (debounce, abort, out-of-order guard). Product page `stock.item` (`stock/item` + `stock/_shelf`: the shelf tag, then one bar per branch; `?partial=1&batch=` = the shelf only, polled during "تحديث الآن"), and `palette` (Ctrl+K JSON, never prices). Prices come from `priceBranch()`: the main branch when shown, else the one branch shown or the account's branch |
@@ -47,8 +49,9 @@ For an already deployed server, use the "التحديثات لاحقاً" sectio
 
 - **Branch scope** (the user asked for this): every page or JSON that shows branch data goes through `Branch::visibleTo($user)` /
   `User::stockBranchIds()` (developer all, owner his branches, others their branch + what `branch_access` opens for it).
-  A branch the account does not see does not exist for it (404). Each new module gets its own `branch_access.module` (stock today;
-  sales will be "own branch only" by default) and a test "a user of A never sees B" (`BranchScopeTest`).
+  A branch the account does not see does not exist for it (404). Each new module gets its own `branch_access.module` and a test
+  "a user of A never sees B" (`BranchScopeTest`). Sales (`module = sales`, `User::salesBranchIds()`): own branch only by default
+  (`BranchAccess::OPEN_FOR_NEW` opens only stock to a new branch), the owner his branches, an account without a branch none.
 - **Stock colours mean what they mean in Gescomm** (the users know them): red = 0, yellow = negative, green = at or below
   the alert level, orange = above the max (`StockState`, `.qty.zero` ...). Never reuse yellow or red for something else in
   stock views: the search highlight is teal on purpose.
@@ -80,6 +83,9 @@ For an already deployed server, use the "التحديثات لاحقاً" sectio
     keep the full history for the night. Never scan a large table every few minutes.
   - **Only what changed:** the agent sends totals or changes, not raw history again and again. The server writes only what changed.
   - **Visible state:** the server keeps the last success / last error of each task per branch, so the branches page shows where each branch stands.
+- **Sales data:** a return is a negative line inside a normal bon (Gescomm has only `BV` / `BA`), so sold and returned are shown
+  apart and net = what Gescomm shows. Amount = Σ `TOTAL`, average price = amount ÷ net quantity (Gescomm's `PRIXVENTEMOYEN`).
+  Never show a return in yellow or red (stock colours). Sale amounts need `prices.sale`; purchase prices and the margin `prices.buy`.
 - **Agent scripts:** must stay ASCII-only (PowerShell 5.1 reads BOM-less files as ANSI) and read-only on the Gescomm DB
   (every isql script starts with `SET TRANSACTION READ ONLY`).
 - **Every agent change** (the user asked for this): bump `$AgentVersion` in `agent/agent.ps1`, update `agent/README.md`,

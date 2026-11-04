@@ -49,6 +49,7 @@ return [
     'perms_always' => 'Toujours permis : chercher dans le stock et voir les quantités, changer son nom et son mot de passe dans « Mon compte ».',
     'perm_groups' => [
         'stock' => 'Stock et prix',
+        'sales' => 'Ventes et achats',
         'branches' => 'Succursales et agent',
         'products' => 'Articles',
     ],
@@ -56,6 +57,7 @@ return [
         'stock.refresh' => ['title' => 'Actualiser maintenant', 'short' => 'Actualiser', 'help' => 'Demande la quantité en direct d\'un article à toutes les succursales.'],
         'prices.sale' => ['title' => 'Prix de vente', 'short' => 'Prix de vente', 'help' => 'Voit le prix de détail et le prix de gros dans la recherche et l\'aperçu.'],
         'prices.buy' => ['title' => 'Prix d\'achat', 'short' => 'Prix d\'achat', 'help' => 'Voit le prix d\'achat (Pu Achat). Information sensible.'],
+        'sales.view' => ['title' => 'Ventes et achats d\'un article', 'short' => 'Ventes', 'help' => 'Voit sur la page d\'un article ce qui en a été vendu et acheté, bon par bon, dans sa succursale seulement (le directeur : ses succursales). Les montants demandent « Prix de vente », la marge « Prix d\'achat ».'],
         'branches.view' => ['title' => 'Voir les succursales', 'short' => 'Succursales', 'help' => 'Ouvre la page des succursales : état, dernière synchronisation, nombre d\'articles.'],
         'branches.sync' => ['title' => 'Synchroniser les succursales', 'short' => 'Synchronisation', 'help' => 'Bouton « Synchroniser maintenant » : la succursale envoie tout son stock tout de suite.'],
         'branches.manage' => ['title' => 'Gérer les succursales', 'short' => 'Gestion des succursales', 'help' => 'Renommer, désactiver, supprimer, succursale principale et codes d\'installation.'],

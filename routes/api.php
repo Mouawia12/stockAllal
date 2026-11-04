@@ -12,4 +12,7 @@ Route::middleware(['throttle:agent', 'agent'])->prefix('agent')->group(function 
     Route::post('sync', [AgentController::class, 'sync']);
     Route::get('pending', [AgentController::class, 'pending']);
     Route::post('result', [AgentController::class, 'result']);
+    // agent 1.0.7 : ventes, achats, clients, fournisseurs, versements (agent/README.md)
+    Route::post('digest', [AgentController::class, 'digest']);
+    Route::post('records', [AgentController::class, 'records']);
 });

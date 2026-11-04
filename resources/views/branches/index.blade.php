@@ -19,6 +19,7 @@
     .sync { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
     .sync button { padding: 3px 10px; font-size: 13px; white-space: nowrap; }
     .sync-msg { font-size: 12px; }
+    .data-state { margin-top: 4px; }
     tr.off td { opacity: .55; }
     .install { display: flex; gap: 6px; flex-wrap: wrap; }
     .install select, .access select { font: inherit; color: var(--text); background: var(--card); border: 1px solid var(--border); border-radius: 8px; padding: 6px 8px; }
@@ -132,6 +133,19 @@
                                         title="{{ $b->agentSupports('sync') ? __('branches.sync_tip') : __('branches.sync_tip_old', ['version' => \App\Models\Branch::AGENT_FEATURES['sync']]) }}">⟳ {{ __('branches.sync_now') }}</button>
                             @endif
                             <span class="sync-msg muted"></span>
+                        </div>
+                        {{-- ventes, achats, clients... (agent 1.0.7) : une tache en echec se voit ici, les autres continuent --}}
+                        @php($bt = $tasks->get($b->id, collect()))
+                        <div class="data-state small">
+                            @if (! $b->agentSupports('documents'))
+                                <span class="muted">{{ __('branches.data_old', ['version' => \App\Models\Branch::AGENT_FEATURES['documents']]) }}</span>
+                            @elseif ($bt->isEmpty())
+                                <span class="muted">{{ __('branches.data_waiting') }}</span>
+                            @elseif (($failing = $bt->filter(fn ($t) => $t->failing()))->isNotEmpty())
+                                <span class="pill bad" title="{{ $failing->map(fn ($t) => __("branches.tasks.{$t->task}").' : '.$t->last_error.' ('.$t->last_error_at->format('d/m H:i').')')->join("\n") }}">{{ __('branches.data_error', ['tasks' => $failing->map(fn ($t) => __("branches.tasks.{$t->task}"))->join(__('stock.js.list_separator'))]) }}</span>
+                            @else
+                                <span class="muted" title="{{ $bt->map(fn ($t) => __("branches.tasks.{$t->task}").' : '.$t->last_ok_at?->diffForHumans())->join("\n") }}">{{ __('branches.data_ok', ['time' => $bt->min('last_ok_at')?->diffForHumans() ?? '—']) }}</span>
+                            @endif
                         </div>
                     </td>
                     <td class="hide-sm"><span class="num items-count">{{ number_format($b->items_count, 0, ',', ' ') }}</span></td>

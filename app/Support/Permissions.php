@@ -14,6 +14,8 @@ final class Permissions
     /** Groupes de la page d'un compte, dans l'ordre d'affichage. Textes : lang/<langue>/users.php (perms). */
     public const GROUPS = [
         'stock' => ['stock.refresh', 'prices.sale', 'prices.buy'],
+        // ventes et achats d'un article, de sa branche seulement (User::salesBranchIds) ; pas coche par defaut
+        'sales' => ['sales.view'],
         'branches' => ['branches.view', 'branches.sync', 'branches.manage', 'agent.download'],
         'products' => ['merge.manage'],
     ];

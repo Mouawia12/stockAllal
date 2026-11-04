@@ -33,7 +33,8 @@ class AppServiceProvider extends ServiceProvider
         // par IP entre toutes les routes, et l'agent d'une branche bloquerait la connexion depuis le meme bureau.
         RateLimiter::for('login', fn (Request $request) => Limit::perMinute(5)->by('login|'.$request->ip()));
         RateLimiter::for('agent-register', fn (Request $request) => Limit::perMinute(10)->by('register|'.$request->ip()));
-        RateLimiter::for('agent', fn (Request $request) => Limit::perMinute(120)->by('agent|'.sha1((string) $request->bearerToken())));
+        // 1.0.7 envoie l'historique par pages a la premiere installation (une requete toutes les ~2 s) en plus des demandes en direct
+        RateLimiter::for('agent', fn (Request $request) => Limit::perMinute(300)->by('agent|'.sha1((string) $request->bearerToken())));
         RateLimiter::for('refresh', fn (Request $request) => Limit::perMinute(30)->by('refresh|'.($request->user()?->id ?? $request->ip())));
         // recherche pendant la frappe : quelques requetes par mot tape, large pour un humain, borne un script
         RateLimiter::for('search', fn (Request $request) => Limit::perMinute(240)->by('search|'.($request->user()?->id ?? $request->ip())));

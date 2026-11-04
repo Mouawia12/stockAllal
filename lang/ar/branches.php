@@ -72,4 +72,16 @@ return [
     'no_longer_main' => '«:name» لم يعد الفرع الرئيسي',
     'deleted' => 'تم حذف الفرع «:name» ومخزونه',
     'is_disabled' => 'الفرع معطّل',
+    'data_old' => 'المبيعات: تحتاج الوكيل :version',
+    'data_waiting' => 'المبيعات: في انتظار أول إرسال',
+    'data_ok' => 'المبيعات والزبائن: محدّثة :time',
+    'data_error' => 'خطأ في: :tasks',
+    'tasks' => [
+        'sales' => 'المبيعات',
+        'purchases' => 'المشتريات',
+        'customers' => 'الزبائن',
+        'suppliers' => 'الموردون',
+        'customer_payments' => 'دفعات الزبائن',
+        'supplier_payments' => 'دفعات الموردين',
+    ],
 ];

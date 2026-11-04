@@ -70,6 +70,76 @@ if ($hasGescomm) {
         Assert ($r.db_items -gt 0) 'aucun article dans GC003'
         Write-Host "        $($r.db_items) articles, $($r.db_fields) colonnes dans GC003"
     }
+    # agent 1.0.7 : ventes, achats, clients, fournisseurs, versements, lus comme le fait la boucle (lecture seule, rien n'est envoye)
+    Test-Case 'agent.ps1 -TestData : chaque jeu se lit, ses empreintes et ses groupes sont coherents' {
+        $dataDir = Join-Path $Work 'testdata'
+        New-Item -ItemType Directory -Force -Path $dataDir | Out-Null
+        $cfgFile = Join-Path $dataDir 'config.json'
+        $testCfg = [ordered]@{ database = $detected.database; isql = $detected.isql }
+        [IO.File]::WriteAllText($cfgFile, (ConvertTo-Json $testCfg), (New-Object Text.UTF8Encoding($false)))
+        $out = & powershell.exe -NoProfile -ExecutionPolicy Bypass -File (Join-Path $AgentDir 'agent.ps1') -ConfigPath $cfgFile -TestData -Days 30
+        $code = $LASTEXITCODE
+        $out | ForEach-Object { Write-Host "        $_" }
+        Assert ($code -eq 0) 'un jeu ne se lit pas (voir ci-dessus)'
+        foreach ($name in 'sales', 'purchases', 'customers', 'suppliers', 'customer_payments', 'supplier_payments') {
+            $file = Join-Path $dataDir "outbox\data-$name.json"
+            Assert (Test-Path $file) "$name : pas de fichier $file"
+            $d = Get-Content $file -Raw -Encoding UTF8 | ConvertFrom-Json
+            foreach ($g in $d.groups.PSObject.Properties) {
+                $records = @($g.Value)
+                [long]$sum = 0
+                foreach ($r in $records) {
+                    Assert ([string]$r.key) "$name / $($g.Name) : enregistrement sans cle"
+                    Assert ([long]$r.digest -ge 0 -and [long]$r.digest -le 281474976710655) "$name / $($g.Name) : empreinte hors 48 bits"
+                    $sum += [long]$r.digest
+                }
+                $expected = '{0}:{1}' -f $records.Count, $sum
+                Assert ($d.digests.($g.Name) -eq $expected) "$name / $($g.Name) : empreinte du groupe $($d.digests.($g.Name)), attendu $expected"
+                if ($name -in 'sales', 'purchases', 'customer_payments', 'supplier_payments') {
+                    Assert ($g.Name -match '^\d{4}-\d{2}-\d{2}$') "$name : groupe '$($g.Name)' n'est pas un jour"
+                }
+            }
+            if ($name -in 'customers', 'suppliers') { Assert (@($d.groups.PSObject.Properties).Count -gt 0) "$name : aucun enregistrement" }
+        }
+        # memes totaux que Gescomm sur les memes 30 jours : lignes de vente, quantite, montant (isql, lecture seule)
+        $from = (Get-Date).Date.AddDays(-29).ToString('yyyy-MM-dd')
+        $to = (Get-Date).Date.ToString('yyyy-MM-dd')
+        $sqlFile = Join-Path $dataDir 'totals.sql'
+        [IO.File]::WriteAllLines($sqlFile, [string[]]@('SET TRANSACTION READ ONLY NO WAIT ISOLATION LEVEL READ COMMITTED RECORD_VERSION;', 'SET LIST ON;',
+            "SELECT COUNT(*) AS N, SUM(L.QTE) AS Q, SUM(L.TOTAL) AS T FROM GC010 H JOIN GC011 L ON L.NUMEROS = H.NUMEROS WHERE H.DATES BETWEEN CAST('$from' AS DATE) AND CAST('$to' AS DATE);"))
+        $env:ISC_USER = 'SYSDBA'
+        $env:ISC_PASSWORD = 'masterkey'
+        $isqlOut = @(& $detected.isql -q -i $sqlFile $detected.database 2>&1)
+        $gc = @{}
+        foreach ($l in $isqlOut) { if ([string]$l -match '^(N|Q|T)\s+(\S+)') { $gc[$Matches[1]] = $Matches[2] } }
+        if ($gc.Count -eq 3) {
+            $sales = Get-Content (Join-Path $dataDir 'outbox\data-sales.json') -Raw -Encoding UTF8 | ConvertFrom-Json
+            $n = 0
+            [decimal]$q = 0
+            [decimal]$t = 0
+            foreach ($grp in $sales.groups.PSObject.Properties) {
+                foreach ($r in @($grp.Value)) {
+                    foreach ($line in @($r.lines)) {
+                        $n++
+                        if ($line.qty) { $q += [decimal]::Parse($line.qty, [Globalization.CultureInfo]::InvariantCulture) }
+                        if ($line.total) { $t += [decimal]::Parse($line.total, [Globalization.CultureInfo]::InvariantCulture) }
+                    }
+                }
+            }
+            $num = { param($v) if ($v -eq '<null>') { [decimal]0 } else { [decimal]::Parse($v, [Globalization.NumberStyles]::Float, [Globalization.CultureInfo]::InvariantCulture) } }
+            Assert ($n -eq [int]$gc.N) "lignes de vente : agent $n, Gescomm $($gc.N)"
+            Assert ([math]::Abs($q - (& $num $gc.Q)) -lt 0.01) "quantite vendue : agent $q, Gescomm $($gc.Q)"
+            Assert ([math]::Abs($t - (& $num $gc.T)) -lt 0.01) "montant : agent $t, Gescomm $($gc.T)"
+            Write-Host "        30 jours : $n lignes de vente, quantite $q, montant $t = Gescomm"
+        } else {
+            Write-Host "        (totaux Gescomm non lus avec SYSDBA / masterkey : comparaison sautee) $($isqlOut -join ' ')" -ForegroundColor Yellow
+        }
+        # les memes donnees relues donnent les memes empreintes (rien n'a change entre-temps dans les bons d'il y a 3 jours et plus)
+        $first = Get-Content (Join-Path $dataDir 'outbox\data-customers.json') -Raw -Encoding UTF8 | ConvertFrom-Json
+        $null = & powershell.exe -NoProfile -ExecutionPolicy Bypass -File (Join-Path $AgentDir 'agent.ps1') -ConfigPath $cfgFile -TestData -Days 30
+        $again = Get-Content (Join-Path $dataDir 'outbox\data-customers.json') -Raw -Encoding UTF8 | ConvertFrom-Json
+        Assert (($first.digests | ConvertTo-Json -Compress) -eq ($again.digests | ConvertTo-Json -Compress)) 'les empreintes des clients changent d''une lecture a l''autre'
+    }
 } else {
     Skip-Case 'lecture de la base' 'pas de Gescomm sur ce PC'
 }

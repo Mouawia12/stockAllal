@@ -102,6 +102,28 @@ class User extends Authenticatable
         return array_values(array_unique([$this->branch_id, ...BranchAccess::visibleFrom($this->branch_id, 'stock')]));
     }
 
+    /**
+     * Branches dont ce compte voit les ventes et les achats (null = toutes) : developer toutes ; owner les siennes ;
+     * les autres leur branche seulement, plus ce que branch_access (module sales) leur ouvre. Un compte sans branche
+     * (d'avant les roles) n'en voit aucune. La permission sales.view est verifiee a part.
+     *
+     * @return list<int>|null
+     */
+    public function salesBranchIds(): ?array
+    {
+        if ($this->isDeveloper()) {
+            return null;
+        }
+        if ($this->isOwner()) {
+            return $this->branches()->pluck('branches.id')->all();
+        }
+        if ($this->branch_id === null) {
+            return [];
+        }
+
+        return array_values(array_unique([$this->branch_id, ...BranchAccess::visibleFrom($this->branch_id, 'sales')]));
+    }
+
     public function seesBranch(Branch $branch): bool
     {
         $ids = $this->stockBranchIds();

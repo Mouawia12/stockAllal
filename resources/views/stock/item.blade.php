@@ -3,7 +3,7 @@
 {{--
     Page d'un article (route stock.item) : en haut l'etiquette de rayon (code, designation, quantite, prix de detail
     de la branche principale), le seul element fort de la page ; dessous le "rayon" (stock/_shelf), une ligne par
-    branche affichee (App\Support\BranchScope). Ventes, achats et mouvements : avec l'agent 1.0.7 (docs/roadmap.md).
+    branche affichee (App\Support\BranchScope) ; puis, pour qui a sales.view, ses ventes et achats (stock/_activity).
 --}}
 @php
     $fmt = fn ($n) => $n === null ? '—' : number_format($n, 2, ',', ' ');
@@ -55,16 +55,38 @@
     .meter-track span { display: block; height: 100%; inline-size: var(--w); background: var(--bar-strong); border-radius: 99px; }
     .meter .qty { min-width: 78px; text-align: end; }
 
-    .stats { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 16px; align-items: center; }
-    .stat { display: flex; align-items: center; gap: 10px; border: 1px solid var(--border); background: var(--card); border-radius: 10px; padding: 9px 14px; color: var(--muted); }
-    .stat svg { width: 20px; height: 20px; }
-    .stat b { color: var(--text); font-weight: 600; }
-    .stats p { flex-basis: 100%; margin: 2px 0 0; }
+    /* ventes et achats : deux registres comme la Fiche de Stock, puis les lignes */
+    .activity { margin-top: 16px; }
+    .act-head { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin-bottom: 12px; }
+    .act-head h2 { font-size: 16px; margin: 0; flex: 1; }
+    .periods { display: flex; gap: 6px; flex-wrap: wrap; }
+    .chip { display: inline-flex; padding: 3px 12px; border: 1px solid var(--border); border-radius: 99px; color: var(--text); font-size: 13.5px; background: var(--card); }
+    .chip:hover { background: var(--row-hover); }
+    .chip.on { border-color: var(--accent); background: var(--accent-soft); color: var(--accent); font-weight: 600; }
+    .act-note { margin: 0 0 12px; padding: 8px 12px; border-radius: 8px; background: var(--warn-bg); color: var(--warn); font-size: 14px; }
+    .ledgers { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px 28px; }
+    .ledger caption, .by-branch caption { text-align: start; font-weight: 600; padding: 0 0 6px; }
+    .ledger th[scope=row] { color: var(--text); font-weight: 400; font-size: 14px; }
+    .ledger td, .ledger th, .by-branch td, .by-branch th { padding: 6px 8px; }
+    .ledger tbody tr:hover, .by-branch tbody tr:hover { background: none; }
+    .ledger .n, .by-branch .n, .act-lines .n { text-align: end; }
+    .ledger tr.back td, .ledger tr.back th { color: var(--muted); }
+    /* le net, comme un total de livre de comptes : trait double au-dessus */
+    .ledger tr.net th, .ledger tr.net td { font-weight: 700; border-top: 3px double var(--border); }
+    .ledger tr.net td { font: 700 19px/1.2 var(--font-code); letter-spacing: .02em; }
+    .ledger tr.avg th, .ledger tr.avg td { color: var(--muted); font-size: 13.5px; border-bottom: 0; }
+    .by-branch { margin-top: 16px; }
+    .act-tabs { display: flex; gap: 6px; margin: 18px 0 0; border-bottom: 1px solid var(--border); }
+    .act-tabs button { border: 0; border-bottom: 2px solid transparent; border-radius: 0; background: none; color: var(--muted); padding: 8px 12px; display: inline-flex; gap: 8px; align-items: center; }
+    .act-tabs button[aria-selected=true] { color: var(--text); border-bottom-color: var(--accent); font-weight: 600; }
+    .act-panel { padding-top: 6px; }
+    .act-lines tr.back td { color: var(--muted); }
     .wait::before { content: ""; display: inline-block; width: 10px; height: 10px; margin-inline-end: 6px; border: 2px solid var(--muted); border-top-color: transparent; border-radius: 50%; animation: spin .8s linear infinite; vertical-align: -1px; }
     @keyframes spin { to { transform: rotate(360deg); } }
     @media (prefers-reduced-motion: reduce) { .wait::before { animation: none; } }
     @media (max-width: 760px) {
         .item-head { grid-template-columns: 1fr; }
+        .ledgers { grid-template-columns: 1fr; }
         .tag { padding: 18px 18px 16px; padding-inline-start: 48px; }
         .tag-hole { inset-inline-start: 17px; top: 22px; }
         .tag-foot { gap: 22px; }
@@ -80,6 +102,9 @@
         @can('stock.refresh')
             @include('partials.key', ['keys' => ['Alt', 'R'], 'run' => 'Alt+R', 'label' => __('stock.refresh_now')])
         @endcan
+        @if ($activity && $activity['branches'] > 0)
+            @include('partials.key', ['keys' => ['Alt', '1…'.count(\App\Support\ProductActivity::PERIODS)], 'label' => __('stock.activity.period')])
+        @endif
     @endif
 @endpush
 
@@ -165,26 +190,44 @@
             <span class="legend">
                 <span><span class="qty zero">0,00</span>{{ __('stock.state.zero') }}</span>
                 <span><span class="qty negative">-3,00</span>{{ __('stock.state.negative') }}</span>
+                <span><span class="qty low">2,00</span>{{ __('stock.state.low') }}</span>
+                <span><span class="qty over">90,00</span>{{ __('stock.state.over') }}</span>
             </span>
         </div>
         <div id="shelf">@include('stock._shelf')</div>
     </section>
 
-    {{-- facon Odoo : les boutons de ce qui viendra avec l'agent 1.0.7, inactifs d'ici la --}}
-    <section class="stats" aria-label="{{ __('stock.item.soon') }}">
-        @foreach (['sales' => '<path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/>', 'purchases' => '<path d="M3 4h2l2.4 11.2a2 2 0 0 0 2 1.6h7.7a2 2 0 0 0 2-1.6L21 8H6"/><circle cx="10" cy="20" r="1"/><circle cx="18" cy="20" r="1"/>', 'moves' => '<path d="M7 7h13l-3-3M17 17H4l3 3"/>'] as $stat => $icon)
-            <span class="stat" aria-disabled="true">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">{!! $icon !!}</svg>
-                <b>{{ __("stock.item.stats.{$stat}") }}</b>
-                <span class="small">{{ __('stock.item.soon') }}</span>
-            </span>
-        @endforeach
-        <p class="muted small">{{ __('stock.item.soon_help') }}</p>
-    </section>
+    @if ($activity)
+        @include('stock._activity')
+    @endif
 @endif
 @endsection
 
 @push('scripts')
+@if ($designation !== null && $activity)
+<script>
+(() => {
+    // onglets ventes / achats (fleches gauche / droite entre les onglets, comme le veut role=tab)
+    const tabs = [...document.querySelectorAll('.act-tabs [role=tab]')];
+    const pick = tab => tabs.forEach(t => {
+        const on = t === tab;
+        t.setAttribute('aria-selected', on ? 'true' : 'false');
+        t.tabIndex = on ? 0 : -1;
+        document.getElementById(t.getAttribute('aria-controls')).hidden = !on;
+    });
+    tabs.forEach((tab, i) => {
+        tab.addEventListener('click', () => pick(tab));
+        tab.addEventListener('keydown', e => {
+            if (e.key !== 'ArrowLeft' && e.key !== 'ArrowRight') return;
+            e.preventDefault();
+            const next = tabs[(i + 1) % tabs.length];
+            pick(next);
+            next.focus();
+        });
+    });
+})();
+</script>
+@endif
 @if ($designation !== null)
 <script>
 (() => {

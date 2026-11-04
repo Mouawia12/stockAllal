@@ -6,7 +6,8 @@
     agent.ps1                                   boucle normale (lancee par le Planificateur de taches)
     agent.ps1 -TestCode 820AC                   lit un code dans la base et affiche le resultat
     agent.ps1 -Once [-DryRun]                   une synchro complete puis sortie (-DryRun : JSON dans outbox\)
-    agent.ps1 -SelfTest [-SkipApi]              verifie la base, la table GC003 et l'API
+    agent.ps1 -SelfTest [-SkipApi]              verifie la base, la table GC003, les tables des ventes... et l'API
+    agent.ps1 -TestData [-Days 7]               lit ventes, achats, clients... des N derniers jours, sans rien envoyer
     agent.ps1 -Register -BranchName X -InstallCode Y   enregistre la branche aupres de l'API (utilise par install.ps1)
 #>
 param(
@@ -15,6 +16,8 @@ param(
     [switch]$Once,
     [switch]$DryRun,
     [switch]$SelfTest,
+    [switch]$TestData,
+    [int]$Days = 7,
     [switch]$SkipApi,
     [switch]$Register,
     [string]$BranchName,
@@ -23,7 +26,7 @@ param(
 
 $ErrorActionPreference = 'Stop'
 Add-Type -AssemblyName System.Net.Http
-$AgentVersion = '1.0.6'
+$AgentVersion = '1.0.7'
 $Table = 'GC003'
 $Fields = @('CODEA', 'DESIGNATIONF2', 'STOCKREEL')
 # Prix comme dans la liste des articles de Gescomm (colonne de GC003 = titre dans Gescomm => champ envoye a l'API).
@@ -33,6 +36,14 @@ $PriceColumns = [ordered]@{
     PRIXVNFACT = 'price_wholesale'  # Prix Vente Gros
     PRIX       = 'price_buy'        # Pu Achat (le serveur ne le montre qu'aux administrateurs)
 }
+# Fiche de l'article (1.0.7), facultative comme les prix : seuil d'alerte et stock max (couleurs de Gescomm), famille, unite
+$ItemColumns = [ordered]@{
+    STOCKALERT = 'stock_alert'
+    STOCKMAX   = 'stock_max'
+    CODEFAM    = 'family'
+    UNITMESURE = 'unit'
+}
+$ItemTextColumns = @('CODEFAM', 'UNITMESURE')
 $ReadOnlyTx = 'SET TRANSACTION READ ONLY NO WAIT ISOLATION LEVEL READ COMMITTED RECORD_VERSION;'
 $Ansi = [Text.Encoding]::GetEncoding(1252)
 $Utf8NoBom = New-Object Text.UTF8Encoding($false)
@@ -46,6 +57,7 @@ $script:LastError = ''
 $script:LastErrorAt = [datetime]::MinValue
 $script:Http = $null
 $script:PriceCols = $null   # colonnes de prix presentes dans cette base, rempli par Test-Schema
+$script:ItemCols = @()      # colonnes de la fiche presentes dans cette base, rempli par Test-Schema
 
 # ---------- journal ----------
 
@@ -89,6 +101,14 @@ function Read-Config {
         poll_seconds      = 10
         full_sync_minutes = 5
         http_timeout_seconds = 60
+        # ventes, achats, clients... (1.0.7)
+        data_minutes        = 5
+        data_recent_days    = 7
+        data_window_minutes = 60
+        data_window_days    = 60
+        partners_minutes    = 15
+        history_hour        = 22
+        data_step_seconds   = 90
     }
     foreach ($p in $raw.PSObject.Properties) { $cfg[$p.Name] = $p.Value }
     return $cfg
@@ -153,6 +173,15 @@ function ConvertTo-StockItem($Row) {
     if ($null -ne $designation) { $designation = $designation.Trim() }
     $item = [ordered]@{ code = $Row['CODEA']; designation = $designation; stock = (ConvertTo-Number $Row['STOCKREEL']) }
     foreach ($col in $script:PriceCols) { $item[$PriceColumns[$col]] = ConvertTo-Number $Row[$col] }
+    foreach ($col in $script:ItemCols) {
+        if ($ItemTextColumns -contains $col) {
+            $text = $Row[$col]
+            if ($null -ne $text) { $text = $text.Trim() }
+            $item[$ItemColumns[$col]] = $text
+        } else {
+            $item[$ItemColumns[$col]] = ConvertTo-Number $Row[$col]
+        }
+    }
     $item
 }
 
@@ -165,6 +194,7 @@ function Test-Schema {
         return $false
     }
     $script:PriceCols = @($PriceColumns.Keys | Where-Object { $found -contains $_ })
+    $script:ItemCols = @($ItemColumns.Keys | Where-Object { $found -contains $_ })
     $noPrice = @($PriceColumns.Keys | Where-Object { $found -notcontains $_ })
     if ($noPrice.Count) {
         Write-Log ("table {0} : colonnes de prix absentes ({1}) : stock envoye sans ces prix" -f $Table, ($noPrice -join ', '))
@@ -172,10 +202,10 @@ function Test-Schema {
     return $true
 }
 
-# Colonnes lues : les obligatoires, puis les prix presents dans cette base
+# Colonnes lues : les obligatoires, puis les prix et la fiche presents dans cette base
 function Get-SelectColumns {
     if ($null -eq $script:PriceCols) { $null = Test-Schema }
-    @($Fields) + @($script:PriceCols)
+    @($Fields) + @($script:PriceCols) + @($script:ItemCols)
 }
 
 function Get-AllStock {
@@ -223,7 +253,7 @@ function Assert-ApiUrl {
 function Invoke-Api([string]$Method, [string]$Path, $Body, [switch]$NoAuth, [switch]$NotIdempotent) {
     $uri = ([string]$cfg.api_url).TrimEnd('/') + $Path
     $bytes = $null
-    if ($null -ne $Body) { $bytes = [Text.Encoding]::UTF8.GetBytes((ConvertTo-Json $Body -Depth 6 -Compress)) }
+    if ($null -ne $Body) { $bytes = [Text.Encoding]::UTF8.GetBytes((ConvertTo-Json $Body -Depth 10 -Compress)) }
     # connexion internet instable dans certaines branches (jusqu'a 1 connexion sur 2 qui echoue) : nouvel essai
     for ($attempt = 1; ; $attempt++) {
         try { return Send-ApiRequest $Method $uri $bytes (-not $NoAuth) }
@@ -352,7 +382,14 @@ function Invoke-PendingJobs {
     $r = Invoke-Api 'GET' '/agent/pending' $null
     foreach ($job in @($r.jobs)) {
         if ($null -eq $job) { continue }
-        if ([string]$job.type -eq 'sync') { Invoke-SyncJob $job; continue }
+        $type = [string]$job.type
+        if ($type -eq 'sync') { Invoke-SyncJob $job; continue }
+        # demande d'une version plus recente du serveur : on le dit au lieu de la lire comme un code
+        if ($type -and $type -ne 'code') {
+            Invoke-Api 'POST' '/agent/result' ([ordered]@{ job_id = $job.id; type = $type; error = 'unsupported'; read_at = Get-Now }) | Out-Null
+            Write-Log ("DEMANDE {0} : type '{1}' inconnu de l'agent {2} -> unsupported" -f $job.id, $type, $AgentVersion)
+            continue
+        }
         $code = [string]$job.code
         $result = [ordered]@{ job_id = $job.id; code = $code; found = $false; items = @(); error = $null; read_at = $null }
         if (-not (Test-Code $code)) {
@@ -374,6 +411,402 @@ function Invoke-PendingJobs {
         else { $summary = 'introuvable' }
         Write-Log ("DEMANDE {0} : '{1}' -> {2}" -f $job.id, $code, $summary)
     }
+}
+
+# ---------- ventes, achats, clients, fournisseurs, versements (1.0.7) ----------
+#
+# Chaque jeu = une table Gescomm (+ la table de ses lignes). Colonne Gescomm => champ envoye ; les valeurs partent
+# telles qu'isql les ecrit (texte), le serveur les convertit. Une colonne absente d'une version de Gescomm part vide ;
+# une table ou une cle absente arrete ce jeu seulement (signale au serveur), les autres continuent.
+# Envoi en deux temps (agent/README.md) : l'empreinte de chaque groupe (un jour, ou un paquet de clients), puis
+# seulement les groupes que le serveur demande, par pages de ~1000 lignes. Rien n'a change = rien n'est envoye.
+$Datasets = @(
+    @{
+        name = 'sales'; table = 'GC010'; key = @('NUMEROS'); date = 'DATES'
+        cols = [ordered]@{ NUMEROS = 'number'; HEURE = 'time'; CODEF = 'partner'; MONTANT = 'amount'; MONTANTREMISE = 'discount'
+            TOTALSANSREMISE = 'gross'; REGLEMENT = 'payment'; AGENT = 'entered_by'; CODECOMMERC = 'served_by'
+            NBJOURCREDIT = 'credit_days'; OBSERVATION = 'note' }
+        lines = 'GC011'; lineKey = @('NUMEROS')
+        lineCols = [ordered]@{ CODEA = 'code'; QTE = 'qty'; PU = 'price'; REMISE = 'discount'; TOTAL = 'total'
+            PRIXACHAT = 'cost'; TVA = 'vat'; ORDERE = 'position' }
+    },
+    @{
+        # numerote par fournisseur : la cle est numero + fournisseur ; GC007 n'a pas d'index sur DATEBON mais reste petite
+        name = 'purchases'; table = 'GC007'; key = @('NUMEROE', 'CODEF'); date = 'DATEBON'
+        cols = [ordered]@{ NUMEROE = 'number'; CODEF = 'partner'; HEURE = 'time'; MONTANT = 'amount'; MONTANTREMISE = 'discount'
+            TOTALSANSREMISE = 'gross'; REGLEMENT = 'payment'; AGENT = 'entered_by'; OBSERVATION = 'note' }
+        lines = 'GC008'; lineKey = @('NUMEROE', 'CODEF')
+        lineCols = [ordered]@{ CODEA = 'code'; QTE = 'qty'; PU = 'price'; REMISE = 'discount'; TOTAL = 'total'
+            TVA = 'vat'; ORDERE = 'position' }
+    },
+    @{
+        name = 'customers'; table = 'GC002'; key = @('CODECLI'); date = $null
+        cols = [ordered]@{ CODECLI = 'code'; MONCLIENT = 'name'; CLIENT = 'name_alt'; TEL = 'phone'; ADRESSE2 = 'address'
+            ADRESSE = 'address_alt'; WILAYA = 'wilaya'; ACTIVITEE = 'activity'; TYPECLI = 'type'; SOLDEINIT = 'opening_balance'
+            SOLDEMAX = 'credit_limit'; LIMITVERS = 'credit_days'; CLIBLOQUE = 'blocked'; NIF2 = 'nif'; NIS2 = 'nis'
+            REGISTRE2 = 'rc'; NARTICLE2 = 'ai' }
+    },
+    @{
+        name = 'suppliers'; table = 'GC004'; key = @('CODEFOU'); date = $null
+        cols = [ordered]@{ CODEFOU = 'code'; MONFOURNISSEUR = 'name'; FOURNISSEUR = 'name_alt'; TEL = 'phone'; MOBIL = 'mobile'
+            ADRESSE2 = 'address'; ADRESSE = 'address_alt'; WILAYA = 'wilaya'; PARSONNECONTACT = 'contact'
+            SOLDEINIT = 'opening_balance'; FOURBLOQUE = 'blocked'; NIF2 = 'nif'; NIS2 = 'nis'; REGISTRE2 = 'rc'; NARTICLE2 = 'ai' }
+    },
+    @{
+        # GC62.CODEFOU = le code du client (GC002.CODECLI), malgre son nom
+        name = 'customer_payments'; table = 'GC62'; key = @('DATEVER', 'NUMEROTATION'); date = 'DATEVER'
+        cols = [ordered]@{ NUMEROTATION = 'number'; HEURE = 'time'; CODEFOU = 'partner'; TYPEVER = 'type'; MONTANT = 'amount'
+            NUMCHEQUE = 'cheque'; ETATCHEQUE = 'cheque_state'; DATEPAYE = 'paid_on'; NUMEROBON = 'document_number'
+            OBSERVATION = 'note'; AGENT = 'entered_by' }
+    },
+    @{
+        name = 'supplier_payments'; table = 'GC60'; key = @('DATEVER', 'NUMEROTATION'); date = 'DATEVER'
+        cols = [ordered]@{ NUMEROTATION = 'number'; HEURE = 'time'; CODEFOU = 'partner'; TYPEVER = 'type'; MONTANT = 'amount'
+            NUMCHEQUE = 'cheque'; ETATCHEQUE = 'cheque_state'; NUMEROBON = 'document_number'; OBSERVATION = 'note'; AGENT = 'entered_by' }
+    }
+)
+$Sep = [string][char]0x1F
+$LineSep = [string][char]0x1E
+$script:DataCols = @{}     # nom du jeu -> colonnes presentes (en-tete, lignes), rempli par Test-DatasetSchema
+$script:DataQueue = New-Object System.Collections.ArrayList
+$script:DataNext = @{}     # "jeu|palier" -> prochaine fois
+$script:DataBroken = @{}   # nom du jeu -> pas avant (apres une erreur)
+$script:HistoryRunning = $false
+$script:State = $null
+
+function Get-Today { (Get-Date).Date }
+function Format-Day([datetime]$Day) { $Day.ToString('yyyy-MM-dd', $Invariant) }
+
+function Read-State {
+    $file = Join-Path $Dir 'state.json'
+    $state = @{ history_done_at = $null }
+    if (Test-Path $file) {
+        try {
+            $raw = Get-Content $file -Raw -Encoding UTF8 | ConvertFrom-Json
+            if ($raw.history_done_at) { $state.history_done_at = [string]$raw.history_done_at }
+        } catch { }
+    }
+    $state
+}
+
+function Save-State {
+    try { [IO.File]::WriteAllText((Join-Path $Dir 'state.json'), (ConvertTo-Json $script:State -Depth 3), $Utf8NoBom) } catch { }
+}
+
+# Les colonnes de la table (une requete sur RDB$RELATION_FIELDS)
+function Get-TableColumns([string]$Name) {
+    $lines = Invoke-Isql @(('SELECT RDB$FIELD_NAME FROM RDB$RELATION_FIELDS WHERE RDB$RELATION_NAME = ''{0}'';' -f $Name))
+    @(ConvertFrom-IsqlList $lines @('RDB$FIELD_NAME') | ForEach-Object { ([string]$_['RDB$FIELD_NAME']).Trim() })
+}
+
+# Colonnes lues pour ce jeu : la cle et la date d'abord (obligatoires), puis celles de cols presentes dans cette base
+function Test-DatasetSchema($Ds) {
+    if ($script:DataCols.ContainsKey($Ds.name)) { return $script:DataCols[$Ds.name] }
+    $found = Get-TableColumns $Ds.table
+    # la 1re colonne ouvre chaque enregistrement dans la sortie d'isql : chaque colonne une seule fois (DATEVER est cle et date)
+    $need = @($Ds.key)
+    if ($Ds.date -and $need -notcontains $Ds.date) { $need += $Ds.date }
+    $missing = @($need | Where-Object { $found -notcontains $_ })
+    if ($missing.Count) { throw ("table {0} absente ou sans {1}" -f $Ds.table, ($missing -join ', ')) }
+    $head = @($need) + @($Ds.cols.Keys | Where-Object { $found -contains $_ -and $need -notcontains $_ })
+    $line = @()
+    if ($Ds.lines) {
+        $lineFound = Get-TableColumns $Ds.lines
+        $lineNeed = @($Ds.lineKey) + @('CODEA')
+        $missing = @($lineNeed | Where-Object { $lineFound -notcontains $_ })
+        if ($missing.Count) { throw ("table {0} absente ou sans {1}" -f $Ds.lines, ($missing -join ', ')) }
+        $line = @($Ds.lineKey) + @($Ds.lineCols.Keys | Where-Object { $lineFound -contains $_ -and $Ds.lineKey -notcontains $_ })
+    }
+    $cols = @{ head = $head; line = $line }
+    $script:DataCols[$Ds.name] = $cols
+    $cols
+}
+
+# Un DATE d'isql : 2026-11-04 (dialecte 3) ou 4-NOV-2026 (dialecte 1) -> 2026-11-04 ; illisible -> $null
+function ConvertTo-IsoDay($Value) {
+    if ($null -eq $Value) { return $null }
+    $v = ([string]$Value).Trim()
+    $d = [datetime]::MinValue
+    foreach ($f in @('yyyy-MM-dd', 'd-MMM-yyyy', 'dd-MMM-yyyy')) {
+        if ([datetime]::TryParseExact($v, $f, $Invariant, [Globalization.DateTimeStyles]::None, [ref]$d)) { return (Format-Day $d) }
+    }
+    return $null
+}
+
+# Cle d'un enregistrement (colonnes jointes par |), la meme pour l'en-tete et ses lignes
+function Get-RowKey($Row, [string[]]$Cols) {
+    (@($Cols | ForEach-Object { ([string]$Row[$_]).Trim() }) -join '|')
+}
+
+# Empreinte d'un enregistrement : 12 chiffres hexadecimaux de SHA-1 (48 bits), la somme d'un groupe tient dans un Int64
+function Get-Digest([string]$Text) {
+    $sha = [Security.Cryptography.SHA1]::Create()
+    try { $hash = $sha.ComputeHash([Text.Encoding]::UTF8.GetBytes($Text)) } finally { $sha.Dispose() }
+    [Convert]::ToInt64((-join ($hash[0..5] | ForEach-Object { $_.ToString('x2') })), 16)
+}
+
+# Paquet d'un client ou fournisseur : 32 paquets d'apres sa cle (une modification n'en renvoie qu'un)
+function Get-Bucket([string]$Key) {
+    $sha = [Security.Cryptography.SHA1]::Create()
+    try { $hash = $sha.ComputeHash([Text.Encoding]::UTF8.GetBytes($Key)) } finally { $sha.Dispose() }
+    'p{0:D2}' -f ($hash[0] % 32)
+}
+
+# Les enregistrements d'un jeu, par groupe : $From / $To (jours, inclus) pour un jeu date, toute la table sinon.
+# Retour : dictionnaire groupe -> liste d'enregistrements (avec key, digest, champs, lines)
+function Read-Dataset($Ds, [string]$From, [string]$To) {
+    $cols = Test-DatasetSchema $Ds
+    $where = ''
+    if ($Ds.date) { $where = (" WHERE H.{0} BETWEEN CAST('{1}' AS DATE) AND CAST('{2}' AS DATE)" -f $Ds.date, $From, $To) }
+    $sql = @(('SELECT {0} FROM {1} H{2};' -f (@($cols.head | ForEach-Object { "H.$_" }) -join ', '), $Ds.table, $where))
+    $heads = @(ConvertFrom-IsqlList (Invoke-Isql $sql) $cols.head)
+
+    $linesByKey = @{}
+    if ($Ds.lines) {
+        $on = @($Ds.lineKey | ForEach-Object { "L.$_ = H.$_" }) -join ' AND '
+        $sql = @(('SELECT {0} FROM {1} H JOIN {2} L ON {3}{4};' -f (@($cols.line | ForEach-Object { "L.$_" }) -join ', '), $Ds.table, $Ds.lines, $on, $where))
+        foreach ($row in (ConvertFrom-IsqlList (Invoke-Isql $sql) $cols.line)) {
+            $k = Get-RowKey $row $Ds.lineKey
+            if (-not $linesByKey.ContainsKey($k)) { $linesByKey[$k] = New-Object System.Collections.ArrayList }
+            [void]$linesByKey[$k].Add($row)
+        }
+    }
+
+    $groups = [ordered]@{}
+    foreach ($row in $heads) {
+        $key = Get-RowKey $row $Ds.key
+        if ($Ds.date) {
+            $group = ConvertTo-IsoDay $row[$Ds.date]
+            if (-not $group) { continue }
+        } else {
+            $group = Get-Bucket $key
+        }
+        $rec = [ordered]@{ key = $key; digest = 0 }
+        $text = New-Object Text.StringBuilder
+        [void]$text.Append($key)
+        foreach ($c in $cols.head) {
+            $v = $row[$c]
+            if ($Ds.cols.Contains($c)) {
+                if ($c -eq $Ds.date -or ($Ds.cols[$c] -eq 'paid_on')) { $v = ConvertTo-IsoDay $v }
+                $rec[$Ds.cols[$c]] = $v
+            }
+            [void]$text.Append($Sep).Append([string]$v)
+        }
+        if ($Ds.lines) {
+            $list = @()
+            if ($linesByKey.ContainsKey($key)) {
+                $list = @($linesByKey[$key] | Sort-Object @{ e = { ConvertTo-Number $_['ORDERE'] } }, @{ e = { $_['CODEA'] } })
+            }
+            $out = New-Object System.Collections.ArrayList
+            foreach ($l in $list) {
+                $line = [ordered]@{}
+                [void]$text.Append($LineSep)
+                foreach ($c in $cols.line) {
+                    if ($Ds.lineCols.Contains($c)) { $line[$Ds.lineCols[$c]] = $l[$c] }
+                    [void]$text.Append($Sep).Append([string]$l[$c])
+                }
+                [void]$out.Add($line)
+            }
+            $rec.lines = $out.ToArray()
+        }
+        $rec.digest = Get-Digest $text.ToString()
+        if (-not $groups.Contains($group)) { $groups[$group] = New-Object System.Collections.ArrayList }
+        [void]$groups[$group].Add($rec)
+    }
+    $groups
+}
+
+# "nombre:somme des empreintes" de chaque groupe
+function Get-GroupDigests($Groups) {
+    $digests = [ordered]@{}
+    foreach ($g in $Groups.Keys) {
+        [long]$sum = 0
+        foreach ($r in $Groups[$g]) { $sum += [long]$r.digest }
+        $digests[$g] = '{0}:{1}' -f $Groups[$g].Count, $sum.ToString($Invariant)
+    }
+    $digests
+}
+
+function Get-RowCount($Records) {
+    $n = 0
+    foreach ($r in $Records) { $n += 1; if ($r.Contains('lines')) { $n += @($r.lines).Count } }
+    $n
+}
+
+# Une etape : lire l'intervalle, comparer les empreintes, envoyer les groupes demandes par pages.
+# Entre deux pages, les demandes en direct (actualiser maintenant) passent d'abord. Au-dela de data_step_seconds, l'etape
+# s'arrete : les groupes pas encore envoyes different toujours, la prochaine fois reprend la ou elle s'est arretee.
+# Retour : $true si tout ce que le serveur demandait est parti.
+function Invoke-DataStep($Step) {
+    $ds = $Step.ds
+    $t0 = Get-Date
+    $groups = Read-Dataset $ds $Step.from $Step.to
+    $body = [ordered]@{ dataset = $ds.name; from = $null; to = $null; groups = (Get-GroupDigests $groups) }
+    if ($ds.date) { $body.from = $Step.from; $body.to = $Step.to }
+    $r = Invoke-Api 'POST' '/agent/digest' $body
+    $send = @($r.send | Where-Object { $_ })
+    if (-not $send.Count) { return $true }
+    $pageRows = 1000
+    if ($r.page_rows) { $pageRows = [int]$r.page_rows }
+
+    $sent = 0
+    $page = [ordered]@{}
+    $rows = 0
+    for ($i = 0; $i -le $send.Count; $i++) {
+        $records = @()
+        if ($i -lt $send.Count -and $groups.Contains([string]$send[$i])) { $records = $groups[[string]$send[$i]].ToArray() }
+        $n = Get-RowCount $records
+        # page pleine (un jour plus grand qu'une page part seul), ou fin de la liste
+        if ($page.Count -and ($i -eq $send.Count -or $rows + $n -gt $pageRows)) {
+            $res = Invoke-Api 'POST' '/agent/records' ([ordered]@{ dataset = $ds.name; groups = $page })
+            $sent += $page.Count
+            Write-Log ('DONNEES {0} : {1} groupe(s), {2} ligne(s) -> {3} ecrit(s), {4} retire(s)' -f $ds.name, $page.Count, $rows, $res.written, $res.removed)
+            $page = [ordered]@{}
+            $rows = 0
+            try { Invoke-PendingJobs } catch { Write-Log (Get-ErrorText $_) -IsError }
+            if ($i -lt $send.Count -and ((Get-Date) - $t0).TotalSeconds -gt [double]$cfg.data_step_seconds) {
+                Write-Log ('DONNEES {0} : {1} groupe(s) sur {2} envoye(s), la suite au prochain passage' -f $ds.name, $sent, $send.Count)
+                return $false
+            }
+        }
+        if ($i -lt $send.Count) {
+            $page[[string]$send[$i]] = $records
+            $rows += $n
+        }
+    }
+    return $true
+}
+
+# Les etapes dues : 7 derniers jours toutes les 5 min, 60 derniers jours toutes les heures, clients toutes les 15 min,
+# et une fois par jour (le soir, ou des que possible si la derniere date de plus de 2 jours) tout l'historique, mois par mois.
+function Add-DueDataSteps {
+    $now = Get-Date
+    $today = Get-Today
+    foreach ($ds in $Datasets) {
+        if ($script:DataBroken.ContainsKey($ds.name) -and $now -lt $script:DataBroken[$ds.name]) { continue }
+        $tiers = @()
+        if ($ds.date) {
+            $tiers += @{ tier = 'recent'; prio = 1; every = [double]$cfg.data_minutes; from = $today.AddDays(1 - [int]$cfg.data_recent_days) }
+            $tiers += @{ tier = 'window'; prio = 3; every = [double]$cfg.data_window_minutes; from = $today.AddDays(1 - [int]$cfg.data_window_days) }
+        } else {
+            $tiers += @{ tier = 'all'; prio = 2; every = [double]$cfg.partners_minutes; from = $null }
+        }
+        foreach ($t in $tiers) {
+            $id = '{0}|{1}' -f $ds.name, $t.tier
+            if ($script:DataNext.ContainsKey($id) -and $now -lt $script:DataNext[$id]) { continue }
+            $script:DataNext[$id] = $now.AddMinutes($t.every)
+            $step = @{ ds = $ds; tier = $t.tier; prio = $t.prio; from = $null; to = $null }
+            if ($t.from) { $step.from = Format-Day $t.from; $step.to = Format-Day $today }
+            [void]$script:DataQueue.Add($step)
+        }
+    }
+
+    if ($script:HistoryRunning) { return }
+    $last = [datetime]::MinValue
+    if ($script:State.history_done_at) { try { $last = [datetime]::Parse($script:State.history_done_at, $Invariant) } catch { } }
+    $hours = ($now - $last).TotalHours
+    $quiet = $now.Hour -ge [int]$cfg.history_hour -or $now.Hour -lt 6
+    if (-not ($last -eq [datetime]::MinValue -or ($hours -ge 20 -and $quiet) -or $hours -ge 44)) { return }
+    foreach ($ds in $Datasets) {
+        if (-not $ds.date) { continue }
+        if ($script:DataBroken.ContainsKey($ds.name) -and $now -lt $script:DataBroken[$ds.name]) { continue }
+        try {
+            $null = Test-DatasetSchema $ds
+            $span = @(ConvertFrom-IsqlList (Invoke-Isql @(('SELECT MIN({0}) AS FIRSTDAY, MAX({0}) AS LASTDAY FROM {1};' -f $ds.date, $ds.table))) @('FIRSTDAY', 'LASTDAY'))
+        } catch {
+            Set-DatasetBroken $ds $_
+            continue
+        }
+        $first = ConvertTo-IsoDay $span[0]['FIRSTDAY']
+        if (-not $first) { continue }
+        $end = $today
+        $lastDay = ConvertTo-IsoDay $span[0]['LASTDAY']
+        if ($lastDay -and [datetime]::ParseExact($lastDay, 'yyyy-MM-dd', $Invariant) -gt $end) { $end = [datetime]::ParseExact($lastDay, 'yyyy-MM-dd', $Invariant) }
+        $m = [datetime]::ParseExact($first.Substring(0, 7) + '-01', 'yyyy-MM-dd', $Invariant)
+        while ($m -le $end) {
+            [void]$script:DataQueue.Add(@{ ds = $ds; tier = 'history'; prio = 4; from = (Format-Day $m); to = (Format-Day $m.AddMonths(1).AddDays(-1)) })
+            $m = $m.AddMonths(1)
+        }
+    }
+    $script:HistoryRunning = $true
+    Write-Log 'DONNEES : verification de tout l''historique, mois par mois'
+}
+
+# Une tache qui echoue s'arrete 5 minutes (sa table manque : 6 heures), le serveur le note, les autres continuent.
+# Une erreur de l'API n'est pas renvoyee a l'API : le serveur note lui-meme ce qu'il refuse.
+function Set-DatasetBroken($Ds, $ErrorRecord) {
+    $text = Get-ErrorText $ErrorRecord
+    $code = 'db_error'
+    $wait = 5
+    $api = (Get-HttpStatus $ErrorRecord) -ne 0 -or @(Get-ExceptionChain $ErrorRecord | Where-Object {
+        $_ -is [Net.Http.HttpRequestException] -or $_ -is [Threading.Tasks.TaskCanceledException] -or $_ -is [Net.WebException] }).Count
+    if ($api) { $code = 'api_error' }
+    elseif ($text -like '*absente ou sans*') { $code = 'missing_table'; $wait = 360 }
+    # serveur d'avant 1.0.7 (pas de /agent/digest) : on reessaie dans une heure, le stock continue
+    if ((Get-HttpStatus $ErrorRecord) -eq 404) { $wait = 60 }
+    $script:DataBroken[$Ds.name] = (Get-Date).AddMinutes($wait)
+    Write-Log ('donnees {0} : {1}' -f $Ds.name, $text) -IsError
+    if ($code -ne 'api_error') {
+        try { Invoke-Api 'POST' '/agent/digest' ([ordered]@{ dataset = $Ds.name; error = $code; message = $text }) | Out-Null } catch { }
+    }
+    $script:DataCols.Remove($Ds.name)
+}
+
+# Au plus une etape par tour de boucle, la plus urgente : les 7 derniers jours, puis les clients, puis le reste
+function Invoke-NextDataStep {
+    Add-DueDataSteps
+    $now = Get-Date
+    $next = $null
+    foreach ($s in $script:DataQueue) {
+        if ($script:DataBroken.ContainsKey($s.ds.name) -and $now -lt $script:DataBroken[$s.ds.name]) { continue }
+        if ($null -eq $next -or $s.prio -lt $next.prio) { $next = $s }
+    }
+    if ($null -eq $next) {
+        # les etapes d'une table en erreur sont abandonnees : la nuit suivante les refera
+        $script:DataQueue.Clear()
+        if ($script:HistoryRunning) {
+            $script:HistoryRunning = $false
+            $script:State.history_done_at = (Get-Date).ToString('o', $Invariant)
+            Save-State
+            Write-Log 'DONNEES : historique verifie'
+        }
+        return
+    }
+    $script:DataQueue.Remove($next)
+    try {
+        $done = Invoke-DataStep $next
+        # etape coupee par sa limite de temps : l'historique la refait tout de suite, les autres a leur prochain passage
+        if (-not $done -and $next.tier -eq 'history') { [void]$script:DataQueue.Add($next) }
+    } catch {
+        Set-DatasetBroken $next.ds $_
+    }
+}
+
+# -TestData : lit chaque jeu (les N derniers jours, ou toute la table) sans rien envoyer ; resultat dans outbox\
+function Test-Datasets([int]$LastDays) {
+    $ok = $true
+    $today = Get-Today
+    foreach ($ds in $Datasets) {
+        try {
+            $t0 = Get-Date
+            $from = $null
+            $to = $null
+            if ($ds.date) { $from = Format-Day $today.AddDays(1 - $LastDays); $to = Format-Day $today }
+            $groups = Read-Dataset $ds $from $to
+            $records = 0
+            $lines = 0
+            foreach ($g in $groups.Keys) { $records += $groups[$g].Count; $lines += (Get-RowCount $groups[$g]) - $groups[$g].Count }
+            $file = Join-Path $OutboxDir ('data-{0}.json' -f $ds.name)
+            [IO.File]::WriteAllText($file, (ConvertTo-Json ([ordered]@{ dataset = $ds.name; from = $from; to = $to; digests = (Get-GroupDigests $groups); groups = $groups }) -Depth 10), $Utf8NoBom)
+            $what = 'toute la table'
+            if ($ds.date) { $what = "du $from au $to" }
+            Write-Host ('{0,-18}: OK, {1} enregistrement(s), {2} ligne(s), {3} groupe(s) {4} en {5:N1} s -> {6}' -f $ds.name, $records, $lines, $groups.Count, $what, ((Get-Date) - $t0).TotalSeconds, $file) -ForegroundColor Green
+        } catch {
+            $ok = $false
+            Write-Host ('{0,-18}: ERREUR {1}' -f $ds.name, (Get-ErrorText $_)) -ForegroundColor Red
+        }
+    }
+    $ok
 }
 
 function Start-AgentLoop {
@@ -403,7 +836,13 @@ function Start-AgentLoop {
                     $null = Send-FullSync
                     $nextSync = (Get-Date).AddMinutes([double]$cfg.full_sync_minutes)
                 }
-                if (-not $DryRun) { Invoke-PendingJobs }
+                if (-not $DryRun) {
+                    Invoke-PendingJobs
+                    # ventes, achats, clients... : une etape au plus, apres les demandes en direct
+                    Invoke-NextDataStep
+                    # des etapes en attente (premier envoi de l'historique) : la suivante dans 2 s, pas 10
+                    if ($script:DataQueue.Count) { $sleep = 2 }
+                }
             }
         } catch {
             if ((Get-HttpStatus $_) -eq 401) {
@@ -426,12 +865,17 @@ try {
     $env:ISC_USER = $cfg.db_user
     $env:ISC_PASSWORD = $cfg.db_password
     [Net.ServicePointManager]::SecurityProtocol = [Net.ServicePointManager]::SecurityProtocol -bor [Net.SecurityProtocolType]::Tls12
+    $script:State = Read-State
 
     if ($TestCode) {
         $items = @(Get-StockByCode $TestCode)
         if ($items.Count) { $items | ForEach-Object { [pscustomobject]$_ } | Format-Table -AutoSize | Out-String | Write-Host }
         else { Write-Host "Code $TestCode introuvable" }
         exit 0
+    }
+
+    if ($TestData) {
+        if (Test-Datasets $Days) { exit 0 } else { exit 1 }
     }
 
     if ($Register) {
@@ -455,8 +899,20 @@ try {
             Write-Host "Table     : $Table OK ($n articles)" -ForegroundColor Green
             if ($script:PriceCols.Count) { Write-Host ("Prix      : {0}" -f (@($script:PriceCols | ForEach-Object { '{0} -> {1}' -f $_, $PriceColumns[$_] }) -join ', ')) }
             else { Write-Host 'Prix      : aucune colonne de prix trouvee (stock envoye sans prix)' -ForegroundColor Yellow }
+            if ($script:ItemCols.Count) { Write-Host ("Fiche     : {0}" -f (@($script:ItemCols | ForEach-Object { '{0} -> {1}' -f $_, $ItemColumns[$_] }) -join ', ')) }
             $mtime = Get-DbFileTime
             if ($mtime) { Write-Host "Fichier   : derniere ecriture $mtime" }
+            # ventes, achats, clients... : tables et colonnes seulement (agent.ps1 -TestData pour une vraie lecture)
+            foreach ($ds in $Datasets) {
+                try {
+                    $c = Test-DatasetSchema $ds
+                    $what = $ds.table
+                    if ($ds.lines) { $what += ' + ' + $ds.lines }
+                    Write-Host ('Donnees   : {0} ({1}) OK, {2} colonne(s)' -f $ds.name, $what, ($c.head.Count + $c.line.Count))
+                } catch {
+                    Write-Host ('Donnees   : {0} : {1} (le stock n''est pas concerne)' -f $ds.name, (Get-ErrorText $_)) -ForegroundColor Yellow
+                }
+            }
         } else {
             Write-Host "Table     : $Table ou colonnes absentes" -ForegroundColor Red
             $ok = $false

@@ -22,17 +22,21 @@ class AgentCompatibilityTest extends TestCase
 {
     use RefreshDatabase;
 
-    /** @return array<string, array{0: string, 1: bool, 2: bool}> version => [version, envoie les prix, comprend la demande "sync"] */
+    /**
+     * @return array<string, array{0: string, 1: bool, 2: bool, 3: bool}>
+     *                                                                    version => [version, envoie les prix, comprend la demande "sync", envoie ventes / achats / clients (digest + records)]
+     */
     public static function versions(): array
     {
         return [
-            '1.0.0' => ['1.0.0', false, false],
-            '1.0.1' => ['1.0.1', false, false],
-            '1.0.2' => ['1.0.2', false, false],
-            '1.0.3' => ['1.0.3', false, false],
-            '1.0.4' => ['1.0.4', false, true],
-            '1.0.5' => ['1.0.5', true, true],
-            '1.0.6' => ['1.0.6', true, true],
+            '1.0.0' => ['1.0.0', false, false, false],
+            '1.0.1' => ['1.0.1', false, false, false],
+            '1.0.2' => ['1.0.2', false, false, false],
+            '1.0.3' => ['1.0.3', false, false, false],
+            '1.0.4' => ['1.0.4', false, true, false],
+            '1.0.5' => ['1.0.5', true, true, false],
+            '1.0.6' => ['1.0.6', true, true, false],
+            '1.0.7' => ['1.0.7', true, true, true],
         ];
     }
 
@@ -43,7 +47,7 @@ class AgentCompatibilityTest extends TestCase
     }
 
     #[DataProvider('versions')]
-    public function test_a_released_agent_still_syncs_and_answers_refresh(string $version, bool $prices, bool $syncJob): void
+    public function test_a_released_agent_still_syncs_and_answers_refresh(string $version, bool $prices, bool $syncJob, bool $documents): void
     {
         $agent = ['X-Agent-Version' => $version, 'Accept' => 'application/json'];
         $token = $this->withHeaders($agent)->postJson('/api/agents/register', [
@@ -52,7 +56,8 @@ class AgentCompatibilityTest extends TestCase
         $branch = Branch::sole();
         $agent['Authorization'] = 'Bearer '.$token;
         $item = fn (float $stock) => ['code' => '820AC', 'designation' => 'BOULLON', 'stock' => $stock]
-            + ($prices ? ['price' => 550.0, 'price_wholesale' => 400.0, 'price_buy' => 380.0] : []);
+            + ($prices ? ['price' => 550.0, 'price_wholesale' => 400.0, 'price_buy' => 380.0] : [])
+            + ($documents ? ['stock_alert' => 10.0, 'stock_max' => 500.0, 'family' => 'VIS', 'unit' => 'PCS'] : []);
 
         // synchro toutes les 5 min
         $this->withHeaders($agent)->getJson('/api/agent/ping')->assertOk();
@@ -64,6 +69,23 @@ class AgentCompatibilityTest extends TestCase
         $this->assertEquals(164.11, $row->stock);
         $this->assertEquals($prices ? 550 : null, $row->price, 'without prices (before 1.0.5) = unknown, not 0');
         $this->assertSame($version, $branch->fresh()->agent_version);
+        $this->assertEquals($documents ? 10 : null, $row->stock_alert, 'without levels (before 1.0.7) = unknown');
+
+        // ventes et clients : 1.0.7 envoie les empreintes puis les jours demandes ; avant, la page dit de mettre l'agent a jour
+        $seller = User::factory()->inBranch($branch)->withPermissions(['prices.sale', 'sales.view'])->create();
+        if ($documents) {
+            $day = now()->toDateString();
+            $bon = ['key' => '1475', 'digest' => 81985315468, 'number' => 1475, 'time' => '09:18:33.0000', 'partner' => 'C001',
+                'amount' => 1100.0, 'lines' => [['code' => '820AC', 'qty' => 2.0, 'price' => 550.0, 'total' => 1100.0, 'cost' => 380.0, 'position' => 1]]];
+            $this->withHeaders($agent)->postJson('/api/agent/digest', ['dataset' => 'sales', 'from' => now()->subDays(6)->toDateString(), 'to' => $day,
+                'groups' => [$day => '1:81985315468']])->assertOk()->assertJson(['send' => [$day]]);
+            $this->withHeaders($agent)->postJson('/api/agent/records', ['dataset' => 'sales', 'groups' => [$day => [$bon]]])->assertOk();
+            $this->withHeaders($agent)->postJson('/api/agent/records', ['dataset' => 'customers', 'groups' => ['p12' => [['key' => 'C001', 'digest' => 5, 'name' => 'Benali']]]])->assertOk();
+            $this->actingAs($seller)->get('/stock/item?code=820AC')->assertOk()->assertSee('1475')->assertSee('Benali');
+        } else {
+            $this->actingAs($seller)->get('/stock/item?code=820AC')->assertOk()
+                ->assertSee(__('stock.activity.outdated', ['names' => 'Oran']));
+        }
 
         // "تحديث الآن"
         $user = User::factory()->create();

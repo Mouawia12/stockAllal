@@ -7,6 +7,7 @@ use App\Models\BranchStock;
 use App\Models\ProductGroup;
 use App\Models\RefreshJob;
 use App\Support\BranchScope;
+use App\Support\ProductActivity;
 use App\Support\StockState;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -40,7 +41,8 @@ class StockController extends Controller
     }
 
     /**
-     * Page d'un article : son etiquette de rayon, puis son stock dans chaque branche affichee (le "rayon").
+     * Page d'un article : son etiquette de rayon, puis son stock dans chaque branche affichee (le "rayon"),
+     * puis ses ventes et achats (ProductActivity, ?period=).
      * ?partial=1&batch=... : seulement le rayon, relu par la page pendant "تحديث الآن".
      */
     public function item(Request $request): View
@@ -49,8 +51,13 @@ class StockController extends Controller
         if ($request->boolean('partial')) {
             return view('stock._shelf', $data);
         }
+        $shown = Branch::where('active', true)->among(BranchScope::ids($request))->orderBy('name')->get();
 
-        return view('stock.item', $data + ['scope' => BranchScope::selected($request)]);
+        return view('stock.item', $data + [
+            'scope' => BranchScope::selected($request),
+            'activity' => $data['designation'] === null ? null
+                : ProductActivity::for($request->user(), $data['codes'], $shown, (string) $request->query('period', 'all')),
+        ]);
     }
 
     /**
@@ -109,7 +116,8 @@ class StockController extends Controller
                     'code' => $row->code_raw,
                     'designation' => $row->designation,
                     'stock' => $row->stock,
-                    'state' => StockState::of($row->stock),
+                    // seuil d'alerte et stock max de cette branche (agent 1.0.7) : vert / orange comme dans Gescomm
+                    'state' => StockState::of($row->stock, $row->stock_alert, $row->stock_max),
                     ...$this->prices($row, $visible),
                     // une synchro complete n'ecrit que les lignes changees : la valeur est confirmee a la derniere synchro
                     'updated' => collect([$row->updated_at, $branch->last_sync_at])->filter()->max()?->diffForHumans(),

@@ -69,4 +69,16 @@ return [
     'no_longer_main' => '“:name” is no longer the main branch',
     'deleted' => 'Branch “:name” and its stock deleted',
     'is_disabled' => 'The branch is disabled',
+    'data_old' => 'Sales: needs agent :version',
+    'data_waiting' => 'Sales: waiting for the first upload',
+    'data_ok' => 'Sales and customers: up to date :time',
+    'data_error' => 'Error in: :tasks',
+    'tasks' => [
+        'sales' => 'Sales',
+        'purchases' => 'Purchases',
+        'customers' => 'Customers',
+        'suppliers' => 'Suppliers',
+        'customer_payments' => 'Customer payments',
+        'supplier_payments' => 'Supplier payments',
+    ],
 ];

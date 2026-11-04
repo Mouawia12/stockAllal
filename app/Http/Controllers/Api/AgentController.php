@@ -6,9 +6,12 @@ use App\Http\Controllers\Controller;
 use App\Models\Branch;
 use App\Models\BranchAccess;
 use App\Models\BranchStock;
+use App\Models\BranchTask;
 use App\Models\InstallCode;
 use App\Models\RefreshJob;
 use App\Models\User;
+use App\Support\AgentDatasets;
+use App\Support\DatasetSync;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
@@ -19,6 +22,9 @@ use Throwable;
 /** API appelee par les agents des branches (voir agent/README.md pour le contrat). */
 class AgentController extends Controller
 {
+    /** Colonnes de branch_stock qu'une synchro ou un "تحديث الآن" reecrit. */
+    private const STOCK_COLUMNS = ['code_key', 'designation', 'stock', ...BranchStock::PRICES, ...BranchStock::LEVELS, ...BranchStock::DETAILS, 'seen_at', 'updated_at'];
+
     public function register(Request $request): JsonResponse
     {
         $data = $request->validate([
@@ -100,7 +106,7 @@ class AgentController extends Controller
         // Une synchro sans changement n'ecrit donc que la ligne de la branche, la recherche ne la sent pas.
         // La fraicheur d'une valeur inchangee = derniere synchro de la branche (voir StockController::product).
         $existing = BranchStock::where('branch_id', $branch->id)
-            ->get(['id', 'code_raw', 'code_key', 'designation', 'stock', ...BranchStock::PRICES])
+            ->get(['id', 'code_raw', ...array_diff(self::STOCK_COLUMNS, ['seen_at', 'updated_at'])])
             ->keyBy('code_raw');
         $changed = array_values(array_filter($rows, function (array $row, int|string $code) use ($existing) {
             $old = $existing->get($code);
@@ -112,7 +118,7 @@ class AgentController extends Controller
 
         DB::transaction(function () use ($branch, $rows, $changed, $removed, $now, $request) {
             foreach (array_chunk($changed, 500) as $chunk) {
-                BranchStock::upsert($chunk, ['branch_id', 'code_raw'], ['code_key', 'designation', 'stock', ...BranchStock::PRICES, 'seen_at', 'updated_at']);
+                BranchStock::upsert($chunk, ['branch_id', 'code_raw'], self::STOCK_COLUMNS);
             }
             foreach ($removed->chunk(500) as $ids) {
                 BranchStock::whereIn('id', $ids)->delete();
@@ -139,7 +145,8 @@ class AgentController extends Controller
         return $old->code_key === $new['code_key']
             && $old->designation === $new['designation']
             && $sameNumber($old->stock, $new['stock'])
-            && collect(BranchStock::PRICES)->every(fn (string $field) => $sameNumber($old->{$field}, $new[$field]));
+            && collect([...BranchStock::PRICES, ...BranchStock::LEVELS])->every(fn (string $field) => $sameNumber($old->{$field}, $new[$field]))
+            && collect(BranchStock::DETAILS)->every(fn (string $field) => $old->{$field} === $new[$field]);
     }
 
     /** Demandes "mettre a jour" en attente pour cette branche ; elles passent a "taken". */
@@ -191,7 +198,7 @@ class AgentController extends Controller
         DB::transaction(function () use ($branch, $job, $items, $status, $now, $request) {
             if ($status === 'done') {
                 $rows = array_values(array_filter(array_map(fn ($item) => $this->stockRow($branch, $item, $now), $items)));
-                BranchStock::upsert($rows, ['branch_id', 'code_raw'], ['code_key', 'designation', 'stock', ...BranchStock::PRICES, 'seen_at', 'updated_at']);
+                BranchStock::upsert($rows, ['branch_id', 'code_raw'], self::STOCK_COLUMNS);
             } elseif ($status === 'not_found') {
                 // l'article n'existe plus dans le Gescomm de la branche : la lecture en direct fait foi
                 BranchStock::where('branch_id', $branch->id)->where('code_key', $job->code_key)->delete();
@@ -205,6 +212,84 @@ class AgentController extends Controller
         });
 
         return response()->json(['ok' => true]);
+    }
+
+    /**
+     * Agent 1.0.7 : empreintes des groupes d'un jeu (ventes par jour, clients par paquet...), le serveur repond ceux
+     * qu'il faut lui envoyer. Avec error : la tache a echoue dans la branche (lecture de Gescomm), on le note.
+     */
+    public function digest(Request $request): JsonResponse
+    {
+        $branch = $this->branch($request);
+        $name = (string) $request->input('dataset');
+        $set = AgentDatasets::get($name);
+        if ($set === null) {
+            return response()->json(['error' => 'unknown_dataset'], 422);
+        }
+
+        $error = $request->input('error');
+        if (is_string($error) && $error !== '') {
+            $message = $request->input('message');
+            BranchTask::failed($branch, $name, $error.(is_string($message) && $message !== '' ? ': '.$message : ''));
+
+            return response()->json(['send' => [], 'page_rows' => DatasetSync::PAGE_ROWS]);
+        }
+
+        $from = $request->input('from');
+        $to = $request->input('to');
+        foreach ([$from, $to] as $bound) {
+            if ($bound !== null && (! $set['dated'] || ! AgentDatasets::validGroup($set, $bound))) {
+                return response()->json(['error' => 'invalid_range'], 422);
+            }
+        }
+        $groups = $request->input('groups') ?? [];
+        // pas un seul client dans tout Gescomm = lecture ratee, pas de quoi tout effacer (comme une synchro vide)
+        if (! is_array($groups) || ($groups === [] && ! $set['dated'])) {
+            return $this->refuse($branch, $name, 'groups manquant ou vide');
+        }
+
+        $send = DatasetSync::differing($branch, $set, $groups, $from, $to);
+        if ($send === []) {
+            BranchTask::ok($branch, $name);
+        }
+
+        return response()->json(['send' => $send, 'page_rows' => DatasetSync::PAGE_ROWS]);
+    }
+
+    /** Agent 1.0.7 : les groupes demandes par digest, complets ; chacun remplace le groupe du serveur. */
+    public function records(Request $request): JsonResponse
+    {
+        $branch = $this->branch($request);
+        $name = (string) $request->input('dataset');
+        $set = AgentDatasets::get($name);
+        if ($set === null) {
+            return response()->json(['error' => 'unknown_dataset'], 422);
+        }
+        $groups = $request->input('groups');
+        if (! is_array($groups) || $groups === []) {
+            return response()->json(['error' => 'groups manquant ou vide'], 422);
+        }
+        foreach (array_keys($groups) as $group) {
+            if (! AgentDatasets::validGroup($set, (string) $group)) {
+                return $this->refuse($branch, $name, 'invalid_group', ['group' => (string) $group]);
+            }
+        }
+        if (DatasetSync::rowCount($groups) > DatasetSync::MAX_ROWS) {
+            return $this->refuse($branch, $name, 'too_many_rows', ['max_rows' => DatasetSync::MAX_ROWS]);
+        }
+
+        $result = DatasetSync::store($branch, $set, $groups);
+        BranchTask::ok($branch, $name);
+
+        return response()->json(['ok' => true] + $result);
+    }
+
+    /** Envoi refuse : la page des branches le montre (l'agent, lui, ne renvoie pas une erreur de l'API a l'API). */
+    private function refuse(Branch $branch, string $task, string $error, array $extra = []): JsonResponse
+    {
+        BranchTask::failed($branch, $task, $error.($extra ? ' '.json_encode($extra) : ''));
+
+        return response()->json(['error' => $error] + $extra, 422);
     }
 
     private function branch(Request $request): Branch
@@ -235,6 +320,15 @@ class AgentController extends Controller
         foreach (BranchStock::PRICES as $field) {
             $value = $item[$field] ?? null;
             $row[$field] = is_numeric($value) ? $value : null;
+        }
+        // seuils, famille et unite : a partir de l'agent 1.0.7
+        foreach (BranchStock::LEVELS as $field) {
+            $value = $item[$field] ?? null;
+            $row[$field] = is_numeric($value) ? $value : null;
+        }
+        foreach (BranchStock::DETAILS as $field) {
+            $value = is_scalar($item[$field] ?? null) ? trim((string) $item[$field]) : '';
+            $row[$field] = $value === '' ? null : mb_substr($value, 0, 20);
         }
 
         return $row + ['seen_at' => $now, 'updated_at' => $now];
