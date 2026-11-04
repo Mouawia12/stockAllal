@@ -30,6 +30,15 @@
     .codes button.link:hover { color: var(--bad); background: none; }
     .page-title { font-size: 20px; margin: 0 0 4px; }
     .legend { display: flex; gap: 16px; flex-wrap: wrap; align-items: center; margin: 12px 0 0; }
+    /* filtres facon Odoo : une pastille par filtre, son nombre a cote ; les couleurs de Gescomm pour epuise / negatif */
+    .filters { display: flex; gap: 6px; flex-wrap: wrap; margin: 0 0 12px; }
+    .chip { display: inline-flex; align-items: center; gap: 8px; padding: 4px 0; padding-inline: 12px 6px; border: 1px solid var(--border); border-radius: 99px; color: var(--text); font-size: 14px; background: var(--card); }
+    .chip:hover { background: var(--row-hover); }
+    .chip .n { font-variant-numeric: tabular-nums; font-size: 12.5px; color: var(--muted); background: var(--row-hover); border-radius: 99px; padding: 0 8px; }
+    .chip.on { border-color: var(--accent); background: var(--accent-soft); color: var(--accent); font-weight: 600; }
+    .chip.on .n { background: var(--card); color: var(--accent); }
+    .chip-zero .n { color: var(--zero); background: var(--zero-bg); }
+    .chip-negative .n { color: var(--negative); background: var(--negative-bg); }
     .merge-help { margin: 0 0 14px; }
     .merge-bar { display: flex; align-items: center; gap: 10px; margin-bottom: 12px; }
     .merge-bar button:disabled { opacity: .45; cursor: not-allowed; }
@@ -56,10 +65,12 @@
 
 <form class="search" method="get" action="{{ route($merge ? 'merge.index' : 'stock.index') }}" data-title="{{ $baseTitle }}">
     <div class="q-wrap">
-        <input type="search" name="q" dir="auto" value="{{ $q }}" placeholder="{{ __('stock.placeholder') }}" autofocus autocomplete="off" aria-controls="results">
+        <input type="search" name="q" value="{{ $q }}" placeholder="{{ __('stock.placeholder') }}" autofocus autocomplete="off" aria-controls="results">
         <span class="live-spin" aria-hidden="true"></span>
     </div>
     <button class="primary" type="submit">{{ __('stock.search') }}</button>
+    {{-- sans JavaScript, le filtre choisi reste a la recherche suivante --}}
+    @if ($filter !== 'all')<input type="hidden" name="f" value="{{ $filter }}">@endif
 </form>
 <p class="live-hint muted small hide-sm">{!! __('stock.live_hint') !!}</p>
 
@@ -275,6 +286,15 @@
     let lastPreview = null;
 
     results.addEventListener('click', e => {
+        // filtre : meme recherche, autre filtre, sans recharger la page
+        const chip = e.target.closest('a[data-filter]');
+        if (chip) {
+            e.preventDefault();
+            filter = chip.dataset.filter;
+            form.querySelector('input[name=f]')?.remove();
+            liveSearch(input.value.trim(), true);
+            return;
+        }
         const btn = e.target.closest('button[data-code]');
         if (!btn) return;
         lastPreview = btn;
@@ -342,7 +362,7 @@
     // Pause de 220 ms apres la derniere touche ; la requete precedente est annulee, et une reponse arrivee
     // en retard (seq) n'ecrase jamais une plus recente. Sans JavaScript, le formulaire marche comme avant.
     const BASE_TITLE = form.dataset.title;
-    let typingTimer = null, inflight = null, seq = 0, shown = input.value.trim();
+    let typingTimer = null, inflight = null, seq = 0, shown = input.value.trim(), filter = @json($filter);
 
     async function liveSearch(q, force = false) {
         if (q === shown && !force) return;
@@ -352,6 +372,7 @@
 
         const url = new URL(form.action, location.href);
         if (q) url.searchParams.set('q', q);
+        if (filter !== 'all') url.searchParams.set('f', filter);
         history.replaceState(null, '', url);   // actualiser ou revenir garde la recherche
         document.title = (q ? q + ' — ' : '') + BASE_TITLE;
         url.searchParams.set('partial', '1');

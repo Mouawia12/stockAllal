@@ -1,0 +1,48 @@
+<?php
+
+// Journal d'activite (ActivityController, App\Support\ActivityText).
+return [
+    'title' => 'Activity log',
+    'filter' => 'Kind of change',
+    'empty' => 'No change recorded yet.',
+    'types' => [
+        'all' => 'All',
+        'users' => 'Accounts',
+        'branches' => 'Branches',
+    ],
+    'today' => 'Today',
+    'yesterday' => 'Yesterday',
+    'system' => 'System',
+    'newer' => 'Newer',
+    'older' => 'Older',
+    'arrow' => '→',
+    'became' => 'became',
+    'none' => 'none',
+    'yes' => 'yes',
+    'no' => 'no',
+    'changed' => 'changed',
+    'for_new' => 'for a new branch',
+    'for_reinstall' => 'to reinstall the agent of :name',
+    'actions' => [
+        'user_created' => 'created the account :subject',
+        'user_updated' => 'edited the account :subject',
+        'user_deleted' => 'deleted the account :subject',
+        'branch_access' => 'changed what :subject sees of the branches\' stock',
+        'branch_updated' => 'edited the branch :subject',
+        'branch_main' => 'changed the main branch: :subject',
+        'branch_deleted' => 'deleted the branch :subject',
+        'install_code_created' => 'created an install code :subject',
+    ],
+    'fields' => [
+        'name' => 'Name',
+        'username' => 'Username',
+        'role' => 'Account type',
+        'branch_id' => 'Branch',
+        'branches' => 'Company manager\'s branches',
+        'active' => 'Enabled',
+        'permissions' => 'Permissions',
+        'password' => 'Password',
+        'visible' => 'Sees the stock of',
+        'is_main' => 'Main',
+    ],
+];

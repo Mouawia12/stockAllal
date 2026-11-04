@@ -1,0 +1,48 @@
+<?php
+
+// Journal d'activite (ActivityController, App\Support\ActivityText).
+return [
+    'title' => 'سجل النشاط',
+    'filter' => 'نوع التغيير',
+    'empty' => 'لا يوجد أي تغيير مسجَّل بعد.',
+    'types' => [
+        'all' => 'الكل',
+        'users' => 'الحسابات',
+        'branches' => 'الفروع',
+    ],
+    'today' => 'اليوم',
+    'yesterday' => 'أمس',
+    'system' => 'النظام',
+    'newer' => 'الأحدث',
+    'older' => 'الأقدم',
+    'arrow' => '←',
+    'became' => 'أصبح',
+    'none' => 'لا شيء',
+    'yes' => 'نعم',
+    'no' => 'لا',
+    'changed' => 'تغيّرت',
+    'for_new' => 'لفرع جديد',
+    'for_reinstall' => 'لإعادة تركيب وكيل :name',
+    'actions' => [
+        'user_created' => 'أنشأ حساب :subject',
+        'user_updated' => 'عدّل حساب :subject',
+        'user_deleted' => 'حذف حساب :subject',
+        'branch_access' => 'غيّر ما يراه فرع :subject من مخزون الفروع',
+        'branch_updated' => 'عدّل فرع :subject',
+        'branch_main' => 'غيّر الفرع الرئيسي: :subject',
+        'branch_deleted' => 'حذف فرع :subject',
+        'install_code_created' => 'أنشأ كود تركيب :subject',
+    ],
+    'fields' => [
+        'name' => 'الاسم',
+        'username' => 'اسم المستخدم',
+        'role' => 'نوع الحساب',
+        'branch_id' => 'الفرع',
+        'branches' => 'فروع مدير الشركة',
+        'active' => 'مفعّل',
+        'permissions' => 'الصلاحيات',
+        'password' => 'كلمة السر',
+        'visible' => 'يرى مخزون',
+        'is_main' => 'رئيسي',
+    ],
+];

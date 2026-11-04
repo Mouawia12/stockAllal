@@ -5,6 +5,7 @@ namespace Tests\Feature;
 use App\Models\Branch;
 use App\Models\BranchAccess;
 use App\Models\BranchStock;
+use App\Models\ProductGroup;
 use App\Models\RefreshJob;
 use App\Models\User;
 use App\Support\StockState;
@@ -125,6 +126,32 @@ class InterfaceTest extends TestCase
         $page = $this->actingAs($karim)->get('/stock')->assertOk()->assertSee('id="pal"', false);
         $page->assertSee($inJson('account.edit'), false)->assertDontSee($inJson('users.index'), false)->assertDontSee($inJson('merge.index'), false);
         $this->actingAs(User::factory()->admin()->create())->get('/stock')->assertSee($inJson('users.index'), false);
+    }
+
+    public function test_filters_count_and_list_products_by_their_total_even_without_a_word(): void
+    {
+        $admin = User::factory()->admin()->create();
+        $codes = fn (string $url) => collect($this->actingAs($admin)->get($url)->assertOk()->viewData('results'))->pluck('code')->all();
+        $counts = fn (string $url) => $this->actingAs($admin)->get($url)->viewData('counts');
+
+        // page vide : pas de liste, mais les compteurs de tout le catalogue
+        $this->assertSame([], $codes('/stock'));
+        $this->assertSame(['all' => 3, 'available' => 1, 'zero' => 1, 'negative' => 1], $counts('/stock'));
+        $this->actingAs($admin)->get('/stock')->assertSee('data-filter="negative"', false);
+
+        // un filtre seul : tous ses articles, sans mot a taper
+        $this->assertSame(['612Z'], $codes('/stock?f=negative'));
+        $this->assertSame(['1230'], $codes('/stock?q=boullon&f=zero'));
+        $this->assertSame(['820AC'], $codes('/stock?q=boullon&f=available'));
+        $this->assertCount(3, $codes('/stock?q=boullon&f=nimporte'), 'unknown filter = all');
+        $this->assertSame([], $codes('/stock?f=nimporte'), 'all without a word = no list');
+
+        // codes fusionnes : le filtre porte sur le total du groupe (120 + 30 - 150 = 0 : epuise)
+        $this->stock($this->setif, '820-AC', 'BOULLON ACIER 8*20', -150);
+        $group = ProductGroup::create();
+        $group->codes()->createMany([['code_key' => '820AC'], ['code_key' => '820-AC']]);
+        $this->assertContains('820-AC', $codes('/stock?f=zero'));
+        $this->assertSame(['all' => 3, 'available' => 0, 'zero' => 2, 'negative' => 1], $counts('/stock'));
     }
 
     public function test_stock_colours_follow_gescomm(): void

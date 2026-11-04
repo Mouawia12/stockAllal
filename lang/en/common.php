@@ -23,6 +23,7 @@ return [
         'merge' => 'Merge items',
         'branches' => 'Branches',
         'users' => 'Users',
+        'activity' => 'Activity',
     ],
     'account' => 'My account',
     'logout' => 'Log out',

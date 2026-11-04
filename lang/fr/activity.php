@@ -1,0 +1,48 @@
+<?php
+
+// Journal d'activite (ActivityController, App\Support\ActivityText).
+return [
+    'title' => 'Journal d\'activité',
+    'filter' => 'Type de changement',
+    'empty' => 'Aucun changement enregistré pour l\'instant.',
+    'types' => [
+        'all' => 'Tout',
+        'users' => 'Comptes',
+        'branches' => 'Succursales',
+    ],
+    'today' => 'Aujourd\'hui',
+    'yesterday' => 'Hier',
+    'system' => 'Système',
+    'newer' => 'Plus récents',
+    'older' => 'Plus anciens',
+    'arrow' => '→',
+    'became' => 'devient',
+    'none' => 'aucun',
+    'yes' => 'oui',
+    'no' => 'non',
+    'changed' => 'changé',
+    'for_new' => 'pour une nouvelle succursale',
+    'for_reinstall' => 'pour réinstaller l\'agent de :name',
+    'actions' => [
+        'user_created' => 'a créé le compte :subject',
+        'user_updated' => 'a modifié le compte :subject',
+        'user_deleted' => 'a supprimé le compte :subject',
+        'branch_access' => 'a changé ce que :subject voit du stock des succursales',
+        'branch_updated' => 'a modifié la succursale :subject',
+        'branch_main' => 'a changé la succursale principale : :subject',
+        'branch_deleted' => 'a supprimé la succursale :subject',
+        'install_code_created' => 'a créé un code d\'installation :subject',
+    ],
+    'fields' => [
+        'name' => 'Nom',
+        'username' => 'Nom d\'utilisateur',
+        'role' => 'Type de compte',
+        'branch_id' => 'Succursale',
+        'branches' => 'Succursales du directeur',
+        'active' => 'Actif',
+        'permissions' => 'Permissions',
+        'password' => 'Mot de passe',
+        'visible' => 'Voit le stock de',
+        'is_main' => 'Principale',
+    ],
+];

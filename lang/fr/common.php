@@ -23,6 +23,7 @@ return [
         'merge' => 'Fusion des articles',
         'branches' => 'Succursales',
         'users' => 'Utilisateurs',
+        'activity' => 'Journal',
     ],
     'account' => 'Mon compte',
     'logout' => 'Déconnexion',

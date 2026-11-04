@@ -7,7 +7,7 @@ return [
     'weak_connection' => 'Connexion faible : les résultats affichés ne correspondent peut-être pas à la dernière recherche',
     'empty' => 'Saisissez un code produit ou une partie de sa désignation. Résultat : une ligne par produit, avec le total de ses quantités dans toutes les succursales.',
     'no_match' => 'Aucun produit ne correspond à « :q » dans aucune succursale.',
-    'too_many' => 'Seuls les :count premiers résultats sont affichés — affinez la recherche.',
+    'shown_of' => ':shown affichés sur :total. Tapez un mot pour affiner.',
     'no_main' => 'Pour afficher les prix dans la recherche : choisissez la « succursale principale » sur la page :link.',
 
     'col_code' => 'Code',
@@ -97,5 +97,13 @@ return [
         'not_found' => 'L\'article « :code » n\'est dans aucune des succursales affichées.',
         'show_all' => 'Afficher toutes mes succursales',
         'back' => 'Retour à la recherche',
+    ],
+    'filters' => [
+        'label' => 'Filtres du stock',
+        'all' => 'Tout',
+        'available' => 'Disponible',
+        'zero' => 'Épuisé',
+        'negative' => 'Négatif',
+        'none' => 'Aucun article dans ce filtre.',
     ],
 ];

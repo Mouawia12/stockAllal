@@ -1,6 +1,7 @@
 <?php
 
 use App\Http\Controllers\AccountController;
+use App\Http\Controllers\ActivityController;
 use App\Http\Controllers\AgentDownloadController;
 use App\Http\Controllers\Auth\LoginController;
 use App\Http\Controllers\BranchController;
@@ -66,6 +67,9 @@ Route::middleware('auth')->group(function () {
 
 // Comptes : selon le role (App\Support\Roles), jamais une case (ce serait se donner tous les droits).
 // UserController verifie en plus que chaque compte touche est un compte que l'auteur gere.
+// Journal des changements (comptes, branches) : le developpeur seulement.
+Route::get('activity', [ActivityController::class, 'index'])->name('activity.index')->middleware(['auth', 'can:view-activity']);
+
 Route::middleware(['auth', 'can:manage-users'])->group(function () {
     Route::get('users', [UserController::class, 'index'])->name('users.index');
     Route::get('users/create', [UserController::class, 'create'])->name('users.create');

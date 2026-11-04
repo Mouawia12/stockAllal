@@ -10,6 +10,7 @@
         $u->can('merge.manage') ? ['label' => __('common.nav.merge'), 'hint' => __('common.apps.stock'), 'url' => route('merge.index')] : null,
         $u->can('branches.view') ? ['label' => __('common.nav.branches'), 'hint' => __('common.apps.stock'), 'url' => route('branches.index')] : null,
         $u->managesAccounts() ? ['label' => __('common.nav.users'), 'hint' => __('common.apps.settings'), 'url' => route('users.index')] : null,
+        $u->can('view-activity') ? ['label' => __('common.nav.activity'), 'hint' => __('common.apps.settings'), 'url' => route('activity.index')] : null,
         ['label' => __('common.account'), 'hint' => __('common.apps.settings'), 'url' => route('account.edit')],
         ['label' => __('common.apps_launcher'), 'hint' => __('common.app_name'), 'url' => route('home')],
     ]));
@@ -26,7 +27,7 @@
     <div class="pal" role="dialog" aria-modal="true" aria-label="{{ __('common.palette.title') }}">
         <label class="pal-input">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/></svg>
-            <input type="search" id="pal-q" dir="auto" placeholder="{{ __('common.palette.placeholder') }}" autocomplete="off" spellcheck="false"
+            <input type="search" id="pal-q" placeholder="{{ __('common.palette.placeholder') }}" autocomplete="off" spellcheck="false"
                    role="combobox" aria-expanded="true" aria-controls="pal-list" aria-autocomplete="list">
             <kbd>{{ __('common.keys.esc') }}</kbd>
         </label>

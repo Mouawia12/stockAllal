@@ -7,7 +7,7 @@ return [
     'weak_connection' => 'Weak connection: the results shown may not match your latest search',
     'empty' => 'Type a product code or part of its description. Result: one row per product, with its total quantity across all branches.',
     'no_match' => 'No product matches “:q” in any branch.',
-    'too_many' => 'Only the first :count results are shown — refine your search.',
+    'shown_of' => 'Showing :shown of :total. Type a word to narrow it down.',
     'no_main' => 'To show prices in search: choose the “main branch” on the :link page.',
 
     'col_code' => 'Code',
@@ -97,5 +97,13 @@ return [
         'not_found' => 'Product “:code” is not in any of the branches shown.',
         'show_all' => 'Show all my branches',
         'back' => 'Back to search',
+    ],
+    'filters' => [
+        'label' => 'Stock filters',
+        'all' => 'All',
+        'available' => 'In stock',
+        'zero' => 'Out of stock',
+        'negative' => 'Negative',
+        'none' => 'No product in this filter.',
     ],
 ];

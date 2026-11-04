@@ -1,6 +1,17 @@
 {{-- Bloc des resultats : rendu dans la page, et seul (?partial=1) pour la recherche pendant la frappe. --}}
 @use('App\Support\Highlight')
-@if ($q === '')
+{{-- filtres facon Odoo, avec le nombre d'articles de chacun pour la recherche en cours ; des liens : ils marchent sans JavaScript --}}
+@if ($counts !== null)
+    <div class="filters" role="group" aria-label="{{ __('stock.filters.label') }}">
+        @foreach (App\Http\Controllers\StockController::FILTERS as $f)
+            <a href="{{ route($merge ? 'merge.index' : 'stock.index', array_filter(['q' => $q, 'f' => $f === 'all' ? null : $f])) }}"
+               data-filter="{{ $f }}" @class(['chip', "chip-{$f}", 'on' => $filter === $f]) @if ($filter === $f) aria-current="true" @endif>
+                {{ __("stock.filters.{$f}") }}<span class="n">{{ number_format($counts[$f], 0, ',', ' ') }}</span>
+            </a>
+        @endforeach
+    </div>
+@endif
+@if ($q === '' && $filter === 'all')
     <div class="empty">
         @if ($merge)
             {!! __('stock.merge.empty') !!}
@@ -9,7 +20,7 @@
         @endif
     </div>
 @elseif ($results->isEmpty())
-    <div class="empty">{{ __('stock.no_match', ['q' => $q]) }}</div>
+    <div class="empty">{{ $q === '' ? __('stock.filters.none') : __('stock.no_match', ['q' => $q]) }}</div>
 @else
     @if ($merge)
         <div class="merge-bar">
@@ -85,8 +96,8 @@
         <span><span class="qty zero">0,00</span> {{ __('stock.state.zero') }}</span>
         <span><span class="qty negative">-3,00</span> {{ __('stock.state.negative') }}</span>
     </p>
-    @if ($results->count() >= 100)
-        <p class="muted small">{{ __('stock.too_many', ['count' => 100]) }}</p>
+    @if ($matched > $results->count())
+        <p class="muted small">{{ __('stock.shown_of', ['shown' => $results->count(), 'total' => number_format($matched, 0, ',', ' ')]) }}</p>
     @endif
     @if ($noMain && auth()->user()->can('branches.manage'))
         <p class="muted small">{!! __('stock.no_main', ['link' => '<a href="'.route('branches.index').'">'.e(__('common.nav.branches')).'</a>']) !!}</p>

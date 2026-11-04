@@ -25,6 +25,7 @@ return [
         'merge' => 'دمج الأصناف',
         'branches' => 'الفروع',
         'users' => 'المستخدمون',
+        'activity' => 'السجل',
     ],
     'account' => 'حسابي',
     'logout' => 'خروج',

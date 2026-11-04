@@ -18,6 +18,9 @@ class StockController extends Controller
 {
     private const MAX_RESULTS = 100;
 
+    /** Filtres de la recherche (?f=), sur le total de l'article dans les branches affichees ; couleurs : App\Support\StockState. */
+    public const FILTERS = ['all', 'available', 'zero', 'negative'];
+
     /** Recherche : une ligne par code_key (ou par groupe de codes fusionnes), toutes les branches confondues. */
     public function index(Request $request): View
     {
@@ -58,7 +61,7 @@ class StockController extends Controller
     {
         $q = trim(mb_substr((string) $request->query('q', ''), 0, 60));
         $terms = $this->terms($q);
-        $items = $terms === [] ? collect() : $this->search($q, $terms, null, [], BranchScope::ids($request), 8);
+        $items = $terms === [] ? collect() : $this->search($q, $terms, null, [], BranchScope::ids($request), 'all', 8)['results'];
 
         return response()->json([
             'products' => $items->map(fn (object $r) => [
@@ -176,19 +179,26 @@ class StockController extends Controller
     {
         $q = trim((string) $request->query('q', ''));
         $terms = $this->terms($q);
+        $filter = in_array($request->query('f'), self::FILTERS, true) ? $request->query('f') : 'all';
         $ids = BranchScope::ids($request);
         $main = $this->priceBranch($request, $ids);
 
         $visible = $this->visiblePrices($request);
+        // sans mot ni filtre : pas de liste, seulement les compteurs des filtres (tout le catalogue affiche) ;
+        // avec un filtre seul : ses articles (ex. tous les articles a stock negatif)
+        $found = $this->search($q, $terms, $main, $visible, $ids, $filter, $terms === [] && $filter === 'all' ? 0 : self::MAX_RESULTS);
 
         return view($request->boolean('partial') ? 'stock._results' : 'stock.index', [
             'q' => $q,
+            'filter' => $filter,
+            'counts' => $found['counts'],
+            'matched' => $found['matched'],
             'terms' => $terms,
             'merge' => $merge,
             'mainBranch' => $main,
             'showSale' => in_array('price', $visible, true),
             'showBuy' => in_array('price_buy', $visible, true),
-            'results' => $terms === [] ? collect() : $this->search($q, $terms, $main, $visible, $ids),
+            'results' => $found['results'],
             'branchesTotal' => Branch::where('active', true)->among($ids)->count(),
             'noMain' => Branch::main() === null,
         ]);
@@ -297,43 +307,73 @@ class StockController extends Controller
     }
 
     /**
-     * @param  list<string>  $terms
+     * Recherche (ou parcours avec un filtre) : un article par code_key, ou par groupe de codes fusionnes.
+     * Le filtre porte sur le total de l'article dans les branches affichees ; les compteurs des filtres aussi, sur
+     * tout ce qui correspond a la recherche (pas seulement les 100 premiers).
+     *
+     * @param  list<string>  $terms  vide = tout le catalogue (seulement avec un filtre, voir page())
      * @param  list<string>  $visible  prix que le compte peut voir (visiblePrices)
      * @param  list<int>|null  $branchIds  branches affichees (BranchScope::ids), null = toutes
+     * @return array{results: Collection<int, object>, counts: array<string, int>, matched: int}
      */
-    private function search(string $q, array $terms, ?Branch $main, array $visible, ?array $branchIds, int $limit = self::MAX_RESULTS): Collection
+    private function search(string $q, array $terms, ?Branch $main, array $visible, ?array $branchIds, string $filter = 'all', int $limit = self::MAX_RESULTS): array
     {
-        $upper = mb_strtoupper(trim($q));
-        $prefix = $this->escapeLike($upper).'%';
-        $firstInCode = '%'.$this->escapeLike($terms[0]).'%';
+        $totalsOf = function (?array $codes) use ($terms, $branchIds) {
+            // ESCAPE '!' : meme syntaxe en MySQL et en SQLite (le backslash ne l'est pas)
+            $query = BranchStock::query()
+                ->join('branches', 'branches.id', '=', 'branch_stock.branch_id')
+                ->where('branches.active', true)
+                ->when($branchIds !== null, fn ($w) => $w->whereIn('branch_stock.branch_id', $branchIds))
+                ->when($codes !== null, fn ($w) => $w->whereIn('branch_stock.code_key', $codes));
+            if ($codes === null) {
+                foreach ($terms as $term) {
+                    $like = '%'.$this->escapeLike($term).'%';
+                    $query->where(fn ($w) => $w
+                        ->whereRaw("branch_stock.code_key LIKE ? ESCAPE '!'", [$like])
+                        ->orWhereRaw("UPPER(branch_stock.designation) LIKE ? ESCAPE '!'", [$like]));
+                }
+            }
 
-        // ESCAPE '!' : meme syntaxe en MySQL et en SQLite (le backslash ne l'est pas)
-        $query = BranchStock::query()
-            ->join('branches', 'branches.id', '=', 'branch_stock.branch_id')
-            ->where('branches.active', true)
-            ->when($branchIds !== null, fn ($w) => $w->whereIn('branch_stock.branch_id', $branchIds));
-        foreach ($terms as $term) {
-            $like = '%'.$this->escapeLike($term).'%';
-            $query->where(fn ($w) => $w
-                ->whereRaw("branch_stock.code_key LIKE ? ESCAPE '!'", [$like])
-                ->orWhereRaw("UPPER(branch_stock.designation) LIKE ? ESCAPE '!'", [$like]));
-        }
-        $keys = $query
-            ->groupBy('branch_stock.code_key')
+            return $query->groupBy('branch_stock.code_key')->selectRaw('branch_stock.code_key as k, SUM(branch_stock.stock) as total');
+        };
+
+        $matched = $totalsOf(null);
+        if ($terms !== []) {
+            $upper = mb_strtoupper(trim($q));
             // code exact, puis code qui commence par la recherche, puis code qui la contient, puis designation seule
-            ->orderByRaw("CASE WHEN branch_stock.code_key = ? THEN 0 WHEN branch_stock.code_key LIKE ? ESCAPE '!' THEN 1 WHEN branch_stock.code_key LIKE ? ESCAPE '!' THEN 2 ELSE 3 END", [$upper, $prefix, $firstInCode])
-            ->orderBy('branch_stock.code_key')
-            ->limit($limit)
-            ->pluck('branch_stock.code_key');
+            $matched->orderByRaw("CASE WHEN branch_stock.code_key = ? THEN 0 WHEN branch_stock.code_key LIKE ? ESCAPE '!' THEN 1 WHEN branch_stock.code_key LIKE ? ESCAPE '!' THEN 2 ELSE 3 END",
+                [$upper, $this->escapeLike($upper).'%', '%'.$this->escapeLike($terms[0]).'%']);
+        }
+        $totals = $matched->orderBy('branch_stock.code_key')->pluck('total', 'k')->map(fn ($t) => (float) $t);
 
-        // codes fusionnes : une ligne par groupe, affichee sous le premier de ses codes trouve par la recherche
-        $expanded = ProductGroup::expand($keys);
-        $units = $keys->map(fn (string $key) => ['code' => $key, 'codes' => $expanded[$key]])
+        // codes fusionnes : un article par groupe, affiche sous le premier de ses codes trouve ; son total = tout le groupe
+        $expanded = ProductGroup::expand($totals->keys());
+        $missing = collect($expanded)->flatten()->unique()->diff($totals->keys())->values();
+        if ($missing->isNotEmpty()) {
+            $totals = $totals->union($totalsOf($missing->all())->pluck('total', 'k')->map(fn ($t) => (float) $t));
+        }
+        $units = $totals->keys()->filter(fn ($key) => isset($expanded[$key]))
+            ->map(fn ($key) => ['code' => (string) $key, 'codes' => $expanded[$key]])
             ->unique(fn (array $unit) => $unit['codes'][0])
+            ->map(fn (array $unit) => $unit + ['total' => round(collect($unit['codes'])->sum(fn ($c) => $totals[$c] ?? 0), 2)])
             ->values();
 
+        $state = fn (array $unit) => StockState::of($unit['total']);
+        $counts = [
+            'all' => $units->count(),
+            'available' => $units->filter(fn ($u) => $u['total'] > 0.005)->count(),
+            'zero' => $units->filter(fn ($u) => $state($u) === 'zero')->count(),
+            'negative' => $units->filter(fn ($u) => $state($u) === 'negative')->count(),
+        ];
+        $kept = $units->filter(fn (array $u) => match ($filter) {
+            'available' => $u['total'] > 0.005,
+            'zero', 'negative' => $state($u) === $filter,
+            default => true,
+        })->values();
+
+        $shown = $kept->take($limit);
         $rows = BranchStock::query()
-            ->whereIn('code_key', $units->pluck('codes')->flatten())
+            ->whereIn('code_key', $shown->pluck('codes')->flatten())
             ->whereHas('branch', fn ($b) => $b->where('active', true))
             ->when($branchIds !== null, fn ($w) => $w->whereIn('branch_id', $branchIds))
             ->get()
@@ -342,7 +382,7 @@ class StockController extends Controller
         $sale = in_array('price', $visible, true);
         $buy = in_array('price_buy', $visible, true);
 
-        return $units->map(function (array $unit) use ($rows, $main, $sale, $buy) {
+        $results = $shown->map(function (array $unit) use ($rows, $main, $sale, $buy) {
             $group = collect($unit['codes'])->flatMap(fn (string $code) => $rows->get($code, collect()));
             $mainRow = $main ? $this->mainRow($group->where('branch_id', $main->id)) : null;
 
@@ -352,17 +392,19 @@ class StockController extends Controller
                 'merged' => array_values(array_diff($unit['codes'], [$unit['code']])),
                 // la designation de la branche qui a le plus de stock
                 'designation' => $group->sortByDesc('stock')->first()?->designation,
-                'total' => round($group->sum('stock'), 2),
+                'total' => $unit['total'],
                 'branches' => $group->pluck('branch_id')->unique()->count(),
-                // prix de la branche principale : detail (تجزئة) et gros (جملة) avec "prices.sale", achat avec "prices.buy"
+                // prix de la branche de reference : detail (تجزئة) et gros (جملة) avec "prices.sale", achat avec "prices.buy"
                 'price' => $sale ? $mainRow?->price : null,
                 'wholesale' => $sale ? $mainRow?->price_wholesale : null,
                 'buy' => $buy ? $mainRow?->price_buy : null,
-                // une branche au moins vend a un autre prix que la principale (prix pas encore mis a jour ?)
+                // une branche au moins vend a un autre prix que la reference (prix pas encore mis a jour ?)
                 'price_differs' => $sale && $mainRow !== null
                     && $group->contains(fn (BranchStock $row) => $this->salePricesDiffer($row, $mainRow)),
             ];
         });
+
+        return ['results' => $results, 'counts' => $counts, 'matched' => $kept->count()];
     }
 
     private function escapeLike(string $value): string

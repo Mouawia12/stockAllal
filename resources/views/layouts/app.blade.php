@@ -38,6 +38,8 @@
         input[type=text], input[type=search], input[type=email], input[type=password] {
             font: inherit; color: var(--text); background: var(--card); border: 1px solid var(--border); border-radius: 8px; padding: 8px 10px; }
         input:focus { outline: 2px solid var(--accent); outline-offset: -1px; }
+        /* chaque saisie dans son sens : "8*20" ou "820AC" de gauche a droite, l'indication arabe de droite a gauche */
+        input[type=search] { unicode-bidi: plaintext; }
         button, .btn { font: inherit; cursor: pointer; border: 1px solid var(--border); background: var(--card); color: var(--text); border-radius: 8px; padding: 7px 14px; }
         button:hover, .btn:hover { background: var(--row-hover); }
         button.primary { background: var(--accent); border-color: var(--accent); color: var(--on-accent); }
@@ -84,7 +86,7 @@
     $user = auth()->user();
     $current = match (true) {
         request()->routeIs('stock.*', 'merge.*', 'branches.*') => 'stock',
-        request()->routeIs('users.*', 'account.*') => 'settings',
+        request()->routeIs('users.*', 'account.*', 'activity.*') => 'settings',
         default => null,
     };
     $currentApp = $current ? config("apps.{$current}") : null;
@@ -110,6 +112,9 @@
                 @if ($user->managesAccounts())
                     <a href="{{ route('users.index') }}" class="{{ request()->routeIs('users.*') ? 'on' : '' }}">{{ __('common.nav.users') }}</a>
                 @endif
+                @can('view-activity')
+                    <a href="{{ route('activity.index') }}" class="{{ request()->routeIs('activity.*') ? 'on' : '' }}">{{ __('common.nav.activity') }}</a>
+                @endcan
                 <a href="{{ route('account.edit') }}" class="{{ request()->routeIs('account.*') ? 'on' : '' }}">{{ __('common.account') }}</a>
             @endif
         </nav>

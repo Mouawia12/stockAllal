@@ -45,5 +45,6 @@ class AppServiceProvider extends ServiceProvider
         // roles, jamais des cases (App\Support\Roles) : la page des comptes, et qui voit le stock de quelle branche
         Gate::define('manage-users', fn (User $user) => $user->managesAccounts());
         Gate::define('manage-branch-access', fn (User $user) => $user->isDeveloper() || $user->isOwner());
+        Gate::define('view-activity', fn (User $user) => $user->isDeveloper());
     }
 }
