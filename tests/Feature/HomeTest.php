@@ -27,10 +27,17 @@ class HomeTest extends TestCase
 
         $page = $this->actingAs($worker)->get('/')->assertOk()
             ->assertSee(route('stock.index'))
-            ->assertSee(['المخزون', 'المبيعات', 'المشتريات', 'الموردون', 'الزبائن'])
+            ->assertSee(['المخزون', 'الموردون', 'الزبائن'])
             // "الإعدادات" pour tous : un employe y trouve son propre compte
-            ->assertSee('الإعدادات')->assertSee(route('settings'));
-        $this->assertSame(4, substr_count($page->getContent(), 'class="soon-pill"'), 'المبيعات، المشتريات، الموردون، الزبائن');
+            ->assertSee('الإعدادات')->assertSee(route('settings'))
+            // sans sales.view : ni les ventes ni les achats
+            ->assertDontSee(route('sales.index'))->assertDontSee('المبيعات');
+        $this->assertSame(2, substr_count($page->getContent(), 'class="soon-pill"'), 'الموردون، الزبائن');
+
+        // avec sales.view : les bons de vente et d'achat s'ouvrent
+        $seller = User::factory()->withPermissions(['sales.view'])->create();
+        $this->actingAs($seller)->get('/')->assertOk()->assertSee(['المبيعات', 'المشتريات'])
+            ->assertSee(route('sales.index'))->assertSee(route('purchases.index'));
 
         // dans l'application : son nom et le bouton de retour aux applications
         $this->actingAs($worker)->get('/stock')->assertOk()->assertSee('المخزون')->assertSee('aria-label="التطبيقات"', false);

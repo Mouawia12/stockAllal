@@ -93,6 +93,8 @@
     $user = auth()->user();
     $current = match (true) {
         request()->routeIs('stock.*', 'merge.*', 'branches.*') => 'stock',
+        request()->routeIs('sales.*') => 'sales',
+        request()->routeIs('purchases.*') => 'purchases',
         request()->routeIs('users.*', 'account.*', 'activity.*') => 'settings',
         default => null,
     };
@@ -115,6 +117,8 @@
                 @can('branches.view')
                     <a href="{{ route('branches.index') }}" class="{{ request()->routeIs('branches.*') ? 'on' : '' }}">{{ __('common.nav.branches') }}</a>
                 @endcan
+            @elseif ($current === 'sales' || $current === 'purchases')
+                <a href="{{ route("{$current}.index") }}" class="on">{{ __('documents.title.'.($current === 'sales' ? 'sale' : 'purchase')) }}</a>
             @elseif ($current === 'settings')
                 @if ($user->managesAccounts())
                     <a href="{{ route('users.index') }}" class="{{ request()->routeIs('users.*') ? 'on' : '' }}">{{ __('common.nav.users') }}</a>

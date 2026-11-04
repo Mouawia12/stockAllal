@@ -137,7 +137,7 @@
                         @foreach ($lines as $l)
                             <tr @class(['bt', 'back' => $l['back']]) style="--bh: {{ $l['hue'] }}">
                                 <td class="num">{{ $l['date'] }} <span class="muted small">{{ $l['time'] }}</span></td>
-                                <td class="num">{{ $l['number'] }}@if (count($codes) > 1) <span class="code ltr small muted">{{ $l['code'] }}</span>@endif</td>
+                                <td class="num"><a class="bon-link" href="{{ $l['url'] }}">{{ $l['number'] }}</a>@if (count($codes) > 1) <span class="code ltr small muted">{{ $l['code'] }}</span>@endif</td>
                                 @if ($activity['several'])<td class="hide-sm">{{ $l['branch'] }}</td>@endif
                                 <td><bdi>{{ $l['partner'] ?? '—' }}</bdi>@if ($l['partner_code']) <span class="muted small ltr">{{ $l['partner_code'] }}</span>@endif</td>
                                 <td class="n">

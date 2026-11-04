@@ -41,4 +41,21 @@ final class BranchScope
 
         return $selected ? [$selected->id] : $request->user()->stockBranchIds();
     }
+
+    /**
+     * Branches dont les listes de bons montrent les ventes et achats : la branche choisie si le compte en voit
+     * les ventes (aucune sinon), ou toutes celles de User::salesBranchIds().
+     *
+     * @return list<int>|null
+     */
+    public static function salesIds(Request $request): ?array
+    {
+        $allowed = $request->user()->salesBranchIds();
+        $selected = self::selected($request);
+        if ($selected === null) {
+            return $allowed;
+        }
+
+        return $allowed === null || in_array($selected->id, $allowed, true) ? [$selected->id] : [];
+    }
 }

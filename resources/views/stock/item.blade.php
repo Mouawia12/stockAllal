@@ -81,6 +81,8 @@
     .act-tabs button[aria-selected=true] { color: var(--text); border-bottom-color: var(--accent); font-weight: 600; }
     .act-panel { padding-top: 6px; }
     .act-lines tr.back td { color: var(--muted); }
+    .act-lines a.bon-link { color: inherit; text-decoration: underline dotted var(--muted); text-underline-offset: 3px; }
+    .act-lines a.bon-link:hover { color: var(--accent); }
     .wait::before { content: ""; display: inline-block; width: 10px; height: 10px; margin-inline-end: 6px; border: 2px solid var(--muted); border-top-color: transparent; border-radius: 50%; animation: spin .8s linear infinite; vertical-align: -1px; }
     @keyframes spin { to { transform: rotate(360deg); } }
     @media (prefers-reduced-motion: reduce) { .wait::before { animation: none; } }

@@ -6,6 +6,7 @@ use App\Http\Controllers\AgentDownloadController;
 use App\Models\Branch;
 use App\Models\BranchAccess;
 use App\Models\BranchStock;
+use App\Models\Document;
 use App\Models\InstallCode;
 use App\Models\RefreshJob;
 use App\Models\User;
@@ -154,16 +155,29 @@ class BranchScopeTest extends TestCase
         $this->assertStringContainsString('40501', $html);
         $this->assertStringNotContainsString('70777', $html);
         $this->assertStringNotContainsString('9,00', $html);
+        // les bons : ceux de sa branche ; celui de Setif n'existe pas pour lui
+        $setifBon = Document::where('number', 70777)->value('id');
+        $this->actingAs($karim)->get('/sales')->assertOk()->assertSee('40501')->assertDontSee('70777');
+        $this->actingAs($karim)->get('/sales/'.Document::where('number', 40501)->value('id'))->assertOk();
+        $this->actingAs($karim)->get("/sales/{$setifBon}")->assertNotFound();
+        // choisir Setif en haut (il en voit le stock) ne montre pas ses bons
+        $this->actingAs($karim)->post('/branch-scope', ['branch_id' => $setif->id]);
+        $this->actingAs($karim)->get('/sales')->assertOk()->assertDontSee('70777')->assertDontSee('40501')
+            ->assertSee(__('documents.no_branch_selected', ['branch' => 'Setif']));
+        $this->actingAs($karim)->post('/branch-scope', ['branch_id' => '']);
 
         // une nouvelle branche n'ouvre pas ses ventes ; on peut les ouvrir une par une
         $this->assertSame(0, DB::table('branch_access')->where('module', 'sales')->count());
         BranchAccess::set($oran->id, 'sales', [$setif->id], [$oran->id, $setif->id]);
         $this->assertStringContainsString('70777', $this->actingAs($karim)->get('/stock/item?code=820AC')->getContent());
+        $this->actingAs($karim)->get('/sales')->assertOk()->assertSee('70777');
+        $this->actingAs($karim)->get("/sales/{$setifBon}")->assertOk();
 
         // un compte sans branche (d'avant les roles) voit le stock de tout le monde, les ventes de personne
         $old = User::factory()->withPermissions(['sales.view'])->create();
         $this->assertNull($old->stockBranchIds());
         $this->assertSame([], $old->salesBranchIds());
         $this->assertStringNotContainsString('40501', $this->actingAs($old)->get('/stock/item?code=820AC')->getContent());
+        $this->actingAs($old)->get('/sales')->assertOk()->assertDontSee('40501')->assertSee(__('documents.no_branch'));
     }
 }

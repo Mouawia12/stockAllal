@@ -10,6 +10,8 @@
         ['label' => __('common.nav.search'), 'hint' => __('common.apps.stock'), 'url' => route('stock.index')],
         $u->can('merge.manage') ? ['label' => __('common.nav.merge'), 'hint' => __('common.apps.stock'), 'url' => route('merge.index')] : null,
         $u->can('branches.view') ? ['label' => __('common.nav.branches'), 'hint' => __('common.apps.stock'), 'url' => route('branches.index')] : null,
+        $u->can('sales.view') ? ['label' => __('documents.title.sale'), 'hint' => __('common.apps.sales'), 'url' => route('sales.index')] : null,
+        $u->can('sales.view') ? ['label' => __('documents.title.purchase'), 'hint' => __('common.apps.purchases'), 'url' => route('purchases.index')] : null,
         $u->managesAccounts() ? ['label' => __('common.nav.users'), 'hint' => __('common.apps.settings'), 'url' => route('users.index')] : null,
         $u->can('view-activity') ? ['label' => __('common.nav.activity'), 'hint' => __('common.apps.settings'), 'url' => route('activity.index')] : null,
         ['label' => __('common.account'), 'hint' => __('common.apps.settings'), 'url' => route('account.edit')],

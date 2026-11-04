@@ -6,6 +6,7 @@ use App\Http\Controllers\AgentDownloadController;
 use App\Http\Controllers\Auth\LoginController;
 use App\Http\Controllers\BranchController;
 use App\Http\Controllers\BranchScopeController;
+use App\Http\Controllers\DocumentController;
 use App\Http\Controllers\HomeController;
 use App\Http\Controllers\LocaleController;
 use App\Http\Controllers\ProductGroupController;
@@ -39,6 +40,14 @@ Route::middleware('auth')->group(function () {
     // selecteur de branche de la barre du haut (App\Support\BranchScope) ; un POST comme les boutons de langue
     Route::post('branch-scope', BranchScopeController::class)->name('branch-scope');
     Route::post('refresh', [StockController::class, 'refresh'])->name('stock.refresh')->middleware(['can:stock.refresh', 'throttle:refresh']);
+
+    // bons de vente et d'achat (agent 1.0.7) : seulement les branches dont le compte voit les ventes (BranchScope::salesIds)
+    Route::middleware('can:sales.view')->group(function () {
+        Route::get('sales', [DocumentController::class, 'sales'])->name('sales.index')->middleware('throttle:search');
+        Route::get('sales/{document}', [DocumentController::class, 'sale'])->name('sales.show')->whereNumber('document');
+        Route::get('purchases', [DocumentController::class, 'purchases'])->name('purchases.index')->middleware('throttle:search');
+        Route::get('purchases/{document}', [DocumentController::class, 'purchase'])->name('purchases.show')->whereNumber('document');
+    });
 
     Route::get('branches', [BranchController::class, 'index'])->name('branches.index')->middleware('can:branches.view');
     Route::middleware('can:branches.sync')->group(function () {

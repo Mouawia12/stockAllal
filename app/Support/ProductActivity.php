@@ -2,6 +2,7 @@
 
 namespace App\Support;
 
+use App\Http\Controllers\DocumentController;
 use App\Models\Branch;
 use App\Models\DocumentLine;
 use App\Models\User;
@@ -125,6 +126,7 @@ final class ProductActivity
                 'date' => $line->date?->format('d/m/Y'),
                 'time' => $line->time ? substr($line->time, 0, 5) : null,
                 'number' => $line->number,
+                'url' => route(DocumentController::ROUTES[$kind].'.show', $line->document_id),
                 'branch' => $names[$line->branch_id] ?? null,
                 'hue' => Branch::hueFor($line->branch_id),
                 'code' => $line->code_raw,
