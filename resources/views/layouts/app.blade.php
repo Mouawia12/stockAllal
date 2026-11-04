@@ -8,6 +8,8 @@
     @include('partials.favicon')
     @include('partials.fonts')
     @include('partials.theme')
+    {{-- bandeau des touches masque (partials/keys) : avant l'affichage, pour qu'il n'apparaisse pas une fraction de seconde --}}
+    <script>try { if (localStorage.getItem('keys-bar') === 'off') document.documentElement.dataset.keys = 'off'; } catch (e) {}</script>
     <style>
         * { box-sizing: border-box; }
         body { margin: 0; background: var(--bg); color: var(--text); font: 15px/1.6 var(--font); }
@@ -93,7 +95,7 @@
 @endphp
 <header>
     <div class="in">
-        <a class="launcher" href="{{ route('home') }}" title="{{ __('common.apps_launcher') }}" aria-label="{{ __('common.apps_launcher') }}">@include('partials.app-icon', ['name' => 'grid'])</a>
+        <a class="launcher" href="{{ route('home') }}" data-key="Alt+H" title="{{ __('common.apps_launcher') }}" aria-label="{{ __('common.apps_launcher') }}">@include('partials.app-icon', ['name' => 'grid'])</a>
         @if ($currentApp)
             <a class="app-title" href="{{ route($currentApp['route']) }}">@include('partials.app-icon', ['name' => $current]){{ __("common.apps.{$current}") }}</a>
         @else
@@ -119,7 +121,7 @@
             @endif
         </nav>
         @include('partials.branch-switch')
-        <button type="button" class="link palette-open" data-palette title="{{ __('common.palette.title') }}" aria-label="{{ __('common.palette.title') }}">
+        <button type="button" class="link palette-open" data-palette data-key="Ctrl+K F3" data-key-fallback title="{{ __('common.palette.title') }}" aria-label="{{ __('common.palette.title') }}">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/></svg>
             <span class="palette-label">{{ __('common.palette.button') }}</span><kbd>Ctrl K</kbd>
         </button>
@@ -184,6 +186,7 @@
 </script>
 @include('partials.palette')
 @stack('scripts')
+@include('partials.keys')
 @include('partials.sw')
 </body>
 </html>

@@ -17,10 +17,14 @@
 </style>
 @endpush
 
+@push('keys')
+    @include('partials.key', ['keys' => [__('common.keys.insert')], 'run' => 'Insert', 'label' => __('users.new')])
+@endpush
+
 @section('content')
 <div class="top">
     <h1>{{ __('users.title') }}</h1>
-    <a class="btn primary" href="{{ route('users.create') }}">+ {{ __('users.new') }}</a>
+    <a class="btn primary" href="{{ route('users.create') }}" data-key="Insert">+ {{ __('users.new') }}</a>
 </div>
 
 {{-- arbre : la direction, puis chaque branche (son directeur d'abord), puis les comptes sans branche (UserController::grouped) --}}

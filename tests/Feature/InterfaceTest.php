@@ -154,6 +154,40 @@ class InterfaceTest extends TestCase
         $this->assertSame(['all' => 3, 'available' => 0, 'zero' => 2, 'negative' => 1], $counts('/stock'));
     }
 
+    public function test_each_screen_lists_its_keys_in_the_bar_and_on_its_elements(): void
+    {
+        $admin = User::factory()->admin()->create();
+
+        // recherche : F3 sur le champ, Alt+1..4 sur les filtres ; le bandeau dit Espace = apercu (ou "اختيار" dans le dmj)
+        $this->actingAs($admin)->get('/stock?q=boullon')->assertOk()
+            ->assertSee('id="keys-bar"', false)
+            ->assertSee('data-key="F3"', false)->assertSee('data-run="F3"  data-page-key >', false)
+            ->assertSee('data-key="Alt+1"', false)->assertSee('data-key="Alt+4"', false)
+            ->assertSeeInOrder(['<kbd>مسافة</kbd>', 'معاينة'], false)
+            ->assertSee('data-key="Alt+H"', false)               // l'ecran des applications, comme Odoo
+            ->assertSee('data-key="Ctrl+K F3" data-key-fallback', false);
+        $this->actingAs($admin)->get('/stock?q=boullon&partial=1')->assertSee('data-key="Alt+2"', false)->assertDontSee('id="keys-bar"', false);
+        $this->actingAs($admin)->get('/merge?q=boullon')->assertSeeInOrder(['<kbd>مسافة</kbd>', 'اختيار'], false);
+
+        // page de l'article : Echap = retour a la liste, Alt+R = "تحديث الآن" (seulement avec la permission)
+        $this->actingAs($admin)->get('/stock/item?code=820AC')
+            ->assertSee('data-key="Escape" data-back', false)
+            ->assertSee('id="refresh" data-key="Alt+R"', false)->assertSee('data-run="Alt+R"', false);
+        $clerk = User::factory()->create(['permissions' => ['prices.sale']]);
+        $this->actingAs($clerk)->get('/stock/item?code=820AC')->assertOk()
+            ->assertSee('data-key="Escape"', false)->assertDontSee('data-run="Alt+R"', false)->assertDontSee('data-key="Alt+R"', false);
+
+        // comptes : Inser = nouveau, comme dans Gescomm ; Alt+S = enregistrer, comme dans Odoo
+        $this->actingAs($admin)->get('/users')->assertSee('data-key="Insert"', false)->assertSee('<kbd>Inser</kbd>', false);
+        $this->actingAs($admin)->get('/users/create')->assertSee('data-key="Alt+S"', false)->assertSee('data-key="Escape" data-back', false);
+
+        // l'ecran des applications n'a pas de touches a lui : seulement celles de partout
+        $this->actingAs($admin)->get('/')->assertOk()->assertSee('id="keys-bar"', false)->assertSee('data-run="Ctrl+K"', false)->assertDontSee('data-page-key >', false);
+
+        // en francais, les noms des touches du clavier AZERTY
+        $this->actingAs($admin)->withUnencryptedCookie('locale', 'fr')->get('/stock/item?code=820AC')->assertSee('<kbd>Échap</kbd>', false)->assertSee('Retour');
+    }
+
     public function test_stock_colours_follow_gescomm(): void
     {
         $this->assertSame('zero', StockState::of(0.0));

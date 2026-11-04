@@ -5,7 +5,7 @@
     <div class="filters" role="group" aria-label="{{ __('stock.filters.label') }}">
         @foreach (App\Http\Controllers\StockController::FILTERS as $f)
             <a href="{{ route($merge ? 'merge.index' : 'stock.index', array_filter(['q' => $q, 'f' => $f === 'all' ? null : $f])) }}"
-               data-filter="{{ $f }}" @class(['chip', "chip-{$f}", 'on' => $filter === $f]) @if ($filter === $f) aria-current="true" @endif>
+               data-filter="{{ $f }}" data-key="Alt+{{ $loop->iteration }}" @class(['chip', "chip-{$f}", 'on' => $filter === $f]) @if ($filter === $f) aria-current="true" @endif>
                 {{ __("stock.filters.{$f}") }}<span class="n">{{ number_format($counts[$f], 0, ',', ' ') }}</span>
             </a>
         @endforeach

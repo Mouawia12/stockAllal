@@ -73,9 +73,20 @@
 </style>
 @endpush
 
+@push('keys')
+    @include('partials.key', ['keys' => [__('common.keys.esc')], 'run' => 'Escape', 'label' => __('common.keys.back')])
+    @include('partials.key', ['keys' => ['F3'], 'run' => 'F3', 'label' => __('common.keys.search')])
+    @if ($designation !== null)
+        @can('stock.refresh')
+            @include('partials.key', ['keys' => ['Alt', 'R'], 'run' => 'Alt+R', 'label' => __('stock.refresh_now')])
+        @endcan
+    @endif
+@endpush
+
 @section('content')
 <nav class="crumbs" aria-label="{{ __('stock.item.crumbs') }}">
-    <a href="{{ route('stock.index', ['q' => $code]) }}">{{ __('common.nav.search') }}</a>
+    {{-- Echap ou clic : retour a la liste d'ou l'on vient, avec ses mots et son filtre (data-back, partials/keys) --}}
+    <a href="{{ route('stock.index', ['q' => $code]) }}" data-key="Escape" data-back>{{ __('common.nav.search') }}</a>
     <span aria-hidden="true">/</span>
     <span class="code ltr">{{ $code }}</span>
 </nav>
@@ -138,7 +149,7 @@
             </dl>
             <div class="facts-actions">
                 @can('stock.refresh')
-                    <button type="button" class="primary" id="refresh">{{ __('stock.refresh_now') }}</button>
+                    <button type="button" class="primary" id="refresh" data-key="Alt+R">{{ __('stock.refresh_now') }}</button>
                 @endcan
                 @can('merge.manage')
                     <a class="btn" href="{{ route('merge.index', ['q' => $code]) }}">{{ __('common.nav.merge') }}</a>

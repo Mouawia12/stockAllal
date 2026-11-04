@@ -3,7 +3,7 @@
 return [
     'search' => 'Rechercher',
     'placeholder' => 'Code produit ou mots de la désignation — ex. 820AC ou boulon 20',
-    'live_hint' => 'Les résultats se mettent à jour pendant la saisie. <kbd>↓</kbd> <kbd>↑</kbd> pour naviguer, <kbd>Entrée</kbd> pour l\'aperçu, <kbd>/</kbd> pour revenir à la recherche.',
+    'live_hint' => 'Les résultats se mettent à jour pendant la saisie.',
     'weak_connection' => 'Connexion faible : les résultats affichés ne correspondent peut-être pas à la dernière recherche',
     'empty' => 'Saisissez un code produit ou une partie de sa désignation. Résultat : une ligne par produit, avec le total de ses quantités dans toutes les succursales.',
     'no_match' => 'Aucun produit ne correspond à « :q » dans aucune succursale.',

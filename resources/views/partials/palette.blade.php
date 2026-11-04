@@ -1,7 +1,8 @@
 {{--
     Barre Ctrl+K, partout : chercher un article (par code ou designation, route "palette") ou une page, au clavier.
     Ctrl+K ou ? l'ouvre (touches physiques : marche aussi avec un clavier arabe), le bouton de la barre du haut aussi.
-    Vide, elle montre les pages et les raccourcis. Les pages : seulement celles que le compte peut ouvrir.
+    Vide, elle montre les pages, les touches de l'ecran (lues dans le bandeau du bas, partials/keys) et celles de partout.
+    Les pages : seulement celles que le compte peut ouvrir. Un element peut etre une commande (afficher / masquer le bandeau).
 --}}
 @php
     $u = auth()->user();
@@ -16,7 +17,9 @@
     ]));
     $palKeys = [
         ['keys' => ['Ctrl', 'K'], 'label' => __('common.palette.key_palette')],
-        ['keys' => ['/'], 'label' => __('common.palette.key_search')],
+        ['keys' => ['F3'], 'label' => __('common.palette.key_search')],
+        ['keys' => ['Alt'], 'label' => __('common.palette.key_alt')],
+        ['keys' => ['Alt', 'H'], 'label' => __('common.apps_launcher')],
         ['keys' => ['↑', '↓'], 'label' => __('common.palette.key_move')],
         ['keys' => [__('common.keys.enter')], 'label' => __('common.palette.key_open')],
         ['keys' => [__('common.keys.esc')], 'label' => __('common.palette.key_close')],
@@ -71,10 +74,21 @@
     const fmt = n => Number(n).toLocaleString('fr-FR', {minimumFractionDigits: 2, maximumFractionDigits: 2});
     let items = [], active = 0, timer = null, ctrl = null, seq = 0, opener = null;
 
+    // une ligne de touches : [kbd, kbd] + ce qu'elles font
+    const keyRow = k => '<div class="pal-item" aria-hidden="true"><span class="pal-keys">' + k.keys.map(x => '<kbd>' + esc(x) + '</kbd>').join('') + '</span><span class="grow hint">' + esc(k.label) + '</span></div>';
+    // les touches de cette page : celles du bandeau du bas, meme masque
+    const pageKeys = () => [...document.querySelectorAll('#keys-bar [data-page-key]')].map(k => ({
+        keys: [...k.querySelectorAll('kbd')].map(x => x.textContent), label: k.querySelector(':scope > span').textContent,
+    }));
+    // pas de bandeau sur telephone : pas de commande pour lui
+    const commands = () => matchMedia('(max-width: 700px), (hover: none)').matches ? []
+        : [{label: document.documentElement.dataset.keys === 'off' ? T.bar_show : T.bar_hide, run: () => window.toggleKeysBar?.()}];
+
     function render(products, q) {
         const html = [];
         items = [];
-        const add = (url, inner) => { items.push(url); html.push('<a class="pal-item" role="option" href="' + esc(url) + '" data-i="' + (items.length - 1) + '">' + inner + '</a>'); };
+        // une page (son adresse) ou une commande (une fonction)
+        const add = (target, inner) => { items.push(target); html.push('<a class="pal-item" role="option" href="' + (typeof target === 'string' ? esc(target) : '#') + '" data-i="' + (items.length - 1) + '">' + inner + '</a>'); };
         if (q) {
             if (products === null) html.push('<div class="pal-empty">' + esc(T.searching) + '</div>');
             else if (products.length) {
@@ -90,10 +104,20 @@
             html.push('<div class="pal-group">' + esc(T.pages) + '</div>');
             pages.forEach(p => add(p.url, '<span class="grow">' + esc(p.label) + '</span><span class="hint">' + esc(p.hint) + '</span>'));
         }
+        const cmds = commands().filter(c => !needle || c.label.toLowerCase().includes(needle));
+        if (cmds.length) {
+            html.push('<div class="pal-group">' + esc(T.commands) + '</div>');
+            cmds.forEach(c => add(c.run, '<span class="grow">' + esc(c.label) + '</span>'));
+        }
         if (!q) {
+            const here = pageKeys();
+            if (here.length) {
+                html.push('<div class="pal-group">' + esc(T.here) + '</div>');
+                here.forEach(k => html.push(keyRow(k)));
+            }
             html.push('<div class="pal-group">' + esc(T.shortcuts) + '</div>');
-            KEYS.forEach(k => html.push('<div class="pal-item" aria-hidden="true"><span class="pal-keys">' + k.keys.map(x => '<kbd>' + esc(x) + '</kbd>').join('') + '</span><span class="grow hint">' + esc(k.label) + '</span></div>'));
-        } else if (products !== null && !products.length && !pages.length) {
+            KEYS.forEach(k => html.push(keyRow(k)));
+        } else if (products !== null && !products.length && !pages.length && !cmds.length) {
             html.push('<div class="pal-empty">' + esc(T.nothing.replace(':q', q)) + '</div>');
         }
         list.innerHTML = html.join('');
@@ -146,8 +170,16 @@
             if (items.length) { active = (active + (e.key === 'ArrowDown' ? 1 : -1) + items.length) % items.length; mark(); }
         } else if (e.key === 'Enter') {
             e.preventDefault();
-            if (items[active]) location.href = items[active];
+            go(items[active]);
         }
+    });
+    function go(target) {
+        if (typeof target === 'function') { close(); target(); }
+        else if (target) location.href = target;
+    }
+    list.addEventListener('click', e => {
+        const a = e.target.closest('a.pal-item');
+        if (a && typeof items[Number(a.dataset.i)] === 'function') { e.preventDefault(); go(items[Number(a.dataset.i)]); }
     });
     list.addEventListener('mousemove', e => { const a = e.target.closest('a.pal-item'); if (a && Number(a.dataset.i) !== active) { active = Number(a.dataset.i); mark(); } });
     bg.addEventListener('click', e => { if (e.target === bg) close(); });

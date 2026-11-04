@@ -27,12 +27,16 @@
 </style>
 @endpush
 
+@push('keys')
+    @include('partials.key', ['keys' => ['Alt', '1…'.count(App\Http\Controllers\ActivityController::TYPES)], 'label' => __('activity.filter')])
+@endpush
+
 @section('content')
 <div class="top">
     <h1>{{ __('activity.title') }}</h1>
     <nav class="filters" aria-label="{{ __('activity.filter') }}">
         @foreach (array_keys(App\Http\Controllers\ActivityController::TYPES) as $t)
-            <a href="{{ route('activity.index', $t === 'all' ? [] : ['type' => $t]) }}" @class(['chip', 'on' => $type === $t]) @if ($type === $t) aria-current="true" @endif>{{ __("activity.types.{$t}") }}</a>
+            <a href="{{ route('activity.index', $t === 'all' ? [] : ['type' => $t]) }}" data-key="Alt+{{ $loop->iteration }}" @class(['chip', 'on' => $type === $t]) @if ($type === $t) aria-current="true" @endif>{{ __("activity.types.{$t}") }}</a>
         @endforeach
     </nav>
 </div>

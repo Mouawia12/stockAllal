@@ -21,6 +21,10 @@
 </style>
 @endpush
 
+@push('keys')
+    @include('partials.key', ['keys' => ['Alt', 'S'], 'run' => 'Alt+S', 'label' => __('common.save')])
+@endpush
+
 @section('content')
 <div class="account-page">
 <form class="card account" method="post" action="{{ route('account.update') }}">
@@ -44,7 +48,7 @@
     <label for="current_password">{{ __('users.current_password') }} <span class="small">{{ __('users.required_to_save') }}</span></label>
     <input id="current_password" type="password" name="current_password" required dir="ltr" autocomplete="current-password">
 
-    <button class="primary" type="submit">{{ __('common.save') }}</button>
+    <button class="primary" type="submit" data-key="Alt+S">{{ __('common.save') }}</button>
 </form>
 
 {{-- lecture seule : ce que ce compte peut faire ; seul celui qui le gere le change (page des comptes) --}}

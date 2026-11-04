@@ -7,7 +7,7 @@
 @if ($scopeChoices->count() > 1)
     @php($scopeSelected = App\Support\BranchScope::selected(request()))
     <details @class(['scope', 'picked' => $scopeSelected])>
-        <summary title="{{ __('common.scope.title') }}">
+        <summary title="{{ __('common.scope.title') }}" data-key="Alt+B">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 21h18M5 21V9l7-5 7 5v12"/><path d="M9 21v-6h6v6"/></svg>
             <span class="scope-label">{{ $scopeSelected?->name ?? __('common.scope.all') }}</span>
             <svg class="chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg>
@@ -45,9 +45,21 @@
         @media (max-width: 700px) { .scope-label { max-width: 90px; } }
     </style>
     <script>
-        // un clic ailleurs ou Echap ferme le menu
+        // un clic ailleurs ou Echap ferme le menu ; ouvert (aussi par Alt+B), le clavier est sur la branche choisie, les fleches passent aux autres
         document.addEventListener('click', e => document.querySelectorAll('details.scope[open]').forEach(d => { if (!d.contains(e.target)) d.open = false; }));
-        document.addEventListener('keydown', e => { if (e.key === 'Escape') document.querySelectorAll('details.scope[open]').forEach(d => { d.open = false; }); });
+        document.querySelectorAll('details.scope').forEach(d => d.addEventListener('toggle', () => {
+            if (d.open) (d.querySelector('.scope-menu button.on') || d.querySelector('.scope-menu button'))?.focus();
+        }));
+        document.addEventListener('keydown', e => {
+            const open = document.querySelector('details.scope[open]');
+            if (!open) return;
+            if (e.key === 'Escape') { e.preventDefault(); open.open = false; open.querySelector('summary').focus(); return; }
+            const menu = e.target.closest?.('.scope-menu');
+            if (!menu || (e.key !== 'ArrowDown' && e.key !== 'ArrowUp')) return;
+            e.preventDefault();
+            const list = [...menu.querySelectorAll('button')];
+            list[(list.indexOf(e.target.closest('button')) + (e.key === 'ArrowDown' ? 1 : -1) + list.length) % list.length].focus();
+        });
     </script>
     @endonce
 @endif

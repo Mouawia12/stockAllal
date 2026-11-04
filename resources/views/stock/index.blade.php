@@ -57,6 +57,14 @@
 </style>
 @endpush
 
+@push('keys')
+    @include('partials.key', ['keys' => ['F3'], 'run' => 'F3', 'label' => __('common.keys.search')])
+    @include('partials.key', ['keys' => ['↑', '↓'], 'label' => __('common.keys.move')])
+    @include('partials.key', ['keys' => [__('common.keys.enter')], 'label' => __('common.keys.open')])
+    @include('partials.key', ['keys' => [__('common.keys.space')], 'label' => $merge ? __('common.keys.pick') : __('stock.preview')])
+    @include('partials.key', ['keys' => ['Alt', '1…4'], 'label' => __('stock.filters.label')])
+@endpush
+
 @section('content')
 @if ($merge)
     <h1 class="page-title">{{ __('common.nav.merge') }}</h1>
@@ -65,7 +73,7 @@
 
 <form class="search" method="get" action="{{ route($merge ? 'merge.index' : 'stock.index') }}" data-title="{{ $baseTitle }}">
     <div class="q-wrap">
-        <input type="search" name="q" value="{{ $q }}" placeholder="{{ __('stock.placeholder') }}" autofocus autocomplete="off" aria-controls="results">
+        <input type="search" name="q" value="{{ $q }}" placeholder="{{ __('stock.placeholder') }}" autofocus autocomplete="off" aria-controls="results" data-key="F3">
         <span class="live-spin" aria-hidden="true"></span>
     </div>
     <button class="primary" type="submit">{{ __('stock.search') }}</button>
@@ -90,7 +98,7 @@
             <span class="grow"></span>
             <a class="btn" id="m-page" href="{{ route('stock.item') }}">{{ __('stock.item.open_page') }}</a>
             @can('stock.refresh')
-                <button type="button" class="primary" id="m-refresh">{{ __('stock.refresh_now') }}</button>
+                <button type="button" class="primary" id="m-refresh" data-key="Alt+R">{{ __('stock.refresh_now') }}</button>
             @endcan
             <button type="button" class="link" id="m-close" aria-label="{{ __('stock.close') }}">✕</button>
         </div>
@@ -282,7 +290,6 @@
     const form = document.querySelector('form.search');
     const input = form.querySelector('input[name=q]');
     const results = document.getElementById('results');
-    const previewButtons = () => [...results.querySelectorAll('button[data-code]')];
     let lastPreview = null;
 
     results.addEventListener('click', e => {
@@ -300,13 +307,26 @@
         lastPreview = btn;
         open(btn.dataset.code, btn.dataset.designation);
     });
-    // fleches : de la recherche aux boutons "معاينة" et entre eux ; Entree ouvre l'apercu (clic natif)
+    // clavier facon Gescomm : les fleches passent d'un article a l'autre (sur son code, ou sur "معاينة" si on y est),
+    // Entree ouvre la page de l'article (le lien), Espace l'apercu ou, dans "دمج الأصناف", coche l'article ; Echap revient a la recherche
     results.addEventListener('keydown', e => {
-        const btn = e.target.closest('button[data-code]');
-        if (!btn || (e.key !== 'ArrowDown' && e.key !== 'ArrowUp')) return;
+        const cell = e.target.closest('tbody a.code, button[data-code]');
+        if (!cell) return;
+        const row = cell.closest('tr');
+        if (e.key === 'Escape') { e.preventDefault(); input.focus(); return; }
+        if (e.key === ' ' && cell.matches('a.code')) {
+            e.preventDefault();
+            const pick = row.querySelector('td.pick input');
+            if (pick) { pick.click(); return; }
+            const btn = row.querySelector('button[data-code]');
+            lastPreview = cell;
+            open(btn.dataset.code, btn.dataset.designation);
+            return;
+        }
+        if (e.key !== 'ArrowDown' && e.key !== 'ArrowUp') return;
         e.preventDefault();
-        const list = previewButtons();
-        const i = list.indexOf(btn) + (e.key === 'ArrowDown' ? 1 : -1);
+        const list = [...results.querySelectorAll(cell.matches('a.code') ? 'tbody a.code' : 'button[data-code]')];
+        const i = list.indexOf(cell) + (e.key === 'ArrowDown' ? 1 : -1);
         if (i < 0) input.focus();
         else list[Math.min(i, list.length - 1)].focus();
     });
@@ -314,7 +334,7 @@
     document.getElementById('m-close').addEventListener('click', close);
     bg.addEventListener('click', e => { if (e.target === bg) close(); });
     document.addEventListener('keydown', e => {
-        if (e.key === 'Escape' && current) { close(); return; }
+        if (e.key === 'Escape' && current) { e.preventDefault(); close(); return; }
         // "/" : retour a la recherche depuis n'importe ou (sauf en saisie)
         if (e.key === '/' && !current && !e.target.closest('input, textarea, select, [contenteditable]')) {
             e.preventDefault();
@@ -407,9 +427,10 @@
         typingTimer = setTimeout(() => liveSearch(input.value.trim()), 220);
     });
     input.addEventListener('keydown', e => {
-        if (e.key === 'ArrowDown' && previewButtons().length) {
+        const first = results.querySelector('tbody a.code');
+        if (e.key === 'ArrowDown' && first) {
             e.preventDefault();
-            previewButtons()[0].focus();
+            first.focus();
         } else if (e.key === 'Escape' && input.value) {
             e.preventDefault();
             input.value = '';

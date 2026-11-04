@@ -3,7 +3,7 @@
 return [
     'search' => 'Search',
     'placeholder' => 'Product code or words from the description — e.g. 820AC or boulon 20',
-    'live_hint' => 'Results update as you type. <kbd>↓</kbd> <kbd>↑</kbd> to move, <kbd>Enter</kbd> to preview, <kbd>/</kbd> to go back to search.',
+    'live_hint' => 'Results update as you type.',
     'weak_connection' => 'Weak connection: the results shown may not match your latest search',
     'empty' => 'Type a product code or part of its description. Result: one row per product, with its total quantity across all branches.',
     'no_match' => 'No product matches “:q” in any branch.',
