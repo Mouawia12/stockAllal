@@ -6,6 +6,11 @@
   et le solde initial : quel calcul redonne Gescomm, et ce que veut dire un versement "Autre" (en general negatif).
   Pareil pour les fournisseurs (GC004, GC007, GC60, ETAT_FOU).
 
+  Premier passage (05/11/2026) : DU, VERSER, RESTE et SOLDEINIT sont a zero pour tous les clients et fournisseurs ;
+  Gescomm calcule donc le solde a l'ecran. La reference est son Etat d'un Client (ETAT_CLI, ETAT_FOU) : le solde
+  apres sa derniere operation, et de combien chaque sorte d'operation fait bouger le solde.
+  InterBase 7.5 n'a pas ABS (c'est une UDF) : les ecarts se comparent avec BETWEEN.
+
   LECTURE SEULE : des SELECT et des procedures de consultation de Gescomm, dans une transaction READ ONLY :
   InterBase y refuse toute ecriture (une procedure qui voudrait ecrire echoue, le rapport le dit).
   Chaque table est lue une fois ; quelques secondes en tout.
@@ -116,9 +121,9 @@ $Report.Add('Contient des donnees de la branche : a envoyer seulement au develop
 
 Add-Section '1. Les colonnes de solde de GC002 et GC004' 'DU, VERSER, RESTE, SOLDEINIT : remplies ? leurs totaux ; RESTE = DU - VERSER ?' @(
     'SELECT COUNT(*) CLIENTS, SUM(SOLDEINIT) SOLDEINIT, SUM(DU) DU, SUM(VERSER) VERSER, SUM(RESTE) RESTE, SUM(CASE WHEN DU IS NULL THEN 1 ELSE 0 END) DU_VIDE FROM GC002;',
-    'SELECT COUNT(*) RESTE_EGAL_DU_MOINS_VERSER FROM GC002 WHERE ABS(COALESCE(RESTE, 0) - (COALESCE(DU, 0) - COALESCE(VERSER, 0))) < 0.005;',
+    'SELECT COUNT(*) RESTE_EGAL_DU_MOINS_VERSER FROM GC002 WHERE (COALESCE(RESTE, 0) - (COALESCE(DU, 0) - COALESCE(VERSER, 0))) BETWEEN -0.005 AND 0.005;',
     'SELECT COUNT(*) FOURNISSEURS, SUM(SOLDEINIT) SOLDEINIT, SUM(DU) DU, SUM(VERSER) VERSER, SUM(RESTE) RESTE FROM GC004;',
-    'SELECT COUNT(*) RESTE_EGAL_DU_MOINS_VERSER FROM GC004 WHERE ABS(COALESCE(RESTE, 0) - (COALESCE(DU, 0) - COALESCE(VERSER, 0))) < 0.005;',
+    'SELECT COUNT(*) RESTE_EGAL_DU_MOINS_VERSER FROM GC004 WHERE (COALESCE(RESTE, 0) - (COALESCE(DU, 0) - COALESCE(VERSER, 0))) BETWEEN -0.005 AND 0.005;',
     'SELECT COMBINER, COUNT(*) CLIENTS FROM GC002 GROUP BY COMBINER;'
 )
 
@@ -209,40 +214,96 @@ function Read-Partners([string]$Table, [string]$Key, [string]$Docs, [string]$Doc
     return @{ who = $who; types = @($types) }
 }
 
-$cli = Read-Partners 'GC002' 'CODECLI' 'GC010' 'CODEF' 'GC62'
-$refs = [ordered]@{ 'GC002.RESTE' = @{}; 'GC002.DU - GC002.VERSER' = @{} }
-foreach ($code in $cli.who.Keys) {
-    $w = $cli.who[$code]
-    if ($null -ne $w.reste) { $refs['GC002.RESTE'][$code] = To-Num $w.reste }
-    if ($null -ne $w.du) { $refs['GC002.DU - GC002.VERSER'][$code] = (To-Num $w.du) - (To-Num $w.verser) }
+# L'Etat d'un Client de Gescomm pour des codes choisis, en un seul isql : un repere (le code) avant chaque appel.
+# Rend le solde apres la derniere operation de chaque code, et pour chaque sorte d'operation (OPERATION, TYPEBON11,
+# TYPEVER11) combien de fois le solde a bouge du montant (TOTAL1) en plus, en moins, pas du tout, ou d'autre chose.
+function Read-Statements([string]$Proc, [string[]]$Codes) {
+    $sql = New-Object System.Collections.Generic.List[string]
+    foreach ($c in $Codes) {
+        $lit = Sql-Text $c
+        $sql.Add("SELECT $lit AS REPERE FROM RDB`$DATABASE;")
+        $sql.Add("SELECT OPERATION, TYPEBON11, TYPEVER11, TOTAL1, LESOLDE1 FROM $Proc($lit);")
+    }
+    $r = Invoke-Isql ([string[]]$sql) -List
+    foreach ($e in @($r.Errors | Select-Object -First 5)) { $Report.Add('!! ' + $Proc + ' -> ' + $e) }
+    $rows = New-Object System.Collections.Generic.List[object]
+    $code = $null
+    $cur = $null
+    foreach ($line in $r.Lines) {
+        if ($line.Length -gt 32) { $label = $line.Substring(0, 32).TrimEnd(); $value = $line.Substring(32).TrimEnd() } else { $label = $line.TrimEnd(); $value = '' }
+        if ($value -eq '<null>') { $value = $null }
+        if ($label -eq 'REPERE') { $code = $value; $cur = $null; continue }
+        if ($label -eq 'OPERATION') { $cur = @{ code = $code; OPERATION = $value }; $rows.Add($cur); continue }
+        if ($cur -and @('TYPEBON11', 'TYPEVER11', 'TOTAL1', 'LESOLDE1') -contains $label) { $cur[$label] = $value }
+    }
+    $final = @{}
+    $moves = [ordered]@{}
+    $prevCode = $null
+    $prev = 0.0
+    foreach ($row in $rows) {
+        if ($row.code -ne $prevCode) { $prevCode = $row.code; $prev = 0.0 }
+        $total = To-Num $row['TOTAL1']
+        $solde = To-Num $row['LESOLDE1']
+        $delta = $solde - $prev
+        $kind = 'autre'
+        if (Same $delta $total) { $kind = 'plus' } elseif (Same $delta (-$total)) { $kind = 'moins' } elseif (Same $delta 0) { $kind = 'rien' }
+        $key = ('{0} / {1} / {2}' -f $row['OPERATION'], $row['TYPEBON11'], $row['TYPEVER11'])
+        if (-not $moves.Contains($key)) { $moves[$key] = @{ plus = 0; moins = 0; rien = 0; autre = 0; n = 0 } }
+        $moves[$key][$kind]++
+        $moves[$key].n++
+        $prev = $solde
+        if ($row.code) { $final[$row.code] = $solde }
+    }
+    return @{ final = $final; moves = $moves; rows = $rows.Count }
 }
-$etatNames = @('LECODECLI', 'LESOLDEINIT', 'DU1', 'VERSER1', 'RESTE1')
-$etat = @(Get-Rows ('SELECT ' + ($etatNames -join ', ') + ' FROM ETATVERSCLISIMP(CURRENT_DATE);') $etatNames)
-if ($etat.Count) {
-    $refs['ETATVERSCLISIMP.RESTE1'] = @{}
-    foreach ($e in $etat) { if ($e.LECODECLI) { $refs['ETATVERSCLISIMP.RESTE1'][$e.LECODECLI] = To-Num $e.RESTE1 } }
-}
-$null = Test-Formulas '4. Clients : initial + bons - versements = solde de Gescomm ?' $cli.who $cli.types $refs
 
-# DU et VERSER tout seuls : le total des bons ? des versements, et de quels types ?
-$Report.Add('')
-$duOk = 0; $duInitOk = 0; $verOk = 0
-foreach ($code in $cli.who.Keys) {
-    $w = $cli.who[$code]
-    if ($null -eq $w.du) { continue }
-    if (Same (To-Num $w.du) $w.bons) { $duOk++ }
-    if (Same (To-Num $w.du) ($w.bons + $w.init)) { $duInitOk++ }
-    $sum = 0.0; foreach ($t in $w.paid.Keys) { $sum += $w.paid[$t] }
-    if (Same (To-Num $w.verser) $sum) { $verOk++ }
+function Add-Moves([string]$Proc, $St) {
+    $Report.Add('')
+    $Report.Add($Proc + ' : ' + $St.final.Count + ' codes, ' + $St.rows + ' operations. Le solde bouge de : +montant / -montant / rien / autre')
+    foreach ($k in $St.moves.Keys) {
+        $m = $St.moves[$k]
+        $Report.Add(('  {0,-45} {1,6} operations : {2,6} / {3,6} / {4,6} / {5,6}' -f $k, $m.n, $m.plus, $m.moins, $m.rien, $m.autre))
+    }
 }
-$Report.Add(('DU = total des bons : {0} clients ; DU = initial + bons : {1} ; VERSER = tous les versements : {2}' -f $duOk, $duInitOk, $verOk))
+
+# des codes avec de l'activite : ceux demandes, ceux qui ont des versements "Autre" (les plus negatifs d'abord), puis les plus actifs
+function Pick-Codes($who, [int]$Max) {
+    $list = New-Object System.Collections.Generic.List[string]
+    foreach ($c in $Client) { if ($c -and $who.ContainsKey($c) -and -not $list.Contains($c)) { $list.Add($c) } }
+    foreach ($e in @($who.GetEnumerator() | Where-Object { $_.Value.paid.ContainsKey('Autre') } | Sort-Object { $_.Value.paid['Autre'] })) {
+        if ($list.Count -ge [int]($Max * 2 / 3)) { break }
+        if (-not $list.Contains($e.Key)) { $list.Add($e.Key) }
+    }
+    foreach ($e in @($who.GetEnumerator() | Where-Object { $_.Value.n -gt 0 -or $_.Value.paid.Count -gt 0 } | Sort-Object { $_.Value.n } -Descending)) {
+        if ($list.Count -ge $Max) { break }
+        if (-not $list.Contains($e.Key)) { $list.Add($e.Key) }
+    }
+    return @($list)
+}
+
+$cli = Read-Partners 'GC002' 'CODECLI' 'GC010' 'CODEF' 'GC62'
+$cliCodes = Pick-Codes $cli.who 120
+Add-Title '4. Clients : comment chaque operation fait bouger le solde (Etat d un Client de Gescomm)' ('Codes lus : ' + $cliCodes.Count + '. Pour chaque sorte d operation, le solde apres moins le solde avant, compare a son montant.')
+$refs = [ordered]@{}
+foreach ($proc in @('ETAT_CLI', 'ETAT_CLI_NOUV')) {
+    $st = Read-Statements $proc $cliCodes
+    Add-Moves $proc $st
+    if ($st.final.Count) { $refs[$proc + ' (dernier solde)'] = $st.final }
+}
+if ($refs.Count) {
+    $null = Test-Formulas '5. Clients : initial + bons - versements = dernier solde de l Etat d un Client ?' $cli.who $cli.types $refs
+}
 
 $fou = Read-Partners 'GC004' 'CODEFOU' 'GC007' 'CODEF' 'GC60'
-$frefs = [ordered]@{ 'GC004.RESTE' = @{} }
-foreach ($code in $fou.who.Keys) { if ($null -ne $fou.who[$code].reste) { $frefs['GC004.RESTE'][$code] = To-Num $fou.who[$code].reste } }
-$null = Test-Formulas '5. Fournisseurs : initial + achats - versements = solde de Gescomm ?' $fou.who $fou.types $frefs
+$fouCodes = Pick-Codes $fou.who 91
+Add-Title '6. Fournisseurs : comment chaque operation fait bouger le solde (ETAT_FOU)' ('Codes lus : ' + $fouCodes.Count + '.')
+$st = Read-Statements 'ETAT_FOU' $fouCodes
+Add-Moves 'ETAT_FOU' $st
+if ($st.final.Count) {
+    $null = Test-Formulas '6b. Fournisseurs : initial + achats - versements = dernier solde de ETAT_FOU ?' $fou.who $fou.types ([ordered]@{ 'ETAT_FOU (dernier solde)' = $st.final })
+}
 
-# ---------- 6. l'Etat d'un Client de Gescomm, ligne par ligne ----------
+# ---------- 7. l'Etat d'un Client de Gescomm, ligne par ligne ----------
 
 # les clients demandes, celui qui a le plus de versements "Autre", et deux clients avec 5 a 40 operations
 $picked = New-Object System.Collections.Generic.List[string]
@@ -254,7 +315,7 @@ foreach ($m in @($cli.who.GetEnumerator() | Where-Object { $_.Value.n -ge 5 -and
 }
 foreach ($c in $picked) {
     $lit = Sql-Text $c
-    Add-Section ('6. Client ' + $c) 'ETAT_CLI = l Etat d un Client de Gescomm (solde apres chaque operation), puis ses versements et ses bons tels quels.' @(
+    Add-Section ('7. Client ' + $c) 'ETAT_CLI = l Etat d un Client de Gescomm (solde apres chaque operation), puis ses versements et ses bons tels quels.' @(
         "SELECT CODECLI, MONCLIENT, SOLDEINIT, DU, VERSER, RESTE, COMBINER, CODEFOU FROM GC002 WHERE CODECLI = $lit;",
         "EXECUTE PROCEDURE CREDIT_UNCLIENT $lit;",
         "SELECT SOLDEINITIAL, SOLDEACTUEL, SOLDEFOURNISSEUR, DERNIERVERSEMENT, DATEDERNIERVERSEMENT, MONTANTGLOBALVENTES FROM ETATDUCLIENT($lit);",
@@ -269,7 +330,7 @@ $f = @($fou.who.GetEnumerator() | Where-Object { $_.Value.paid.ContainsKey('Autr
 if (-not $f.Count) { $f = @($fou.who.GetEnumerator() | Sort-Object { $_.Value.n } -Descending | Select-Object -First 1) }
 foreach ($x in $f) {
     $lit = Sql-Text $x.Key
-    Add-Section ('7. Fournisseur ' + $x.Key) 'ETAT_FOU = l Etat d un Fournisseur, puis ses versements tels quels.' @(
+    Add-Section ('8. Fournisseur ' + $x.Key) 'ETAT_FOU = l Etat d un Fournisseur, puis ses versements tels quels.' @(
         "SELECT CODEFOU, MONFOURNISSEUR, SOLDEINIT, DU, VERSER, RESTE FROM GC004 WHERE CODEFOU = $lit;",
         "SELECT * FROM ETAT_FOU($lit);",
         "SELECT DATEVER, NUMEROTATION, TYPEVER, MONTANT, SOLDE, TYPEBON, NUMEROBON, OBSERVATION FROM GC60 WHERE CODEFOU = $lit ORDER BY DATEVER, HEURE;"
