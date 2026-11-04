@@ -5,6 +5,7 @@ return [
     'language' => 'Language',
     'apps_launcher' => 'Apps',
     'apps' => [
+        'dashboard' => 'Dashboard',
         'stock' => 'Stock',
         'sales' => 'Sales',
         'purchases' => 'Purchases',

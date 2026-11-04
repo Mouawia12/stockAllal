@@ -99,6 +99,7 @@
     // application courante (config/apps.php) : son icone, son nom et ses menus dans la barre du haut, facon Odoo
     $user = auth()->user();
     $current = match (true) {
+        request()->routeIs('dashboard.*') => 'dashboard',
         request()->routeIs('stock.*', 'merge.*', 'branches.*') => 'stock',
         request()->routeIs('sales.*') => 'sales',
         request()->routeIs('purchases.*') => 'purchases',

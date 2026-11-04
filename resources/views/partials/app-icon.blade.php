@@ -1,5 +1,16 @@
 {{-- Icones des applications (SVG plats, facon Odoo). $name = cle de config/apps.php, "grid" (lanceur) ou "logo". --}}
 @switch($name)
+    {{-- لوحة القيادة : un cadran (le tableau de bord d'une voiture), aiguille vers le haut --}}
+    @case('dashboard')
+        <svg viewBox="0 0 48 48" aria-hidden="true">
+            <path d="M6 33a18 18 0 0 1 9.2-15.7" fill="none" stroke="#86efac" stroke-width="7" stroke-linecap="round"/>
+            <path d="M19.3 15.6a18 18 0 0 1 9.4 0" fill="none" stroke="#34d399" stroke-width="7" stroke-linecap="round"/>
+            <path d="M32.8 17.3A18 18 0 0 1 42 33" fill="none" stroke="#059669" stroke-width="7" stroke-linecap="round"/>
+            <path d="M24 33L33.5 21" stroke="#064e3b" stroke-width="3.4" stroke-linecap="round"/>
+            <circle cx="24" cy="33" r="4.6" fill="#064e3b"/>
+            <rect x="12" y="39.5" width="24" height="3.4" rx="1.7" fill="#a7f3d0"/>
+        </svg>
+        @break
     @case('stock')
         <svg viewBox="0 0 48 48" aria-hidden="true">
             <polygon points="24,6 42,15 24,24 6,15" fill="#fbbf24"/>

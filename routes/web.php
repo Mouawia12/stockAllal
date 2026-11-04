@@ -7,6 +7,7 @@ use App\Http\Controllers\AiSettingsController;
 use App\Http\Controllers\Auth\LoginController;
 use App\Http\Controllers\BranchController;
 use App\Http\Controllers\BranchScopeController;
+use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\DocumentController;
 use App\Http\Controllers\HomeController;
 use App\Http\Controllers\LocaleController;
@@ -47,6 +48,7 @@ Route::middleware('auth')->group(function () {
 
     // bons de vente et d'achat, clients et fournisseurs (agent 1.0.7) : seulement les branches dont le compte voit les ventes (BranchScope::salesIds)
     Route::middleware('can:sales.view')->group(function () {
+        Route::get('dashboard', [DashboardController::class, 'index'])->name('dashboard.index')->middleware('throttle:search');
         Route::get('sales', [DocumentController::class, 'sales'])->name('sales.index')->middleware('throttle:search');
         Route::get('sales/{document}', [DocumentController::class, 'sale'])->name('sales.show')->whereNumber('document');
         Route::get('purchases', [DocumentController::class, 'purchases'])->name('purchases.index')->middleware('throttle:search');

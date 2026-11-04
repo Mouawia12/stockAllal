@@ -11,6 +11,7 @@
         $u->can('merge.manage') ? ['label' => __('common.nav.merge'), 'hint' => __('common.apps.stock'), 'url' => route('merge.index')] : null,
         $u->can('merge.manage') ? ['label' => __('merge_ai.title'), 'hint' => __('common.apps.stock'), 'url' => route('merge.ai')] : null,
         $u->can('branches.view') ? ['label' => __('common.nav.branches'), 'hint' => __('common.apps.stock'), 'url' => route('branches.index')] : null,
+        $u->can('sales.view') ? ['label' => __('dashboard.title'), 'hint' => __('common.apps.dashboard'), 'url' => route('dashboard.index')] : null,
         $u->can('sales.view') ? ['label' => __('documents.title.sale'), 'hint' => __('common.apps.sales'), 'url' => route('sales.index')] : null,
         $u->can('sales.view') ? ['label' => __('documents.title.purchase'), 'hint' => __('common.apps.purchases'), 'url' => route('purchases.index')] : null,
         $u->can('sales.view') ? ['label' => __('partners.title.customer'), 'hint' => __('common.apps.customers'), 'url' => route('customers.index')] : null,

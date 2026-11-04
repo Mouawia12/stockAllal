@@ -5,6 +5,7 @@ return [
     'language' => 'Langue',
     'apps_launcher' => 'Applications',
     'apps' => [
+        'dashboard' => 'Tableau de bord',
         'stock' => 'Stock',
         'sales' => 'Ventes',
         'purchases' => 'Achats',

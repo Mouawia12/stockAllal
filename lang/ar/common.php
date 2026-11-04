@@ -7,6 +7,7 @@ return [
     'apps_launcher' => 'التطبيقات',
     // une cle par application de config/apps.php
     'apps' => [
+        'dashboard' => 'لوحة القيادة',
         'stock' => 'المخزون',
         'sales' => 'المبيعات',
         'purchases' => 'المشتريات',

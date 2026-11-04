@@ -8,6 +8,8 @@
  * resources/views/partials/app-icon.blade.php.
  */
 return [
+    // "لوحة القيادة" : les chiffres des ventes et des articles (App\Http\Controllers\DashboardController)
+    'dashboard' => ['route' => 'dashboard.index', 'can' => 'sales.view'],
     'stock' => ['route' => 'stock.index'],
     'sales' => ['route' => 'sales.index', 'can' => 'sales.view'],
     'purchases' => ['route' => 'purchases.index', 'can' => 'sales.view'],
