@@ -22,7 +22,7 @@ $TestArgs = '/dir:"{0}" /task:GescomAgentTest' -f (Join-Path $Work 'install')
 foreach ($d in $Pkg, $Alone) { New-Item -ItemType Directory -Force -Path $d | Out-Null }
 
 Write-Host "== Scripts de l'agent"
-foreach ($f in @(Get-ChildItem $AgentDir -Filter '*.ps1') + @(Get-ChildItem (Join-Path $AgentDir 'setup'), $PSScriptRoot -Filter '*.ps1')) {
+foreach ($f in @(Get-ChildItem $AgentDir -Filter '*.ps1') + @(Get-ChildItem (Join-Path $AgentDir 'setup'), (Join-Path $AgentDir 'tools'), $PSScriptRoot -Filter '*.ps1')) {
     Test-Case "$($f.Name) : ASCII seulement et sans erreur de syntaxe" {
         # PowerShell 5.1 lit un fichier sans BOM en ANSI : un caractere non ASCII y serait corrompu
         $bytes = [IO.File]::ReadAllBytes($f.FullName)
