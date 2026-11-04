@@ -104,7 +104,7 @@
         request()->routeIs('purchases.*') => 'purchases',
         request()->routeIs('customers.*') => 'customers',
         request()->routeIs('suppliers.*') => 'suppliers',
-        request()->routeIs('users.*', 'account.*', 'activity.*') => 'settings',
+        request()->routeIs('users.*', 'account.*', 'activity.*', 'ai.*') => 'settings',
         default => null,
     };
     $currentApp = $current ? config("apps.{$current}") : null;
@@ -136,6 +136,9 @@
                 @endif
                 @can('view-activity')
                     <a href="{{ route('activity.index') }}" class="{{ request()->routeIs('activity.*') ? 'on' : '' }}">{{ __('common.nav.activity') }}</a>
+                @endcan
+                @can('manage-ai')
+                    <a href="{{ route('ai.index') }}" class="{{ request()->routeIs('ai.*') ? 'on' : '' }}">{{ __('common.nav.ai') }}</a>
                 @endcan
                 <a href="{{ route('account.edit') }}" class="{{ request()->routeIs('account.*') ? 'on' : '' }}">{{ __('common.account') }}</a>
             @endif

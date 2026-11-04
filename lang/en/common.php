@@ -24,6 +24,7 @@ return [
         'branches' => 'Branches',
         'users' => 'Users',
         'activity' => 'Activity',
+        'ai' => 'AI',
     ],
     'account' => 'My account',
     'logout' => 'Log out',

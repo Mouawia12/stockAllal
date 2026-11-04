@@ -3,16 +3,19 @@
 use App\Http\Controllers\AccountController;
 use App\Http\Controllers\ActivityController;
 use App\Http\Controllers\AgentDownloadController;
+use App\Http\Controllers\AiSettingsController;
 use App\Http\Controllers\Auth\LoginController;
 use App\Http\Controllers\BranchController;
 use App\Http\Controllers\BranchScopeController;
 use App\Http\Controllers\DocumentController;
 use App\Http\Controllers\HomeController;
 use App\Http\Controllers\LocaleController;
+use App\Http\Controllers\MergeAiController;
 use App\Http\Controllers\PartnerController;
 use App\Http\Controllers\ProductGroupController;
 use App\Http\Controllers\StockController;
 use App\Http\Controllers\UserController;
+use App\Support\AiProviders;
 use Illuminate\Support\Facades\Route;
 
 // Langue de l'interface, pour tous (page de connexion comprise).
@@ -71,6 +74,15 @@ Route::middleware('auth')->group(function () {
         Route::get('merge', [StockController::class, 'merge'])->name('merge.index')->middleware('throttle:search');
         Route::post('merge', [ProductGroupController::class, 'store'])->name('merge.store');
         Route::delete('merge', [ProductGroupController::class, 'destroy'])->name('merge.destroy');
+        // propositions de l'IA (MergeScanner) : seulement des propositions, chaque fusion est un clic
+        Route::get('merge/ai', [MergeAiController::class, 'index'])->name('merge.ai');
+        Route::post('merge/ai', [MergeAiController::class, 'start'])->name('merge.ai.start')->middleware('throttle:refresh');
+        Route::post('merge/ai/{scan}/step', [MergeAiController::class, 'step'])->name('merge.ai.step')->whereNumber('scan')->middleware('throttle:refresh');
+        Route::post('merge/ai/{scan}/cancel', [MergeAiController::class, 'cancel'])->name('merge.ai.cancel')->whereNumber('scan');
+        Route::post('merge/ai/{scan}/resume', [MergeAiController::class, 'resume'])->name('merge.ai.resume')->whereNumber('scan');
+        Route::post('merge/ai/{scan}/merge', [MergeAiController::class, 'merge'])->name('merge.ai.merge')->whereNumber('scan');
+        Route::post('merge/ai/{scan}/{suggestion}/dismiss', [MergeAiController::class, 'dismiss'])->name('merge.ai.dismiss')->whereNumber(['scan', 'suggestion']);
+        Route::post('merge/ai/{scan}/{suggestion}/reopen', [MergeAiController::class, 'reopen'])->name('merge.ai.reopen')->whereNumber(['scan', 'suggestion']);
     });
 
     Route::middleware('can:agent.download')->group(function () {
@@ -83,6 +95,17 @@ Route::middleware('auth')->group(function () {
 // UserController verifie en plus que chaque compte touche est un compte que l'auteur gere.
 // Journal des changements (comptes, branches) : le developpeur seulement.
 Route::get('activity', [ActivityController::class, 'index'])->name('activity.index')->middleware(['auth', 'can:view-activity']);
+
+// Lien avec Claude, ChatGPT et Gemini : le developpeur seulement (les cles d'API paient sur son compte chez le fournisseur).
+// Enregistrer une cle et la tester appellent le fournisseur depuis le serveur : limiteur "refresh".
+Route::middleware(['auth', 'can:manage-ai'])->whereIn('provider', array_keys(AiProviders::PROVIDERS))->group(function () {
+    Route::get('settings/ai', [AiSettingsController::class, 'index'])->name('ai.index');
+    Route::middleware('throttle:refresh')->group(function () {
+        Route::put('settings/ai/{provider}', [AiSettingsController::class, 'update'])->name('ai.update');
+        Route::post('settings/ai/{provider}/test', [AiSettingsController::class, 'test'])->name('ai.test');
+        Route::delete('settings/ai/{provider}/key', [AiSettingsController::class, 'destroy'])->name('ai.destroy');
+    });
+});
 
 Route::middleware(['auth', 'can:manage-users'])->group(function () {
     Route::get('users', [UserController::class, 'index'])->name('users.index');

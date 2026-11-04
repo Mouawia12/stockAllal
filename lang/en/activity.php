@@ -32,6 +32,8 @@ return [
         'branch_main' => 'changed the main branch: :subject',
         'branch_deleted' => 'deleted the branch :subject',
         'install_code_created' => 'created an install code :subject',
+        'ai_updated' => 'edited the :subject connection',
+        'ai_key_removed' => 'removed the :subject key',
     ],
     'fields' => [
         'name' => 'Name',
@@ -44,5 +46,8 @@ return [
         'password' => 'Password',
         'visible' => 'Sees the stock of',
         'is_main' => 'Main',
+        'api_key' => 'API key',
+        'model' => 'Model',
+        'enabled' => 'Enabled',
     ],
 ];

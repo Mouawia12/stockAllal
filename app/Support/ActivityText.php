@@ -3,12 +3,13 @@
 namespace App\Support;
 
 use App\Models\ActivityLog;
+use App\Models\AiProvider;
 use App\Models\User;
 use Illuminate\Support\Collection;
 
 /**
  * Une ligne du journal (activity_log) en mots : "عدّل حساب karim" + ses changements, "الدور: مستخدم ← مدير الفرع".
- * Les identifiants deviennent des noms (branches, roles, permissions) ; jamais le mot de passe, seulement qu'il a change.
+ * Les identifiants deviennent des noms (branches, roles, permissions) ; jamais le mot de passe ni une cle d'API, seulement qu'ils ont change.
  */
 final class ActivityText
 {
@@ -26,7 +27,7 @@ final class ActivityText
                 ? (($data['for'] ?? null) === 'reinstall' ? __('activity.for_reinstall', ['name' => $this->subject($log)]) : __('activity.for_new'))
                 : $this->subject($log)]),
             'changes' => match ($log->action) {
-                'user.updated', 'branch.updated' => $this->fields($data),
+                'user.updated', 'branch.updated', 'ai.updated' => $this->fields($data),
                 // nouveau compte : son role et sa branche
                 'user.created' => [
                     $this->change('role', null, $this->role($data['state']['role'] ?? null)),
@@ -46,6 +47,7 @@ final class ActivityText
         return match ($log->subject_type) {
             'user' => (string) ($data['state']['username'] ?? $data['username'][1] ?? User::find($log->subject_id)?->username ?? '#'.$log->subject_id),
             'branch' => (string) ($data['name'] ?? $this->branchNames[$log->subject_id] ?? '#'.$log->subject_id),
+            'aiprovider' => AiProviders::PROVIDERS[AiProvider::find($log->subject_id)?->provider]['name'] ?? '#'.$log->subject_id,
             default => '',
         };
     }
@@ -59,9 +61,10 @@ final class ActivityText
                 'role' => $this->change($field, $this->role($before), $this->role($after)),
                 'branch_id' => $this->change($field, $this->names([$before]), $this->names([$after])),
                 'branches' => $this->change($field, $this->names($before ?? []), $this->names($after ?? [])),
-                'active' => $this->change($field, $this->yesNo($before), $this->yesNo($after)),
+                'active', 'enabled' => $this->change($field, $this->yesNo($before), $this->yesNo($after)),
                 'permissions' => $this->change($field, $this->perms($before ?? []), $this->perms($after ?? [])),
-                'password' => ['label' => __('activity.fields.password'), 'before' => null, 'after' => __('activity.changed')],
+                // jamais la valeur : seulement qu'elle a change
+                'password', 'api_key' => ['label' => __("activity.fields.{$field}"), 'before' => null, 'after' => __('activity.changed')],
                 default => $this->change($field, $before === null ? null : (string) $before, $after === null ? null : (string) $after),
             };
         }

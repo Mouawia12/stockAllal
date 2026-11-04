@@ -5,6 +5,7 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Support\Facades\DB;
 
 /**
  * Codes fusionnes par l'administrateur (page "دمج الأصناف") : le meme produit ecrit differemment selon la branche.
@@ -40,6 +41,39 @@ class ProductGroup extends Model
         }
 
         return $expanded;
+    }
+
+    /**
+     * Fusionne ces codes (cles code_key) en un groupe : les groupes deja existants rejoignent le plus ancien,
+     * les codes isoles y sont ajoutes. null : ils etaient deja tous dans le meme groupe.
+     * Page "دمج الأصناف" (ProductGroupController) et propositions de l'IA (MergeAiController).
+     *
+     * @param  list<string>  $keys
+     * @return list<string>|null les codes du groupe apres la fusion
+     */
+    public static function merge(array $keys, ?int $userId): ?array
+    {
+        $keys = collect($keys)->unique()->values();
+
+        return DB::transaction(function () use ($keys, $userId) {
+            $existing = ProductGroupCode::whereIn('code_key', $keys)->lockForUpdate()->get();
+            $groupIds = $existing->pluck('product_group_id')->unique()->sort()->values();
+            if ($groupIds->count() === 1 && $existing->count() === $keys->count()) {
+                return null;
+            }
+
+            $group = $groupIds->isEmpty()
+                ? self::create(['created_by' => $userId])
+                : self::findOrFail($groupIds->first());
+            $others = $groupIds->slice(1)->values();
+            ProductGroupCode::whereIn('product_group_id', $others)->update(['product_group_id' => $group->id]);
+            self::whereIn('id', $others)->delete();
+            foreach ($keys->diff($existing->pluck('code_key')) as $key) {
+                ProductGroupCode::create(['product_group_id' => $group->id, 'code_key' => $key]);
+            }
+
+            return self::codesOf($keys->first());
+        });
     }
 
     /** @return list<string> */

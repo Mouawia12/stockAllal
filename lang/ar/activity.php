@@ -32,6 +32,8 @@ return [
         'branch_main' => 'غيّر الفرع الرئيسي: :subject',
         'branch_deleted' => 'حذف فرع :subject',
         'install_code_created' => 'أنشأ كود تركيب :subject',
+        'ai_updated' => 'عدّل ربط :subject',
+        'ai_key_removed' => 'حذف مفتاح :subject',
     ],
     'fields' => [
         'name' => 'الاسم',
@@ -44,5 +46,8 @@ return [
         'password' => 'كلمة السر',
         'visible' => 'يرى مخزون',
         'is_main' => 'رئيسي',
+        'api_key' => 'المفتاح',
+        'model' => 'النموذج',
+        'enabled' => 'مفعّل',
     ],
 ];

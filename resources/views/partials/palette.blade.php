@@ -9,6 +9,7 @@
     $palPages = array_values(array_filter([
         ['label' => __('common.nav.search'), 'hint' => __('common.apps.stock'), 'url' => route('stock.index')],
         $u->can('merge.manage') ? ['label' => __('common.nav.merge'), 'hint' => __('common.apps.stock'), 'url' => route('merge.index')] : null,
+        $u->can('merge.manage') ? ['label' => __('merge_ai.title'), 'hint' => __('common.apps.stock'), 'url' => route('merge.ai')] : null,
         $u->can('branches.view') ? ['label' => __('common.nav.branches'), 'hint' => __('common.apps.stock'), 'url' => route('branches.index')] : null,
         $u->can('sales.view') ? ['label' => __('documents.title.sale'), 'hint' => __('common.apps.sales'), 'url' => route('sales.index')] : null,
         $u->can('sales.view') ? ['label' => __('documents.title.purchase'), 'hint' => __('common.apps.purchases'), 'url' => route('purchases.index')] : null,
@@ -16,6 +17,7 @@
         $u->can('sales.view') ? ['label' => __('partners.title.supplier'), 'hint' => __('common.apps.suppliers'), 'url' => route('suppliers.index')] : null,
         $u->managesAccounts() ? ['label' => __('common.nav.users'), 'hint' => __('common.apps.settings'), 'url' => route('users.index')] : null,
         $u->can('view-activity') ? ['label' => __('common.nav.activity'), 'hint' => __('common.apps.settings'), 'url' => route('activity.index')] : null,
+        $u->can('manage-ai') ? ['label' => __('common.nav.ai'), 'hint' => __('common.apps.settings'), 'url' => route('ai.index')] : null,
         ['label' => __('common.account'), 'hint' => __('common.apps.settings'), 'url' => route('account.edit')],
         ['label' => __('common.apps_launcher'), 'hint' => __('common.app_name'), 'url' => route('home')],
     ]));

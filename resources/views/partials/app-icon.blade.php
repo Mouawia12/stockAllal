@@ -63,6 +63,13 @@
             @endforeach
         </svg>
         @break
+    {{-- etincelle : ce que l'IA propose (page "دمج الأصناف") ; couleur du texte, pas une couleur de stock --}}
+    @case('spark')
+        <svg viewBox="0 0 24 24" aria-hidden="true" fill="currentColor">
+            <path d="M12 2.5l1.9 5.6 5.6 1.9-5.6 1.9L12 17.5l-1.9-5.6L4.5 10l5.6-1.9z"/>
+            <path d="M18.5 14.5l.8 2.2 2.2.8-2.2.8-.8 2.2-.8-2.2-2.2-.8 2.2-.8z" opacity=".7"/>
+        </svg>
+        @break
     @case('logo')
         <svg viewBox="0 0 48 48" aria-hidden="true">
             <rect width="48" height="48" rx="13" fill="#146c84"/>

@@ -40,6 +40,10 @@
     .chip-zero .n { color: var(--zero); background: var(--zero-bg); }
     .chip-negative .n { color: var(--negative); background: var(--negative-bg); }
     .merge-help { margin: 0 0 14px; }
+    .merge-head { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; margin: 0 0 4px; }
+    .merge-head .page-title { flex: 1; margin: 0; }
+    .merge-head .btn { display: inline-flex; align-items: center; gap: 6px; }
+    .merge-head .btn svg { width: 18px; height: 18px; }
     .merge-bar { display: flex; align-items: center; gap: 10px; margin-bottom: 12px; }
     .merge-bar button:disabled { opacity: .45; cursor: not-allowed; }
     td.pick { width: 1%; }
@@ -67,7 +71,10 @@
 
 @section('content')
 @if ($merge)
-    <h1 class="page-title">{{ __('common.nav.merge') }}</h1>
+    <div class="merge-head">
+        <h1 class="page-title">{{ __('common.nav.merge') }}</h1>
+        <a class="btn" href="{{ route('merge.ai') }}" data-key="Alt+I">@include('partials.app-icon', ['name' => 'spark']){{ __('merge_ai.button') }}</a>
+    </div>
     <p class="muted small merge-help">{!! __('stock.merge.help') !!}</p>
 @endif
 

@@ -24,6 +24,7 @@ return [
         'branches' => 'Succursales',
         'users' => 'Utilisateurs',
         'activity' => 'Journal',
+        'ai' => 'IA',
     ],
     'account' => 'Mon compte',
     'logout' => 'Déconnexion',

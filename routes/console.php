@@ -2,8 +2,10 @@
 
 use App\Models\Branch;
 use App\Models\InstallCode;
+use App\Models\MergeScan;
 use App\Models\RefreshJob;
 use App\Models\User;
+use App\Support\MergeScanner;
 use App\Support\Permissions;
 use App\Support\Roles;
 use Illuminate\Support\Facades\Artisan;
@@ -59,4 +61,8 @@ Artisan::command('agent:install-code', function () {
 Schedule::call(function () {
     RefreshJob::where('created_at', '<', now()->subDays(7))->delete();
     InstallCode::whereNull('used_at')->where('expires_at', '<', now()->subDays(7))->delete();
+    MergeScan::where('created_at', '<', now()->subDays(90))->delete();
 })->daily()->name('nettoyage-demandes')->withoutOverlapping();
+
+// "دمج الأصناف" par l'IA : les lots qui restent quand la page de l'analyse est fermee (un lot = un appel a l'IA)
+Schedule::call(fn () => MergeScanner::runPending(50))->everyMinute()->name('merge-ai')->withoutOverlapping(5);

@@ -47,5 +47,6 @@ class AppServiceProvider extends ServiceProvider
         Gate::define('manage-users', fn (User $user) => $user->managesAccounts());
         Gate::define('manage-branch-access', fn (User $user) => $user->isDeveloper() || $user->isOwner());
         Gate::define('view-activity', fn (User $user) => $user->isDeveloper());
+        Gate::define('manage-ai', fn (User $user) => $user->isDeveloper());
     }
 }

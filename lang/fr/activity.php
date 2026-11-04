@@ -32,6 +32,8 @@ return [
         'branch_main' => 'a changé la succursale principale : :subject',
         'branch_deleted' => 'a supprimé la succursale :subject',
         'install_code_created' => 'a créé un code d\'installation :subject',
+        'ai_updated' => 'a modifié la connexion :subject',
+        'ai_key_removed' => 'a supprimé la clé :subject',
     ],
     'fields' => [
         'name' => 'Nom',
@@ -44,5 +46,8 @@ return [
         'password' => 'Mot de passe',
         'visible' => 'Voit le stock de',
         'is_main' => 'Principale',
+        'api_key' => 'Clé API',
+        'model' => 'Modèle',
+        'enabled' => 'Activé',
     ],
 ];

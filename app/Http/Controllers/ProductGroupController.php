@@ -28,26 +28,7 @@ class ProductGroupController extends Controller
             return back()->withErrors(['codes' => __('stock.merge.pick_two')]);
         }
 
-        $codes = DB::transaction(function () use ($keys, $request) {
-            $existing = ProductGroupCode::whereIn('code_key', $keys)->lockForUpdate()->get();
-            $groupIds = $existing->pluck('product_group_id')->unique()->sort()->values();
-            if ($groupIds->count() === 1 && $existing->count() === $keys->count()) {
-                return null;   // deja tous dans le meme groupe
-            }
-
-            // les groupes deja existants rejoignent le plus ancien, les codes isoles y sont ajoutes
-            $group = $groupIds->isEmpty()
-                ? ProductGroup::create(['created_by' => $request->user()->id])
-                : ProductGroup::findOrFail($groupIds->first());
-            $others = $groupIds->slice(1)->values();
-            ProductGroupCode::whereIn('product_group_id', $others)->update(['product_group_id' => $group->id]);
-            ProductGroup::whereIn('id', $others)->delete();
-            foreach ($keys->diff($existing->pluck('code_key')) as $key) {
-                ProductGroupCode::create(['product_group_id' => $group->id, 'code_key' => $key]);
-            }
-
-            return ProductGroup::codesOf($keys->first());
-        });
+        $codes = ProductGroup::merge($keys->all(), $request->user()->id);
 
         if ($codes === null) {
             return back()->withErrors(['codes' => __('stock.merge.already')]);
