@@ -75,7 +75,11 @@ if ($hasGescomm) {
         $dataDir = Join-Path $Work 'testdata'
         New-Item -ItemType Directory -Force -Path $dataDir | Out-Null
         $cfgFile = Join-Path $dataDir 'config.json'
-        $testCfg = [ordered]@{ database = $detected.database; isql = $detected.isql }
+        # la detection rend le chemin seul ; l'installation ecrit "localhost:" devant (Installer.cs), comme ici.
+        # Sans lui, isql passe par la connexion locale, que le serveur InterBase refuse ("unavailable database").
+        $db = $detected.database
+        if ($db -notmatch '^[^\\]+:[A-Za-z]:\\') { $db = 'localhost:' + $db }
+        $testCfg = [ordered]@{ database = $db; isql = $detected.isql }
         [IO.File]::WriteAllText($cfgFile, (ConvertTo-Json $testCfg), (New-Object Text.UTF8Encoding($false)))
         $out = & powershell.exe -NoProfile -ExecutionPolicy Bypass -File (Join-Path $AgentDir 'agent.ps1') -ConfigPath $cfgFile -TestData -Days 30
         $code = $LASTEXITCODE
@@ -89,7 +93,7 @@ if ($hasGescomm) {
                 $records = @($g.Value)
                 [long]$sum = 0
                 foreach ($r in $records) {
-                    Assert ([string]$r.key) "$name / $($g.Name) : enregistrement sans cle"
+                    Assert (-not [string]::IsNullOrEmpty([string]$r.key)) "$name / $($g.Name) : enregistrement sans cle"
                     Assert ([long]$r.digest -ge 0 -and [long]$r.digest -le 281474976710655) "$name / $($g.Name) : empreinte hors 48 bits"
                     $sum += [long]$r.digest
                 }
@@ -109,7 +113,13 @@ if ($hasGescomm) {
             "SELECT COUNT(*) AS N, SUM(L.QTE) AS Q, SUM(L.TOTAL) AS T FROM GC010 H JOIN GC011 L ON L.NUMEROS = H.NUMEROS WHERE H.DATES BETWEEN CAST('$from' AS DATE) AND CAST('$to' AS DATE);"))
         $env:ISC_USER = 'SYSDBA'
         $env:ISC_PASSWORD = 'masterkey'
-        $isqlOut = @(& $detected.isql -q -i $sqlFile $detected.database 2>&1)
+        # sortie dans un fichier, comme l'agent : isql ecrit "Rolling back work." sur stderr, et avec 2>&1
+        # PowerShell 5.1 en fait une erreur qui arrete le test (ErrorActionPreference Stop)
+        $isqlRes = Join-Path $dataDir 'totals.out'
+        $isqlErr = Join-Path $dataDir 'totals.err'
+        Start-Process -FilePath $detected.isql -ArgumentList @('-q', '-i', "`"$sqlFile`"", '-o', "`"$isqlRes`"", "`"$db`"") `
+            -NoNewWindow -Wait -RedirectStandardError $isqlErr | Out-Null
+        $isqlOut = @(Get-Content $isqlRes, $isqlErr -ErrorAction SilentlyContinue)
         $gc = @{}
         foreach ($l in $isqlOut) { if ([string]$l -match '^(N|Q|T)\s+(\S+)') { $gc[$Matches[1]] = $Matches[2] } }
         if ($gc.Count -eq 3) {
