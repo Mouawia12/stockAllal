@@ -42,9 +42,6 @@
     </div>
 </div>
 <style>
-    .palette-open { display: flex; align-items: center; gap: 8px; color: var(--muted); padding: 5px 8px 5px 12px; border-radius: 99px; white-space: nowrap; flex: none; }
-    .palette-open svg { width: 16px; height: 16px; }
-    .palette-open:hover { color: var(--text); }
     .pal-bg { position: fixed; inset: 0; z-index: 30; background: rgba(10, 18, 24, .45); display: flex; justify-content: center; align-items: flex-start; padding: 9vh 12px 12px; }
     .pal-bg[hidden] { display: none; }
     .pal { width: 100%; max-width: 620px; background: var(--card); border: 1px solid var(--border); border-radius: 14px; box-shadow: 0 24px 60px rgba(0, 0, 0, .28); overflow: hidden; }
@@ -61,9 +58,6 @@
     .pal-item .hint { color: var(--muted); font-size: 13px; }
     .pal-keys { display: flex; gap: 4px; }
     .pal-empty { padding: 18px 12px; color: var(--muted); text-align: center; }
-    /* barre du haut chargee : le mot d'abord, puis la touche, l'icone reste */
-    @media (max-width: 1000px) { .palette-open .palette-label { display: none; } }
-    @media (max-width: 700px) { .palette-open kbd { display: none; } .palette-open { padding: 6px; } }
 </style>
 <script>
 (() => {

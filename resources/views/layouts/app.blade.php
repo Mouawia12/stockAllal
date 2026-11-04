@@ -15,20 +15,29 @@
         body { margin: 0; background: var(--bg); color: var(--text); font: 15px/1.6 var(--font); }
         a { color: var(--accent); text-decoration: none; }
         header { background: var(--card); border-bottom: 1px solid var(--border); position: sticky; top: 0; z-index: 5; }
-        header .in { max-width: 1100px; margin: 0 auto; padding: 8px 16px; min-height: 56px; display: flex; align-items: center; gap: 12px; }
+        /* barre du haut facon Odoo : au debut l'application et ses menus, au bout seulement la branche, la recherche et l'avatar
+           (langue, apparence, حسابي et خروج sont dans le menu de l'avatar, partials/user-menu) */
+        header .in { max-width: 1100px; margin: 0 auto; padding: 6px 16px; min-height: 52px; display: flex; align-items: center; gap: 6px; }
         header .launcher { display: grid; place-items: center; width: 36px; height: 36px; border-radius: 10px; color: var(--muted); flex: none; }
         header .launcher:hover { background: var(--row-hover); color: var(--text); }
         header .launcher svg { width: 20px; height: 20px; }
-        header .app-title { display: flex; align-items: center; gap: 8px; font-weight: 700; font-size: 16px; color: var(--text); white-space: nowrap; }
+        header .app-title { display: flex; align-items: center; gap: 8px; font-weight: 700; font-size: 16px; color: var(--text); white-space: nowrap; margin-inline-end: 10px; }
         header .app-title svg { width: 26px; height: 26px; display: block; }
         header nav { display: flex; gap: 2px; flex: 1; overflow-x: auto; }
         header nav a { color: var(--muted); padding: 6px 10px; border-radius: 8px; white-space: nowrap; }
         header nav a:hover { background: var(--row-hover); color: var(--text); }
         header nav a.on { color: var(--text); background: var(--accent-soft); }
-        header .user { display: flex; align-items: center; gap: 8px; color: var(--muted); white-space: nowrap; }
-        header .user.on, header .user:hover { color: var(--text); }
-        header .avatar { width: 30px; height: 30px; border-radius: 50%; background: var(--accent); color: var(--on-accent); display: grid; place-items: center; font-weight: 700; font-size: 14px; flex: none; }
-        header .theme-toggle { white-space: nowrap; }
+        header .tools { display: flex; align-items: center; gap: 4px; flex: none; }
+        header .icon-btn { display: grid; place-items: center; width: 36px; height: 36px; padding: 0; border: 0; border-radius: 50%; background: none; color: var(--muted); }
+        header .icon-btn:hover { background: var(--row-hover); color: var(--text); }
+        header .icon-btn svg { width: 19px; height: 19px; }
+        .avatar { width: 30px; height: 30px; border-radius: 50%; background: var(--accent); color: var(--on-accent); display: grid; place-items: center; font-weight: 700; font-size: 14px; flex: none; }
+        /* menus deroulants de la barre (branche, compte) : details.drop + .drop-menu, comportement dans le script du bas */
+        .drop { position: relative; flex: none; }
+        .drop summary { list-style: none; cursor: pointer; }
+        .drop summary::-webkit-details-marker { display: none; }
+        .drop-menu { position: absolute; inset-inline-end: 0; top: calc(100% + 6px); min-width: 220px; background: var(--card); border: 1px solid var(--border);
+            border-radius: 12px; box-shadow: var(--shadow); padding: 6px; display: flex; flex-direction: column; z-index: 20; margin: 0; }
         main { max-width: 1100px; margin: 0 auto; padding: 20px 16px 60px; }
         /* overflow-x : sur telephone, un tableau large defile dans sa carte au lieu d'elargir toute la page */
         .card { background: var(--card); border: 1px solid var(--border); border-radius: 10px; padding: 16px; overflow-x: auto; }
@@ -77,13 +86,11 @@
         @media (max-width: 700px) {
             .hide-sm { display: none; }
             td, th { padding: 7px 6px; }
-            header .in { flex-wrap: wrap; gap: 6px 10px; }
-            header .app-title { flex: 1; }
-            /* deuxieme ligne : les menus, puis les boutons de langue au bout */
-            header nav { order: 5; flex-basis: calc(100% - 140px); }
-            header .lang-switch { order: 6; margin-inline-start: auto; }
+            header .in { flex-wrap: wrap; gap: 4px 6px; }
+            header .app-title { flex: 1; min-width: 0; }
+            /* deuxieme ligne : les menus de l'application */
+            header nav { order: 5; flex-basis: 100%; }
         }
-        @media (max-width: 480px) { header .theme-label { display: none; } header .in { gap: 6px 8px; } }
     </style>
     @stack('head')
 </head>
@@ -133,17 +140,13 @@
                 <a href="{{ route('account.edit') }}" class="{{ request()->routeIs('account.*') ? 'on' : '' }}">{{ __('common.account') }}</a>
             @endif
         </nav>
-        @include('partials.branch-switch')
-        <button type="button" class="link palette-open" data-palette data-key="Ctrl+K F3" data-key-fallback title="{{ __('common.palette.title') }}" aria-label="{{ __('common.palette.title') }}">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/></svg>
-            <span class="palette-label">{{ __('common.palette.button') }}</span><kbd>Ctrl K</kbd>
-        </button>
-        @include('partials.lang-switch')
-        @include('partials.theme-toggle')
-        <a href="{{ route('account.edit') }}" class="user {{ request()->routeIs('account.*') ? 'on' : '' }}" title="{{ __('common.account') }}">
-            <span class="avatar">{{ mb_substr($user->name, 0, 1) }}</span><span class="hide-sm">{{ $user->name }}</span>
-        </a>
-        <form method="post" action="{{ route('logout') }}">@csrf<button class="link" type="submit">{{ __('common.logout') }}</button></form>
+        <div class="tools">
+            @include('partials.branch-switch')
+            <button type="button" class="icon-btn palette-open" data-palette data-key="Ctrl+K F3" data-key-fallback title="{{ __('common.palette.title') }} (Ctrl+K)" aria-label="{{ __('common.palette.title') }}">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/></svg>
+            </button>
+            @include('partials.user-menu')
+        </div>
     </div>
 </header>
 <main>
@@ -196,6 +199,26 @@
     // identifiant choisi par la page : une requete POST rejouee est reconnue par le serveur et n'agit qu'une fois
     window.newId = () => (crypto.randomUUID ? crypto.randomUUID()
         : '10000000-1000-4000-8000-100000000000'.replace(/[018]/g, c => (c ^ crypto.getRandomValues(new Uint8Array(1))[0] & 15 >> c / 4).toString(16)));
+
+    // menus de la barre du haut (details.drop) : un seul ouvert, un clic ailleurs ou Echap ferme ;
+    // ouvert (aussi par sa touche, ex. Alt+B), le clavier est sur l'element choisi, les fleches passent aux autres
+    (() => {
+        const drops = [...document.querySelectorAll('details.drop')];
+        const entries = d => [...d.querySelectorAll('.drop-menu a, .drop-menu button')];
+        document.addEventListener('click', e => drops.forEach(d => { if (d.open && !d.contains(e.target)) d.open = false; }));
+        drops.forEach(d => d.addEventListener('toggle', () => {
+            if (d.open) (d.querySelector('.drop-menu > .on') || entries(d)[0])?.focus();
+        }));
+        document.addEventListener('keydown', e => {
+            const open = drops.find(d => d.open);
+            if (!open) return;
+            if (e.key === 'Escape') { e.preventDefault(); open.open = false; open.querySelector('summary').focus(); return; }
+            if ((e.key !== 'ArrowDown' && e.key !== 'ArrowUp') || !e.target.closest?.('.drop-menu')) return;
+            e.preventDefault();
+            const list = entries(open);
+            list[(list.indexOf(e.target.closest('a, button')) + (e.key === 'ArrowDown' ? 1 : -1) + list.length) % list.length].focus();
+        });
+    })();
 </script>
 @include('partials.palette')
 @stack('scripts')

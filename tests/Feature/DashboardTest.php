@@ -189,7 +189,7 @@ class DashboardTest extends TestCase
         @unlink($res->getFile()->getPathname());
 
         $this->actingAs($user)->get('/agent/guide')->assertOk()->assertHeader('content-type', 'application/pdf');
-        $this->actingAs($user)->get('/branches')->assertSee('تنزيل الوكيل')->assertSee('theme-toggle', false);
+        $this->actingAs($user)->get('/branches')->assertSee('تنزيل الوكيل')->assertSee('id="theme-seg"', false);
     }
 
     public function test_branches_page_install_code_rename_and_disable(): void

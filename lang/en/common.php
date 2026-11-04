@@ -41,6 +41,7 @@ return [
     'hide' => 'Hide',
 
     'theme' => [
+        'label' => 'Appearance',
         'change' => 'Change appearance',
         'title' => 'Appearance: :theme — click to change',
         'auto' => 'Auto',
@@ -55,7 +56,6 @@ return [
     ],
     'palette' => [
         'title' => 'Search everything',
-        'button' => 'Search',
         'placeholder' => 'Product code or name, or a page…',
         'products' => 'Products',
         'pages' => 'Pages',

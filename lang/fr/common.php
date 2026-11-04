@@ -41,6 +41,7 @@ return [
     'hide' => 'Masquer',
 
     'theme' => [
+        'label' => 'Apparence',
         'change' => 'Changer l\'apparence',
         'title' => 'Apparence : :theme — cliquez pour changer',
         'auto' => 'Auto',
@@ -55,7 +56,6 @@ return [
     ],
     'palette' => [
         'title' => 'Recherche globale',
-        'button' => 'Rechercher',
         'placeholder' => 'Code ou désignation d\'un article, ou nom d\'une page…',
         'products' => 'Articles',
         'pages' => 'Pages',
