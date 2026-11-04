@@ -25,6 +25,7 @@ return [
     'branches_count' => 'الفروع: :branches',
     'batches_failed' => '{1} طلب واحد لم ينجح|{2} طلبان لم ينجحا|[3,10] :count طلبات لم تنجح|[11,*] :count طلباً لم تنجح',
     'resume' => 'استئناف الفحص (:done من :total)',
+    'retry_failed' => 'إعادة الطلبات التي لم تنجح (:count)',
     'status_label' => 'الحالة',
     'status' => [
         'open' => 'للمراجعة',

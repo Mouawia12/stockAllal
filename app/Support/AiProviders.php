@@ -75,10 +75,15 @@ final class AiProviders
         }), 0, self::MAX_MODELS);
     }
 
+    /** Une reponse peut prendre du temps (les modeles reflechissent avant) : sous le verrou d'un lot (MergeScanner). */
+    public const ASK_TIMEOUT = 180;
+
     /**
      * Une question dont la reponse est un objet JSON de la forme $schema (JSON Schema, tout "required",
-     * additionalProperties false : ce qu'OpenAI exige en mode strict). Claude repond par un outil impose,
-     * OpenAI et Gemini en mode JSON ; le message decrit aussi la forme attendue, pour les trois.
+     * additionalProperties false : ce qu'OpenAI exige en mode strict). Claude a l'outil "answer" sans y etre force
+     * (Opus 5.5, Sonnet 5.5, Fable 5.1 refusent tool_choice "tool" par un 400) : sa reponse est l'outil, ou le JSON
+     * de son texte. OpenAI et Gemini en mode JSON ; le message decrit aussi la forme attendue, pour les trois.
+     * $maxTokens = la reponse ; la limite envoyee est le double, car les modeles qui raisonnent y comptent leur reflexion.
      *
      * @param  array<string, mixed>  $schema
      * @return array<string, mixed>
@@ -90,30 +95,30 @@ final class AiProviders
         [$url, $body] = match ($provider) {
             'claude' => ['https://api.anthropic.com/v1/messages', [
                 'model' => $model,
-                'max_tokens' => $maxTokens,
+                'max_tokens' => $maxTokens * 2,
                 'system' => $system,
                 'messages' => [['role' => 'user', 'content' => $prompt]],
-                'tools' => [['name' => 'answer', 'description' => 'Give the answer.', 'input_schema' => $schema]],
-                'tool_choice' => ['type' => 'tool', 'name' => 'answer'],
+                'tools' => [['name' => 'answer', 'description' => 'Give the answer. Always answer by calling this tool once.', 'input_schema' => $schema]],
+                'tool_choice' => ['type' => 'auto'],
             ]],
             'openai' => ['https://api.openai.com/v1/chat/completions', [
                 'model' => $model,
                 'messages' => [['role' => 'system', 'content' => $system], ['role' => 'user', 'content' => $prompt]],
                 'response_format' => ['type' => 'json_schema', 'json_schema' => ['name' => 'answer', 'strict' => true, 'schema' => $schema]],
-                // les modeles qui raisonnent comptent leur reflexion dans cette limite
                 'max_completion_tokens' => $maxTokens * 2,
             ]],
             'gemini' => ['https://generativelanguage.googleapis.com/v1beta/models/'.rawurlencode($model).':generateContent', [
                 'systemInstruction' => ['parts' => [['text' => $system]]],
                 'contents' => [['role' => 'user', 'parts' => [['text' => $prompt]]]],
-                'generationConfig' => ['responseMimeType' => 'application/json', 'maxOutputTokens' => $maxTokens],
+                'generationConfig' => ['responseMimeType' => 'application/json', 'maxOutputTokens' => $maxTokens * 2],
             ]],
         };
 
         try {
+            // on ne refait que les connexions ratees : une reponse trop lente refaite trois fois depasserait le verrou du lot
             $res = Http::withHeaders(self::headers($provider, $key))->acceptJson()
-                ->connectTimeout(10)->timeout(120)
-                ->retry(2, 1000, fn ($e) => $e instanceof ConnectionException, throw: false)
+                ->connectTimeout(10)->timeout(self::ASK_TIMEOUT)
+                ->retry(2, 1000, fn ($e) => $e instanceof ConnectionException && ! str_contains($e->getMessage(), 'Operation timed out'), throw: false)
                 ->post($url, $body);
         } catch (ConnectionException $e) {
             throw new AiProviderError('unreachable', self::scrub($e->getMessage(), $key));
@@ -123,12 +128,15 @@ final class AiProviders
         }
 
         $answer = match ($provider) {
-            'claude' => collect($res->json('content') ?? [])->firstWhere('type', 'tool_use')['input'] ?? null,
+            'claude' => collect($res->json('content') ?? [])->firstWhere('type', 'tool_use')['input']
+                ?? self::decode(collect($res->json('content') ?? [])->where('type', 'text')->pluck('text')->implode('')),
             'openai' => self::decode((string) $res->json('choices.0.message.content')),
             'gemini' => self::decode(collect($res->json('candidates.0.content.parts') ?? [])->pluck('text')->implode('')),
         };
         if (! is_array($answer)) {
-            throw new AiProviderError('bad_answer', self::scrub(mb_substr($res->body(), 0, 200), $key));
+            // pourquoi elle s'est arretee (refusal, max_tokens, MAX_TOKENS, SAFETY...) d'abord : c'est ce qui aide a comprendre
+            $stop = $res->json('stop_reason') ?? $res->json('choices.0.finish_reason') ?? $res->json('candidates.0.finishReason');
+            throw new AiProviderError('bad_answer', self::scrub((is_string($stop) ? $stop.': ' : '').mb_substr($res->body(), 0, 200), $key));
         }
 
         return $answer;

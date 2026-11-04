@@ -149,12 +149,20 @@
                     {{ $scan->status === 'failed' ? __("ai.errors.{$scan->error}", ['name' => $providerName($scan->provider)]) : $C['cancelled'] }}
                     @if ($scan->error_detail)<br><span class="small ltr">{{ $scan->error_detail }}</span>@endif
                 </p>
-                @if ($scan->batches_done + $scan->batches_failed < $scan->batches)
-                    <form method="post" action="{{ route('merge.ai.resume', $scan) }}">@csrf
-                        <button type="submit">{{ __('merge_ai.resume', ['done' => $scan->batches_done + $scan->batches_failed, 'total' => $scan->batches]) }}</button>
-                        @if ($scan->status === 'failed')@can('manage-ai')<a class="small" href="{{ route('ai.index') }}">{{ __('ai.title') }}</a>@endcan @endif
-                    </form>
-                @endif
+            @elseif ($failure)
+                {{-- des lots ont echoue : pourquoi (le dernier), pour savoir s'il faut changer de modele ou juste refaire --}}
+                <p class="warn-line">
+                    {{ __("ai.errors.{$failure['reason']}", ['name' => $providerName($scan->provider)]) }}
+                    @if ($failure['detail'])<br><span class="small ltr">{{ $failure['detail'] }}</span>@endif
+                </p>
+            @endif
+            @if ($retryable)
+                <form method="post" action="{{ route('merge.ai.resume', $scan) }}">@csrf
+                    <button type="submit">{{ $scan->batches_done + $scan->batches_failed < $scan->batches
+                        ? __('merge_ai.resume', ['done' => $scan->batches_done + $scan->batches_failed, 'total' => $scan->batches])
+                        : __('merge_ai.retry_failed', ['count' => $scan->batches_failed]) }}</button>
+                    @if ($scan->status === 'failed' || $failure)@can('manage-ai')<a class="small" href="{{ route('ai.index') }}">{{ __('ai.title') }}</a>@endcan @endif
+                </form>
             @endif
         </section>
     @endif
@@ -270,7 +278,7 @@
             for (;;) {
                 let data;
                 try {
-                    const res = await fetchRetry(progress.dataset.step, {method: 'POST', headers: {'X-CSRF-TOKEN': token, 'Accept': 'application/json'}}, 2, 180000);
+                    const res = await fetchRetry(progress.dataset.step, {method: 'POST', headers: {'X-CSRF-TOKEN': token, 'Accept': 'application/json'}}, 2, {{ (App\Support\AiProviders::ASK_TIMEOUT + 20) * 1000 }});
                     if (!res.ok) throw new Error('HTTP ' + res.status);
                     data = await res.json();
                     note.hidden = true;

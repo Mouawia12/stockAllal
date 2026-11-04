@@ -25,6 +25,7 @@ return [
     'branches_count' => 'Succursales : :branches',
     'batches_failed' => '{1} 1 requête a échoué|[2,*] :count requêtes ont échoué',
     'resume' => 'Reprendre l\'analyse (:done sur :total)',
+    'retry_failed' => 'Refaire les requêtes échouées (:count)',
     'status_label' => 'État',
     'status' => [
         'open' => 'À examiner',

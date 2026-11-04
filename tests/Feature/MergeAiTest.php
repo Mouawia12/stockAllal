@@ -158,7 +158,9 @@ class MergeAiTest extends TestCase
         // ce qui est parti : codes, designations, lettres de branche ; jamais un prix, une quantite ni un nom de branche
         $request = $this->sent[0];
         $this->assertSame('claude-sonnet-5-5', $request['model']);
-        $this->assertSame(['type' => 'tool', 'name' => 'answer'], $request['tool_choice']);
+        // jamais un outil impose (Opus 5.5 / Sonnet 5.5 le refusent) ; de la place pour la reflexion du modele
+        $this->assertSame(['type' => 'auto'], $request['tool_choice']);
+        $this->assertSame(16000, $request['max_tokens']);
         $prompt = json_encode($request, JSON_UNESCAPED_UNICODE);
         foreach (['1234', 'Oran', 'Setif', '-2'] as $secret) {
             $this->assertStringNotContainsString($secret, $prompt, $secret);
@@ -270,6 +272,38 @@ class MergeAiTest extends TestCase
         $this->assertStringContainsString('gemini-test:generateContent', Http::recorded()[0][0]->url());
         $this->assertTrue(Http::recorded()[0][0]->hasHeader('x-goog-api-key', 'sk-test-key-for-merge'));
         $this->actingAs($dev)->get('/merge/ai')->assertSee(trans_choice('merge_ai.batches_failed', 1, ['count' => 1]));
+    }
+
+    public function test_failed_requests_say_why_and_can_be_retried_with_a_model_that_answers_in_text(): void
+    {
+        $this->catalog();
+        $this->connect('claude', 'claude-opus-5-5');
+        $dev = User::factory()->admin()->create();
+        $this->actingAs($dev)->post('/merge/ai');
+        $scan = MergeScan::firstOrFail();
+
+        // ce qu'Anthropic a repondu en production a l'ancien appel (tool_choice impose) : un 400 a chaque essai
+        $this->answer = fn () => Http::response(['type' => 'error', 'error' => ['type' => 'invalid_request_error',
+            'message' => 'tool_choice: type "tool" and "any" are not supported for this model.']], 400);
+        foreach (range(1, 3) as $i) {
+            $this->actingAs($dev)->postJson(route('merge.ai.step', $scan));
+        }
+        $this->assertSame(['done', 0, 1], [$scan->fresh()->status, $scan->fresh()->batches_done, $scan->fresh()->batches_failed]);
+        $this->actingAs($dev)->get('/merge/ai')->assertOk()
+            ->assertSee(__('ai.errors.other', ['name' => 'Claude']))
+            ->assertSee('HTTP 400: tool_choice: type "tool" and "any" are not supported for this model.')
+            ->assertSee(__('merge_ai.retry_failed', ['count' => 1]));
+
+        // refaire : le lot repart de zero ; le modele reflechit puis repond en texte, sans l'outil
+        $this->actingAs($dev)->post(route('merge.ai.resume', $scan))->assertRedirect('/merge/ai');
+        $this->assertSame(['running', 0], [$scan->fresh()->status, $scan->fresh()->batches_failed]);
+        $this->answer = fn () => Http::response(['stop_reason' => 'end_turn', 'content' => [
+            ['type' => 'thinking', 'thinking' => '', 'signature' => 'sig'],
+            ['type' => 'text', 'text' => "Here it is:\n```json\n{\"groups\": []}\n```"],
+        ]]);
+        $this->actingAs($dev)->postJson(route('merge.ai.step', $scan))->assertJson(['status' => 'done']);
+        $this->assertSame([1, 0], [$scan->fresh()->batches_done, $scan->fresh()->batches_failed]);
+        $this->actingAs($dev)->get('/merge/ai')->assertOk()->assertDontSee(__('merge_ai.retry_failed', ['count' => 1]));
     }
 
     public function test_who_may_scan_and_see_a_scan(): void

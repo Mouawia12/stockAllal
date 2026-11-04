@@ -8,6 +8,7 @@ use App\Models\MergeDismissal;
 use App\Models\MergeScan;
 use App\Models\MergeSuggestion;
 use App\Models\ProductGroup;
+use App\Support\AiProviders;
 use App\Support\MergeScanner;
 use App\Support\StockState;
 use Illuminate\Http\JsonResponse;
@@ -57,6 +58,8 @@ class MergeAiController extends Controller
             'counts' => $counts,
             'suggestions' => $suggestions,
             'items' => $scan ? $this->items($scan, $suggestions) : [],
+            'failure' => $scan ? $this->failure($scan) : null,
+            'retryable' => $scan && ! $scan->running() && $scan->batchRows()->whereIn('status', ['pending', 'failed'])->exists(),
             'branches' => $scan ? Branch::whereIn('id', $scan->branch_ids)->orderBy('name')->get()->keyBy('id') : collect(),
         ]);
     }
@@ -87,7 +90,7 @@ class MergeAiController extends Controller
     public function step(Request $request, MergeScan $scan): JsonResponse
     {
         abort_unless($scan->visibleTo($request->user()), 404);
-        @set_time_limit(200);
+        @set_time_limit(AiProviders::ASK_TIMEOUT + 60);
         $worked = $scan->running() && MergeScanner::step($scan);
         $scan->refresh();
 
@@ -111,16 +114,20 @@ class MergeAiController extends Controller
         return redirect()->route('merge.ai');
     }
 
-    /** Reprendre une analyse arretee (cle refusee puis corrigee, credit epuise puis recharge, ou annulee). */
+    /**
+     * Reprendre une analyse arretee (cle refusee puis corrigee, credit epuise puis recharge, ou annulee), et refaire
+     * les lots qui ont echoue (avec le modele choisi maintenant sur la page "الذكاء الاصطناعي").
+     */
     public function resume(Request $request, MergeScan $scan): RedirectResponse
     {
         abort_unless($scan->visibleTo($request->user()), 404);
-        if (in_array($scan->status, ['failed', 'cancelled'], true) && $scan->batchRows()->where('status', 'pending')->exists()) {
+        if (! $scan->running() && $scan->batchRows()->whereIn('status', ['pending', 'failed'])->exists()) {
             $ai = MergeScanner::provider($scan->provider);
             if (! $ai) {
                 return back()->withErrors(['provider' => __('merge_ai.no_provider')]);
             }
-            $scan->forceFill(['status' => 'running', 'error' => null, 'error_detail' => null, 'finished_at' => null, 'provider' => $ai->provider, 'model' => $ai->model])->save();
+            $scan->batchRows()->where('status', 'failed')->update(['status' => 'pending', 'attempts' => 0, 'error' => null]);
+            $scan->forceFill(['status' => 'running', 'batches_failed' => 0, 'error' => null, 'error_detail' => null, 'finished_at' => null, 'provider' => $ai->provider, 'model' => $ai->model])->save();
         }
 
         return redirect()->route('merge.ai');
@@ -192,6 +199,22 @@ class MergeAiController extends Controller
         }
 
         return back()->with('status', __('merge_ai.reopened'));
+    }
+
+    /**
+     * Pourquoi des lots ont echoue : l'erreur du dernier ("raison: detail", voir MergeScanner::step).
+     *
+     * @return array{reason: string, detail: ?string}|null
+     */
+    private function failure(MergeScan $scan): ?array
+    {
+        $error = $scan->batches_failed ? $scan->batchRows()->where('status', 'failed')->whereNotNull('error')->latest('id')->value('error') : null;
+        if ($error === null) {
+            return null;
+        }
+        [$reason, $detail] = array_pad(explode(': ', $error, 2), 2, null);
+
+        return ['reason' => array_key_exists($reason, trans('ai.errors')) ? $reason : 'other', 'detail' => $detail];
     }
 
     /**

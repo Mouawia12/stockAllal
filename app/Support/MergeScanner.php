@@ -15,7 +15,7 @@ use Illuminate\Support\Facades\DB;
 
 /**
  * "دمج الأصناف" par l'IA : MergeCandidates trouve les candidats ici, puis chaque lot part a l'IA, un par un.
- * Un lot = un appel (10 a 60 s) : la page en cours les demande l'un apres l'autre (step), et la tache planifiee
+ * Un lot = un appel (10 s a 3 min) : la page en cours les demande l'un apres l'autre (step), et la tache planifiee
  * reprend ce qui reste si la page est fermee (runPending, chaque minute). Un verrou par analyse : jamais deux
  * appels pour le meme lot. L'IA ne recoit que des codes et des designations (jamais un prix ni une quantite),
  * et les branches sous forme de lettres. Rien n'est fusionne ici : ce sont des propositions.
@@ -103,7 +103,8 @@ final class MergeScanner
      */
     public static function step(MergeScan $scan): bool
     {
-        $lock = Cache::lock("merge-scan-{$scan->id}", 200);
+        // le verrou tient plus longtemps que l'appel le plus long : jamais deux appels pour le meme lot
+        $lock = Cache::lock("merge-scan-{$scan->id}", AiProviders::ASK_TIMEOUT + 60);
         if (! $lock->get()) {
             return false;
         }

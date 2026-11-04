@@ -25,6 +25,7 @@ return [
     'branches_count' => 'Branches: :branches',
     'batches_failed' => '{1} 1 request failed|[2,*] :count requests failed',
     'resume' => 'Resume the scan (:done of :total)',
+    'retry_failed' => 'Retry the failed requests (:count)',
     'status_label' => 'Status',
     'status' => [
         'open' => 'To review',
