@@ -58,11 +58,13 @@ Artisan::command('agent:install-code', function () {
     $this->info("Code d'installation : {$code}  (une seule utilisation, valable 24 h)");
 })->purpose("Genere un code d'installation pour l'agent d'une nouvelle branche");
 
+// Taches planifiees : withoutOverlapping(..., false) = pas de pcntl_signal. Le php.ini du serveur (HestiaCP) le desactive
+// et Laravel l'appelle pour chaque tache ("Call to undefined function pcntl_signal") ; le verrou d'une tache tuee expire seul.
 Schedule::call(function () {
     RefreshJob::where('created_at', '<', now()->subDays(7))->delete();
     InstallCode::whereNull('used_at')->where('expires_at', '<', now()->subDays(7))->delete();
     MergeScan::where('created_at', '<', now()->subDays(90))->delete();
-})->daily()->name('nettoyage-demandes')->withoutOverlapping();
+})->daily()->name('nettoyage-demandes')->withoutOverlapping(60, false);
 
 // "دمج الأصناف" par l'IA : les lots qui restent quand la page de l'analyse est fermee (un lot = un appel a l'IA)
-Schedule::call(fn () => MergeScanner::runPending(50))->everyMinute()->name('merge-ai')->withoutOverlapping(5);
+Schedule::call(fn () => MergeScanner::runPending(50))->everyMinute()->name('merge-ai')->withoutOverlapping(5, false);

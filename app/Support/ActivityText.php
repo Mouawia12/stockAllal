@@ -46,7 +46,9 @@ final class ActivityText
 
         return match ($log->subject_type) {
             'user' => (string) ($data['state']['username'] ?? $data['username'][1] ?? User::find($log->subject_id)?->username ?? '#'.$log->subject_id),
-            'branch' => (string) ($data['name'] ?? $this->branchNames[$log->subject_id] ?? '#'.$log->subject_id),
+            // renommee : name = [avant, apres] (branch.updated) ; supprimee : name = son nom (branch.deleted)
+            'branch' => (string) ((is_array($data['name'] ?? null) ? $data['name'][1] : ($data['name'] ?? null))
+                ?? $this->branchNames[$log->subject_id] ?? '#'.$log->subject_id),
             'aiprovider' => AiProviders::PROVIDERS[AiProvider::find($log->subject_id)?->provider]['name'] ?? '#'.$log->subject_id,
             default => '',
         };

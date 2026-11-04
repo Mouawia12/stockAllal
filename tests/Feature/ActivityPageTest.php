@@ -40,6 +40,18 @@ class ActivityPageTest extends TestCase
         $this->actingAs($dev)->get('/users')->assertSee(route('activity.index'));
     }
 
+    /** Une branche renommee : name = [avant, apres] dans le journal (avant le correctif : "Array to string conversion", page en erreur). */
+    public function test_a_renamed_branch_reads_under_its_new_name(): void
+    {
+        $dev = User::factory()->admin()->create();
+        $oran = Branch::create(['name' => 'Oran', 'active' => true]);
+
+        $this->actingAs($dev)->patch("/branches/{$oran->id}", ['name' => 'Oran Centre'])->assertRedirect();
+        $this->actingAs($dev)->get('/activity')->assertOk()
+            ->assertSee('عدّل فرع Oran Centre')
+            ->assertSeeInOrder(['الاسم', 'Oran', '←', 'Oran Centre']);
+    }
+
     public function test_only_the_developer_opens_it(): void
     {
         $owner = User::factory()->owner()->create();
