@@ -36,6 +36,7 @@ return [
     'request_failed' => 'تعذّر إرسال الطلب (:error)',
 
     'save' => 'حفظ',
+    'cancel' => 'إلغاء',
     'saved' => 'تم الحفظ',
     'delete' => 'حذف',
     'edit' => 'تعديل',

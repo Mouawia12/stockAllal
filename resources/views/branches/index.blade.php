@@ -11,18 +11,44 @@
     .code-row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin: 4px 0 6px; }
     .copy { display: inline-flex; align-items: center; gap: 6px; padding: 5px 12px; }
     .copy svg { width: 17px; height: 17px; flex: none; }
-    .rename { display: flex; gap: 6px; }
-    .rename input { width: 170px; padding: 5px 8px; }
+    /* le menu ⋮ d'une ligne deborde de la carte au lieu d'y ouvrir une barre de defilement */
+    .branches-card { overflow: visible; }
+    .branches td { padding-block: 12px; }
+    .b-name { display: flex; align-items: center; gap: 4px 8px; flex-wrap: wrap; font-weight: 600; }
+    .b-name .bdot { margin-inline-end: 4px; }
+    .b-sub { margin-top: 2px; padding-inline-start: 17px; }
+    .pill.main { background: var(--accent-soft); color: var(--accent); font-weight: 600; }
+    /* renommer : le nom devient un champ, depuis le menu ⋮ */
+    .rename { display: none; gap: 6px; align-items: center; }
+    .b-cell.editing .rename { display: flex; }
+    .b-cell.editing .b-view { display: none; }
+    .rename input { width: 180px; padding: 5px 8px; }
     .rename button { padding: 5px 10px; }
-    .actions { display: flex; flex-wrap: wrap; gap: 6px; }
-    .actions button { padding: 5px 10px; white-space: nowrap; }
-    .sync { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
-    .sync button { padding: 3px 10px; font-size: 13px; white-space: nowrap; }
+    .since { margin-top: 3px; }
+    .sync { display: flex; align-items: center; gap: 4px 8px; flex-wrap: wrap; }
+    .sync .last-sync { font-size: 14px; }
+    .sync button { display: inline-flex; align-items: center; gap: 4px; padding: 2px 6px; border: 0; border-radius: 6px; background: none; color: var(--accent); font-size: 13px; white-space: nowrap; }
+    .sync button:hover { background: var(--accent-soft); }
+    .sync button:disabled { opacity: .6; cursor: default; }
+    .sync button svg { width: 14px; height: 14px; }
     .sync-msg { font-size: 12px; }
-    .data-state { margin-top: 4px; }
+    .data-state { margin-top: 3px; }
     tr.off td { opacity: .55; }
-    .install { display: flex; gap: 6px; flex-wrap: wrap; }
-    .install select, .access select { font: inherit; color: var(--text); background: var(--card); border: 1px solid var(--border); border-radius: 8px; padding: 6px 8px; }
+    .row-menu summary { display: grid; place-items: center; width: 32px; height: 32px; border-radius: 50%; color: var(--muted); }
+    .row-menu summary:hover, .row-menu[open] summary { background: var(--row-hover); color: var(--text); }
+    .row-menu summary svg { width: 18px; height: 18px; }
+    .row-menu .drop-menu { min-width: 210px; }
+    .row-menu form { margin: 0; }
+    .row-menu .drop-menu button { display: flex; align-items: center; gap: 10px; width: 100%; padding: 8px 10px; border: 0; border-radius: 8px; background: none; color: var(--text); text-align: start; white-space: nowrap; }
+    .row-menu .drop-menu button:hover, .row-menu .drop-menu button:focus-visible { background: var(--row-hover); }
+    .row-menu .drop-menu button.danger, .row-menu .drop-menu button.danger svg { color: var(--bad); }
+    .row-menu .drop-menu svg { width: 17px; height: 17px; flex: none; color: var(--muted); }
+    .row-menu hr { border: 0; border-top: 1px solid var(--border); margin: 4px 0; }
+    .help-more { margin-top: 12px; }
+    .help-more summary { display: inline-flex; align-items: center; gap: 6px; cursor: pointer; color: var(--muted); font-size: 13px; }
+    .help-more summary:hover { color: var(--text); }
+    .help-more ul { margin: 8px 0 0; padding-inline-start: 20px; display: grid; gap: 4px; }
+    .access select { font: inherit; color: var(--text); background: var(--card); border: 1px solid var(--border); border-radius: 8px; padding: 6px 8px; }
     .access-card { margin-top: 16px; }
     .access-card h2 { font-size: 16px; margin: 0 0 4px; }
     .access-card td, .access-card th { text-align: center; }
@@ -43,18 +69,10 @@
         <a class="btn" href="{{ route('agent.guide') }}" target="_blank" rel="noopener">{{ __('branches.guide') }}</a>
     @endcan
     @can('branches.manage')
-        {{-- nouvelle branche, ou reinstallation de l'agent d'une branche existante (meme branche, pas de doublon) --}}
-        <form class="install" method="post" action="{{ route('branches.install-code') }}">
+        {{-- nouvelle branche ; la reinstallation d'une branche existante (meme branche, pas de doublon) est dans son menu ⋮ --}}
+        <form method="post" action="{{ route('branches.install-code') }}">
             @csrf
-            @if ($branches->isNotEmpty())
-                <select name="branch_id" aria-label="{{ __('branches.install_for') }}">
-                    <option value="">{{ __('branches.install_for_new') }}</option>
-                    @foreach ($branches as $b)
-                        <option value="{{ $b->id }}">{{ __('branches.install_for_branch', ['name' => $b->name]) }}</option>
-                    @endforeach
-                </select>
-            @endif
-            <button class="primary" type="submit">{{ __('branches.new_code') }}</button>
+            <button class="primary" type="submit" title="{{ __('branches.new_code_tip') }}">{{ __('branches.new_code') }}</button>
         </form>
     @endcan
 </div>
@@ -80,11 +98,11 @@
     </div>
 @endif
 
-<div class="card">
+<div class="card branches-card">
     @if ($branches->isEmpty())
         <p class="muted">{{ __('branches.empty') }}</p>
     @else
-        <table>
+        <table class="branches">
             <thead>
             <tr>
                 <th>{{ __('branches.col_name') }}</th>
@@ -92,7 +110,6 @@
                 <th>{{ __('branches.col_last_sync') }}</th>
                 <th class="hide-sm">{{ __('branches.col_items') }}</th>
                 <th class="hide-sm">{{ __('branches.col_db_write') }}</th>
-                <th class="hide-sm">{{ __('branches.col_host') }}</th>
                 <th></th>
             </tr>
             </thead>
@@ -100,39 +117,54 @@
             @foreach ($branches as $b)
                 @php($dbStale = $b->db_file_mtime && $b->db_file_mtime->lt(now()->subDay()))
                 <tr class="{{ $b->active ? '' : 'off' }}">
-                    <td>
+                    <td class="b-cell">
+                        <div class="b-view">
+                            <div class="b-name">
+                                {{-- sa couleur dans la page d'un article, l'apercu et les ventes (Branch::hue) --}}
+                                <span><span class="bdot" style="--bh: {{ $b->hue() }}"></span><bdi>{{ $b->name }}</bdi></span>
+                                @if ($b->is_main)
+                                    <span class="pill main" title="{{ __('branches.main_pill_tip') }}">{{ __('branches.main') }}</span>
+                                @endif
+                            </div>
+                            {{-- sur telephone, seulement la version de l'agent --}}
+                            @if ($b->hostname || $b->agent_version)
+                                <div class="b-sub muted small">
+                                    @if ($b->hostname)<span class="ltr hide-sm">{{ $b->hostname }}</span>@endif
+                                    @if ($b->hostname && $b->agent_version)<span class="hide-sm"> · </span>@endif
+                                    @if ($b->agent_version)<span class="ltr">v{{ $b->agent_version }}</span>@endif
+                                </div>
+                            @endif
+                        </div>
                         @can('branches.manage')
                             <form class="rename" method="post" action="{{ route('branches.update', $b) }}">
                                 @csrf @method('patch')
-                                {{-- sa couleur dans la page d'un article, l'apercu et les ventes (Branch::hue) --}}
-                                <span class="bdot" style="--bh: {{ $b->hue() }}; align-self: center"></span>
-                                <input type="text" name="name" value="{{ $b->name }}" maxlength="100" required>
-                                <button type="submit">{{ __('common.save') }}</button>
+                                <span class="bdot" style="--bh: {{ $b->hue() }}"></span>
+                                <input type="text" name="name" value="{{ $b->name }}" maxlength="100" required aria-label="{{ __('branches.rename') }}">
+                                <button type="submit" class="primary">{{ __('common.save') }}</button>
+                                <button type="button" data-cancel>{{ __('common.cancel') }}</button>
                             </form>
-                        @else
-                            <span class="bdot" style="--bh: {{ $b->hue() }}"></span> <b>{{ $b->name }}</b>
                         @endcan
                     </td>
                     <td>
-                        @if ($b->is_main)
-                            <span class="pill ok" title="{{ __('branches.main_pill_tip') }}">{{ __('branches.main') }}</span>
-                        @endif
                         @if (! $b->active)
                             <span class="pill">{{ __('branches.disabled') }}</span>
                         @elseif ($b->isOnline())
                             <span class="pill ok">{{ __('branches.online') }}</span>
                         @else
                             <span class="pill warn">{{ __('branches.offline') }}</span>
-                            <div class="muted small">{{ $b->last_seen_at?->diffForHumans() ?? __('branches.never') }}</div>
+                            <div class="since muted small">{{ $b->last_seen_at?->diffForHumans() ?? __('branches.never') }}</div>
                         @endif
                     </td>
                     <td>
                         <div class="sync">
-                            <span class="small last-sync">{{ $b->last_sync_at?->diffForHumans() ?? '—' }}</span>
+                            <span class="last-sync">{{ $b->last_sync_at?->diffForHumans() ?? '—' }}</span>
                             @if ($b->active && auth()->user()->can('branches.sync'))
                                 {{-- agent avant 1.0.4 : le bouton attend sa prochaine synchro automatique (RefreshJob "waiting") --}}
                                 <button type="button" data-sync="{{ route('branches.sync', $b) }}"
-                                        title="{{ $b->agentSupports('sync') ? __('branches.sync_tip') : __('branches.sync_tip_old', ['version' => \App\Models\Branch::AGENT_FEATURES['sync']]) }}">⟳ {{ __('branches.sync_now') }}</button>
+                                        title="{{ $b->agentSupports('sync') ? __('branches.sync_tip') : __('branches.sync_tip_old', ['version' => \App\Models\Branch::AGENT_FEATURES['sync']]) }}">
+                                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 12a8 8 0 1 1-2.3-5.7M20 4v5h-5"/></svg>
+                                    {{ __('branches.sync_now') }}
+                                </button>
                             @endif
                             <span class="sync-msg muted"></span>
                         </div>
@@ -158,39 +190,71 @@
                             —
                         @endif
                     </td>
-                    <td class="hide-sm small muted"><span class="ltr">{{ $b->hostname }}</span>@if ($b->agent_version)<br><span class="ltr">v{{ $b->agent_version }}</span>@endif</td>
                     <td>
                         @can('branches.manage')
-                        <div class="actions">
-                            <form method="post" action="{{ route('branches.main', $b) }}">
-                                @csrf
-                                <button type="submit" title="{{ __('branches.main_tip') }}">
-                                    {{ $b->is_main ? __('branches.unset_main') : __('branches.set_main') }}
+                        {{-- les actions de la branche dans un menu, facon Odoo : details.drop (ouverture, Echap, fleches : layouts/app) --}}
+                        <details class="drop row-menu">
+                            <summary title="{{ __('branches.actions', ['name' => $b->name]) }}" aria-label="{{ __('branches.actions', ['name' => $b->name]) }}">
+                                <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><circle cx="12" cy="5" r="1.8"/><circle cx="12" cy="12" r="1.8"/><circle cx="12" cy="19" r="1.8"/></svg>
+                            </summary>
+                            <div class="drop-menu">
+                                <button type="button" data-rename>
+                                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 20h4L19 9l-4-4L4 16v4zM13.5 6.5l4 4"/></svg>
+                                    {{ __('branches.rename') }}
                                 </button>
-                            </form>
-                            <form method="post" action="{{ route('branches.update', $b) }}">
-                                @csrf @method('patch')
-                                <input type="hidden" name="active" value="{{ $b->active ? 0 : 1 }}">
-                                <button type="submit">{{ $b->active ? __('branches.disable') : __('branches.enable') }}</button>
-                            </form>
-                            {{-- @js : le nom vient de l'agent ; un ' ne casse pas (ni n'injecte) le JavaScript de l'attribut --}}
-                            <form method="post" action="{{ route('branches.destroy', $b) }}"
-                                  onsubmit="return confirm(@js(__('branches.confirm_delete', ['name' => $b->name])))">
-                                @csrf @method('delete')
-                                <button class="danger" type="submit">{{ __('common.delete') }}</button>
-                            </form>
-                        </div>
+                                <form method="post" action="{{ route('branches.main', $b) }}">
+                                    @csrf
+                                    <button type="submit" title="{{ __('branches.main_tip') }}">
+                                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round" aria-hidden="true"><path d="M12 3.5l2.6 5.3 5.9.9-4.3 4.1 1 5.8L12 16.9l-5.2 2.7 1-5.8-4.3-4.1 5.9-.9z"/></svg>
+                                        {{ $b->is_main ? __('branches.unset_main') : __('branches.set_main') }}
+                                    </button>
+                                </form>
+                                {{-- reinstallation de son agent : meme branche, nouveau jeton (install_codes.for_branch_id) --}}
+                                <form method="post" action="{{ route('branches.install-code') }}">
+                                    @csrf
+                                    <input type="hidden" name="branch_id" value="{{ $b->id }}">
+                                    <button type="submit" title="{{ __('branches.reinstall_note', ['name' => $b->name]) }}">
+                                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="8" cy="15" r="4"/><path d="M11 12l9-9M17 6l3 3M15 8l2 2"/></svg>
+                                        {{ __('branches.reinstall') }}
+                                    </button>
+                                </form>
+                                <form method="post" action="{{ route('branches.update', $b) }}">
+                                    @csrf @method('patch')
+                                    <input type="hidden" name="active" value="{{ $b->active ? 0 : 1 }}">
+                                    <button type="submit">
+                                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><path d="M12 3v8M6.6 6.6a8 8 0 1 0 10.8 0"/></svg>
+                                        {{ $b->active ? __('branches.disable') : __('branches.enable') }}
+                                    </button>
+                                </form>
+                                <hr>
+                                {{-- @js : le nom vient de l'agent ; un ' ne casse pas (ni n'injecte) le JavaScript de l'attribut --}}
+                                <form method="post" action="{{ route('branches.destroy', $b) }}"
+                                      onsubmit="return confirm(@js(__('branches.confirm_delete', ['name' => $b->name])))">
+                                    @csrf @method('delete')
+                                    <button class="danger" type="submit">
+                                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3"/></svg>
+                                        {{ __('common.delete') }}
+                                    </button>
+                                </form>
+                            </div>
+                        </details>
                         @endcan
                     </td>
                 </tr>
             @endforeach
             </tbody>
         </table>
-        <p class="muted small">
-            @foreach (__('branches.help') as $line)
-                {{ $line }}
-            @endforeach
-        </p>
+        <details class="help-more">
+            <summary>
+                <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 11v5M12 8h.01"/></svg>
+                {{ __('branches.help_title') }}
+            </summary>
+            <ul class="muted small">
+                @foreach (__('branches.help') as $line)
+                    <li>{{ $line }}</li>
+                @endforeach
+            </ul>
+        </details>
     @endif
 </div>
 
@@ -266,6 +330,23 @@
         clearTimeout(btn.copyTimer);
         btn.copyTimer = setTimeout(() => { msg.textContent = ''; msg.className = 'copy-msg small'; }, 4000);
     }));
+})();
+
+// renommer (menu ⋮) : le nom devient un champ ; Annuler ou Echap le rend tel qu'il etait
+(() => {
+    document.querySelectorAll('.b-cell .rename').forEach(form => {
+        const cell = form.closest('.b-cell');
+        const input = form.querySelector('input[name=name]');
+        const close = () => { input.value = input.defaultValue; cell.classList.remove('editing'); };
+        cell.closest('tr').querySelector('button[data-rename]').addEventListener('click', e => {
+            e.target.closest('details').open = false;
+            cell.classList.add('editing');
+            input.focus();
+            input.select();
+        });
+        form.querySelector('[data-cancel]').addEventListener('click', close);
+        input.addEventListener('keydown', e => { if (e.key === 'Escape') { e.preventDefault(); close(); } });
+    });
 })();
 
 (() => {

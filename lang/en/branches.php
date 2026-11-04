@@ -5,9 +5,11 @@ return [
     'download_agent' => 'Download agent',
     'guide' => 'Install guide PDF',
     'new_code' => 'New install code',
-    'install_for' => 'Code for which branch',
-    'install_for_new' => 'New branch',
-    'install_for_branch' => 'Reinstall: :name',
+    'new_code_tip' => 'Code to install the agent in a new branch. To reinstall an existing branch\'s agent: its ⋮ menu.',
+    // menu ⋮ d'une ligne
+    'actions' => 'Actions: :name',
+    'rename' => 'Rename',
+    'reinstall' => 'Reinstall code',
     'reinstall_note' => 'Reinstall code for the agent of “:name”: the branch stays the same, with its stock, accounts and settings; its old agent stops.',
     'access_title' => 'Who sees whose stock',
     'access_help' => 'One row per branch; a ticked box = that branch\'s users see the stock of the column\'s branch (search, preview, “Refresh now”). Every branch always sees its own stock. A new branch sees everyone and everyone sees it; then close what you want.',
@@ -26,12 +28,11 @@ return [
     ],
     'empty' => 'No branches yet. Download the agent, create an install code, then install the agent on the branch server (see the “Install guide”).',
 
-    'col_name' => 'Name',
+    'col_name' => 'Branch',
     'col_status' => 'Status',
     'col_last_sync' => 'Last sync',
     'col_items' => 'Items',
     'col_db_write' => 'Last database write',
-    'col_host' => 'Host',
 
     'main' => 'Main',
     'main_pill_tip' => 'Its prices are the ones shown in search',
@@ -48,6 +49,7 @@ return [
     'disable' => 'Disable',
     'enable' => 'Enable',
     'confirm_delete' => 'Delete the branch “:name” and all its stock? Its agent will be rejected afterwards.',
+    'help_title' => 'What these columns and buttons mean',
     'help' => [
         '“Sync now” = asks the branch agent to send all of its stock right away, instead of waiting for the automatic sync (every 5 minutes). With an agent older than 1.0.4, the button waits for its next automatic sync, then says whether it worked.',
         '“Last database write” = the last change to the branch\'s Gescomm database file. If it goes over a full day on a working day, the software may be using another file (after a backup restore) — check the database path in the agent settings.',

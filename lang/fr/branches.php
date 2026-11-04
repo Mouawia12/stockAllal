@@ -5,9 +5,11 @@ return [
     'download_agent' => 'Télécharger l\'agent',
     'guide' => 'Guide d\'installation PDF',
     'new_code' => 'Nouveau code d\'installation',
-    'install_for' => 'Code pour quelle succursale',
-    'install_for_new' => 'Nouvelle succursale',
-    'install_for_branch' => 'Réinstaller : :name',
+    'new_code_tip' => 'Code pour installer l\'agent dans une nouvelle succursale. Pour réinstaller l\'agent d\'une succursale existante : son menu ⋮.',
+    // menu ⋮ d'une ligne
+    'actions' => 'Actions : :name',
+    'rename' => 'Renommer',
+    'reinstall' => 'Code de réinstallation',
     'reinstall_note' => 'Code de réinstallation de l\'agent de « :name » : la succursale reste la même, avec son stock, ses comptes et ses réglages ; son ancien agent s\'arrête.',
     'access_title' => 'Qui voit le stock de qui',
     'access_help' => 'Une ligne par succursale ; une case cochée = les utilisateurs de cette succursale voient le stock de celle de la colonne (recherche, aperçu, « Actualiser »). Chaque succursale voit toujours son propre stock. Une nouvelle succursale voit tout le monde et tout le monde la voit ; fermez ensuite ce que vous voulez.',
@@ -26,12 +28,11 @@ return [
     ],
     'empty' => 'Aucune succursale pour l\'instant. Téléchargez l\'agent, créez un code d\'installation, puis installez l\'agent sur le serveur de la succursale (voir le « Guide d\'installation »).',
 
-    'col_name' => 'Nom',
+    'col_name' => 'Succursale',
     'col_status' => 'État',
     'col_last_sync' => 'Dernière synchro',
     'col_items' => 'Articles',
     'col_db_write' => 'Dernière écriture de la base',
-    'col_host' => 'Machine',
 
     'main' => 'Principale',
     'main_pill_tip' => 'Ses prix sont ceux affichés dans la recherche',
@@ -48,6 +49,7 @@ return [
     'disable' => 'Désactiver',
     'enable' => 'Activer',
     'confirm_delete' => 'Supprimer la succursale « :name » et tout son stock ? Son agent sera ensuite refusé.',
+    'help_title' => 'Que veulent dire ces colonnes et boutons ?',
     'help' => [
         '« Synchroniser » = demande à l\'agent d\'envoyer tout le stock tout de suite, sans attendre la synchronisation automatique (toutes les 5 minutes). Avec un agent antérieur à 1.0.4, le bouton attend sa prochaine synchronisation automatique puis indique si elle a réussi.',
         '« Dernière écriture de la base » = dernière modification du fichier de base Gescomm de la succursale. Si cela dépasse une journée entière un jour ouvré, le logiciel travaille peut-être sur un autre fichier (après une restauration) — vérifiez le chemin de la base dans la configuration de l\'agent.',

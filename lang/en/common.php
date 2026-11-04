@@ -34,6 +34,7 @@ return [
     'request_failed' => 'Could not send the request (:error)',
 
     'save' => 'Save',
+    'cancel' => 'Cancel',
     'saved' => 'Saved',
     'delete' => 'Delete',
     'edit' => 'Edit',

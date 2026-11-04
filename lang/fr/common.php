@@ -34,6 +34,7 @@ return [
     'request_failed' => 'Impossible d\'envoyer la demande (:error)',
 
     'save' => 'Enregistrer',
+    'cancel' => 'Annuler',
     'saved' => 'Enregistré',
     'delete' => 'Supprimer',
     'edit' => 'Modifier',
