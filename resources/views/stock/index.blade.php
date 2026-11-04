@@ -193,14 +193,16 @@
         const html = [];
         for (const b of data.branches) {
             const name = esc(b.branch) + (b.main ? ' <span class="pill ok">' + esc(T.main) + '</span>' : '');
+            // chaque ligne avec la couleur legere de sa branche (Branch::hue)
+            const tr = '<tr class="bt" style="--bh: ' + Number(b.hue) + '">';
             if (!b.rows.length) {
                 const dashes = (data.show_sale ? '<td class="muted">—</td><td class="muted">—</td>' : '') + (data.show_buy ? '<td class="muted hide-sm">—</td>' : '');
-                html.push('<tr><td>' + name + '</td><td class="muted">—</td><td class="muted hide-sm">' + esc(T.not_found) + '</td>'
+                html.push(tr + '<td>' + name + '</td><td class="muted">—</td><td class="muted hide-sm">' + esc(T.not_found) + '</td>'
                     + '<td class="muted">—</td>' + dashes + '<td>' + statusCell(b, null) + '</td></tr>');
                 continue;
             }
             for (const r of b.rows) {
-                html.push('<tr><td>' + name + '</td>'
+                html.push(tr + '<td>' + name + '</td>'
                     + '<td><span class="code ltr">' + esc(r.code) + '</span></td>'
                     + '<td class="hide-sm"><bdi>' + esc(r.designation) + '</bdi></td>'
                     + '<td><span class="qty total ' + (r.state || '') + '">' + fmt(r.stock) + '</span></td>'

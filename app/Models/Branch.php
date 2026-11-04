@@ -31,6 +31,13 @@ class Branch extends Model
      */
     public const MODES = ['synced', 'native'];
 
+    /**
+     * Teinte de la couleur legere de chaque branche : fond de ses lignes (page d'un article, apercu, ventes et achats)
+     * et pastille devant son nom. Donnee par l'id, donc toujours la meme. Ni rouge ni jaune : ils disent deja
+     * "stock 0" et "stock negatif" (StockState). Clair / sombre : --tint-* dans partials/theme.
+     */
+    public const HUES = [214, 150, 274, 28, 310, 176, 248, 96];
+
     protected $attributes = [
         'mode' => 'synced',
     ];
@@ -84,6 +91,16 @@ class Branch extends Model
     {
         return $this->agent_version !== null
             && version_compare($this->agent_version, self::AGENT_FEATURES[$feature], '>=');
+    }
+
+    public function hue(): int
+    {
+        return self::hueFor($this->id);
+    }
+
+    public static function hueFor(int $id): int
+    {
+        return self::HUES[abs($id - 1) % count(self::HUES)];
     }
 
     /** Branche de reference des prix, si elle est active. */

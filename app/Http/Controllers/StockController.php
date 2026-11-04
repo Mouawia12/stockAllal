@@ -106,6 +106,7 @@ class StockController extends Controller
         $list = $branches->map(function (Branch $branch) use ($rows, $jobsByBranch, $visible, $ref) {
             return [
                 'branch' => $branch->name,
+                'hue' => $branch->hue(),
                 'main' => $branch->is_main,
                 // reference des prix : les autres branches dont un prix en differe sont signalees
                 'ref' => $branch->id === $ref?->id,

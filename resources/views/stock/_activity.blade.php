@@ -92,7 +92,7 @@
                 </thead>
                 <tbody>
                 @foreach ($activity['per_branch'] as $row)
-                    <tr>
+                    <tr class="bt" style="--bh: {{ $row['hue'] }}">
                         <td><b>{{ $row['branch'] }}</b></td>
                         <td class="n num">{{ $fmt($row['sale']['net']) }}</td>
                         <td class="n num hide-sm">{{ $fmt($row['sale']['back']) }}</td>
@@ -135,7 +135,7 @@
                         </thead>
                         <tbody>
                         @foreach ($lines as $l)
-                            <tr @class(['back' => $l['back']])>
+                            <tr @class(['bt', 'back' => $l['back']]) style="--bh: {{ $l['hue'] }}">
                                 <td class="num">{{ $l['date'] }} <span class="muted small">{{ $l['time'] }}</span></td>
                                 <td class="num">{{ $l['number'] }}@if (count($codes) > 1) <span class="code ltr small muted">{{ $l['code'] }}</span>@endif</td>
                                 @if ($activity['several'])<td class="hide-sm">{{ $l['branch'] }}</td>@endif

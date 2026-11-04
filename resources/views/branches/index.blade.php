@@ -104,11 +104,13 @@
                         @can('branches.manage')
                             <form class="rename" method="post" action="{{ route('branches.update', $b) }}">
                                 @csrf @method('patch')
+                                {{-- sa couleur dans la page d'un article, l'apercu et les ventes (Branch::hue) --}}
+                                <span class="bdot" style="--bh: {{ $b->hue() }}; align-self: center"></span>
                                 <input type="text" name="name" value="{{ $b->name }}" maxlength="100" required>
                                 <button type="submit">{{ __('common.save') }}</button>
                             </form>
                         @else
-                            <b>{{ $b->name }}</b>
+                            <span class="bdot" style="--bh: {{ $b->hue() }}"></span> <b>{{ $b->name }}</b>
                         @endcan
                     </td>
                     <td>

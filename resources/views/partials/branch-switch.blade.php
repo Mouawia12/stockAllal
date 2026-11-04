@@ -9,6 +9,7 @@
     <details @class(['scope', 'picked' => $scopeSelected])>
         <summary title="{{ __('common.scope.title') }}" data-key="Alt+B">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 21h18M5 21V9l7-5 7 5v12"/><path d="M9 21v-6h6v6"/></svg>
+            @if ($scopeSelected)<span class="bdot" style="--bh: {{ $scopeSelected->hue() }}"></span>@endif
             <span class="scope-label">{{ $scopeSelected?->name ?? __('common.scope.all') }}</span>
             <svg class="chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg>
         </summary>
@@ -20,7 +21,7 @@
             </button>
             @foreach ($scopeChoices as $b)
                 <button type="submit" name="branch_id" value="{{ $b->id }}" @class(['on' => $scopeSelected?->id === $b->id])>
-                    <span>{{ $b->name }}</span>
+                    <span><span class="bdot" style="--bh: {{ $b->hue() }}"></span> {{ $b->name }}</span>
                     @if ($b->is_main)<span class="muted small">{{ __('stock.js.main') }}</span>@endif
                 </button>
             @endforeach

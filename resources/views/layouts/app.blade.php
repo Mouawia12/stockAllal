@@ -37,6 +37,11 @@
         th { text-align: start; font-weight: 600; color: var(--muted); font-size: 13px; padding: 8px 10px; border-bottom: 1px solid var(--border); white-space: nowrap; }
         td { padding: 8px 10px; border-bottom: 1px solid var(--border); vertical-align: middle; }
         tbody tr:hover { background: var(--row-hover); }
+        /* une ligne d'une branche : sa couleur legere (Branch::hue dans --bh), un trait de sa couleur au debut ; .bdot = sa pastille */
+        tr.bt > td { background: hsl(var(--bh) var(--tint-s) var(--tint-l)); }
+        tr.bt:hover > td { background: hsl(var(--bh) var(--tint-s) var(--tint-hover-l)); }
+        tr.bt > td:first-child { border-inline-start: 3px solid hsl(var(--bh) 55% var(--tint-dot-l)); }
+        .bdot { display: inline-block; width: 9px; height: 9px; border-radius: 50%; flex: none; vertical-align: middle; background: hsl(var(--bh) 55% var(--tint-dot-l)); }
         input[type=text], input[type=search], input[type=email], input[type=password] {
             font: inherit; color: var(--text); background: var(--card); border: 1px solid var(--border); border-radius: 8px; padding: 8px 10px; }
         input:focus { outline: 2px solid var(--accent); outline-offset: -1px; }

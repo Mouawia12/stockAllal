@@ -16,6 +16,8 @@
         --zero: #b3261e; --zero-bg: #fde3df; --negative: #7a5600; --negative-bg: #ffe9a3;
         --low: #17773f; --low-bg: #dcf2e3; --over: #a84a06; --over-bg: #ffe6d1;
         --bar: #9fc4d0; --bar-strong: #146c84;
+        /* couleur de chaque branche (Branch::HUES) : hsl(--bh saturation clarte) ; fond, fond au survol, pastille */
+        --tint-s: 70%; --tint-l: 95.5%; --tint-hover-l: 91.5%; --tint-dot-l: 52%;
     }
     @media (prefers-color-scheme: dark) {
         :root:not([data-theme="light"]) {
@@ -28,6 +30,7 @@
             --zero: #ff8a7a; --zero-bg: #45191a; --negative: #f3cc5c; --negative-bg: #3d3008;
             --low: #4cc27a; --low-bg: #11301e; --over: #ffa463; --over-bg: #43230b;
             --bar: #2d5563; --bar-strong: #5bb8cf;
+            --tint-s: 18%; --tint-l: 16%; --tint-hover-l: 19.5%; --tint-dot-l: 62%;
         }
     }
     :root[data-theme="dark"] {
@@ -40,6 +43,7 @@
         --zero: #ff8a7a; --zero-bg: #45191a; --negative: #f3cc5c; --negative-bg: #3d3008;
         --low: #4cc27a; --low-bg: #11301e; --over: #ffa463; --over-bg: #43230b;
         --bar: #2d5563; --bar-strong: #5bb8cf;
+        --tint-s: 18%; --tint-l: 16%; --tint-hover-l: 19.5%; --tint-dot-l: 62%;
     }
 </style>
 <script>

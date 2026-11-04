@@ -26,7 +26,7 @@
     @forelse ($branches as $b)
         @php($rows = $b['rows']->isEmpty() ? collect([null]) : $b['rows'])
         @foreach ($rows as $r)
-            <tr @class(['none' => $r === null])>
+            <tr @class(['bt', 'none' => $r === null]) style="--bh: {{ $b['hue'] }}">
                 <td>
                     <b>{{ $b['branch'] }}</b>
                     @if ($b['main'])<span class="pill ok">{{ $T['main'] }}</span>@endif

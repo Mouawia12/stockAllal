@@ -82,6 +82,7 @@ final class ProductActivity
         $perBranch = $ready->count() > 1
             ? $ready->map(fn (Branch $b) => [
                 'branch' => $b->name,
+                'hue' => $b->hue(),
                 'sale' => $sum($stats->where('branch_id', $b->id), 'sale'),
                 'purchase' => $sum($stats->where('branch_id', $b->id), 'purchase'),
             ])->sortByDesc(fn (array $row) => $row['sale']['net'])->values()
@@ -125,6 +126,7 @@ final class ProductActivity
                 'time' => $line->time ? substr($line->time, 0, 5) : null,
                 'number' => $line->number,
                 'branch' => $names[$line->branch_id] ?? null,
+                'hue' => Branch::hueFor($line->branch_id),
                 'code' => $line->code_raw,
                 'partner' => $line->partner_name ?? $line->partner_code,
                 'partner_code' => $line->partner_name ? $line->partner_code : null,
