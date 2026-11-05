@@ -23,6 +23,7 @@ return [
     'price_differs' => 'Different price',
     'price_differs_tip' => 'At least one branch sells at another price (retail or wholesale) — details in “Preview”',
     'preview' => 'Preview',
+    'preview_hint' => '↑ ↓ another product · F2 or Esc close',
 
     'refresh_now' => 'Refresh now',
     'refreshing' => 'Refreshing…',

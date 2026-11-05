@@ -125,8 +125,9 @@ For an already deployed server, use the "التحديثات لاحقاً" sectio
   Page loads go through `public/sw.js`: it retries GET navigations and falls back to `public/offline.html`. It must never cache
   app pages. To switch it off, ship a `sw.js` that calls `self.registration.unregister()`; never just delete the file.
 - **Keys:** Inser / F2 / F5 / F6 create or edit Gescomm data: only with native mode (phase 5), never in a synced branch.
-  Exception the user asked for (06/11/2026): F2 on the sales / purchases lists = the bon's read-only preview; native-mode
-  editing there will need another key or a button in that preview. Never bind a bare
+  Exception the user asked for (06/11/2026): F2 on the sales / purchases lists and on the stock search = the read-only
+  preview (of the bon, of the product: the one last pointed at, keyboard or mouse; ↑ ↓ inside it); native-mode editing
+  there will need another key or a button in that preview. Never bind a bare
   key that types (letters, digits, space) outside the page's own list handling, nor Échap while typing or on a form with unsaved changes
   (`partials/keys` checks both). Avoid browser keys (F5, Ctrl+L / W / T / N, Alt+D / E / F) and keep AltGr free (AZERTY `@ # {`).
 - **Interface texts:** never hardcode them. Add the key to `lang/ar`, `lang/fr` and `lang/en` with the same `:placeholders`

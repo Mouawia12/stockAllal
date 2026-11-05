@@ -181,6 +181,11 @@ class DocumentListTest extends TestCase
         $html = $this->actingAs($noPrices)->get(route('sales.show', $this->bon(184)).'?partial=1')->assertOk()->getContent();
         $this->assertStringNotContainsString('1 100,00', $html);
         $this->actingAs($karim)->get(route('sales.show', $this->bon(9001)).'?partial=1')->assertNotFound();
+
+        // la recherche du stock : F2 ouvre aussi l'apercu de l'article (sa touche dans le bandeau, ↑ ↓ dans l'apercu)
+        $html = $this->actingAs($karim)->get('/stock?q=820')->assertOk()->getContent();
+        $this->assertStringContainsString('<kbd>F2</kbd>', $html);
+        $this->assertStringContainsString(e(__('stock.preview_hint')), $html);
     }
 
     public function test_the_owner_sees_each_branch_in_its_colour_and_an_old_agent_is_named(): void

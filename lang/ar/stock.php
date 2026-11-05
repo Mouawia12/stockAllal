@@ -24,6 +24,7 @@ return [
     'price_differs' => 'سعر مختلف',
     'price_differs_tip' => 'فرع واحد على الأقل يبيع بسعر آخر (تجزئة أو جملة) — التفاصيل في «معاينة»',
     'preview' => 'معاينة',
+    'preview_hint' => '↑ ↓ صنف آخر · F2 أو Échap إغلاق',
 
     // fenetre "معاينة"
     'refresh_now' => 'تحديث الآن',

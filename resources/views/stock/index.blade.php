@@ -56,6 +56,8 @@
     .modal-head .grow { flex: 1; }
     .modal .desig { margin: 0 0 12px; }
     .modal #m-merged { margin: -8px 0 12px; }
+    .modal .m-hint { margin: 10px 0 0; text-align: center; }
+    @media (max-width: 700px), (hover: none) { .modal .m-hint { display: none; } }
     .wait::before { content: ""; display: inline-block; width: 10px; height: 10px; margin-inline-end: 6px; border: 2px solid var(--muted); border-top-color: transparent; border-radius: 50%; animation: spin .8s linear infinite; vertical-align: -1px; }
     @keyframes spin { to { transform: rotate(360deg); } }
 </style>
@@ -66,6 +68,7 @@
     @include('partials.key', ['keys' => ['↑', '↓'], 'label' => __('common.keys.move')])
     @include('partials.key', ['keys' => [__('common.keys.enter')], 'label' => __('common.keys.open')])
     @include('partials.key', ['keys' => [__('common.keys.space')], 'label' => $merge ? __('common.keys.pick') : __('stock.preview')])
+    @include('partials.key', ['keys' => ['F2'], 'label' => __('stock.preview')])
     @include('partials.key', ['keys' => ['Alt', '1…4'], 'label' => __('stock.filters.label')])
 @endpush
 
@@ -131,6 +134,7 @@
             <tbody id="m-body"></tbody>
         </table>
         <p class="muted small" id="m-note"></p>
+        <p class="muted small m-hint">{{ __('stock.preview_hint') }}</p>
     </div>
 </div>
 @endsection
@@ -317,10 +321,11 @@
         open(btn.dataset.code, btn.dataset.designation);
     });
     // clavier facon Gescomm : les fleches passent d'un article a l'autre (sur son code, ou sur "معاينة" si on y est),
-    // Entree ouvre la page de l'article (le lien), Espace l'apercu ou, dans "دمج الأصناف", coche l'article ; Echap revient a la recherche
+    // Entree ouvre la page de l'article (le lien), Espace l'apercu ou, dans "دمج الأصناف", coche l'article ; Echap revient a la recherche.
+    // Apercu ouvert : ses touches a lui (plus bas)
     results.addEventListener('keydown', e => {
         const cell = e.target.closest('tbody a.code, button[data-code]');
-        if (!cell) return;
+        if (!cell || current) return;
         const row = cell.closest('tr');
         if (e.key === 'Escape') { e.preventDefault(); input.focus(); return; }
         if (e.key === ' ' && cell.matches('a.code')) {
@@ -339,11 +344,36 @@
         if (i < 0) input.focus();
         else list[Math.min(i, list.length - 1)].focus();
     });
+    // F2 (comme dans les bons) : l'apercu de l'article designe en dernier, au clavier ou sous la souris (sinon le premier) ;
+    // apercu ouvert : ↑ ↓ l'article precedent / suivant de la liste, F2 ou Echap ferme (le clavier revient sur son code)
+    let pointed = null;
+    const rowButton = el => el?.closest?.('tbody tr')?.querySelector('button[data-code]') || null;
+    results.addEventListener('pointerover', e => { pointed = rowButton(e.target) || pointed; });
+    results.addEventListener('focusin', e => { pointed = rowButton(e.target) || pointed; });
+    function preview(btn) {
+        pointed = btn;
+        lastPreview = btn.closest('tr').querySelector('a.code') || btn;
+        open(btn.dataset.code, btn.dataset.designation);
+    }
+
     mRefresh?.addEventListener('click', refresh);
     document.getElementById('m-close').addEventListener('click', close);
     bg.addEventListener('click', e => { if (e.target === bg) close(); });
     document.addEventListener('keydown', e => {
         if (e.key === 'Escape' && current) { e.preventDefault(); close(); return; }
+        if (e.key === 'F2' && !e.altKey && !e.ctrlKey && !e.metaKey && !e.shiftKey) {
+            if (current) { e.preventDefault(); close(); return; }
+            const btn = (pointed?.isConnected && pointed) || results.querySelector('button[data-code]');
+            if (btn) { e.preventDefault(); preview(btn); }
+            return;
+        }
+        if (current && (e.key === 'ArrowDown' || e.key === 'ArrowUp')) {
+            e.preventDefault();
+            const list = [...results.querySelectorAll('button[data-code]')];
+            const next = list[list.indexOf(rowButton(lastPreview)) + (e.key === 'ArrowDown' ? 1 : -1)];
+            if (next) preview(next);
+            return;
+        }
         // "/" : retour a la recherche depuis n'importe ou (sauf en saisie)
         if (e.key === '/' && !current && !e.target.closest('input, textarea, select, [contenteditable]')) {
             e.preventDefault();

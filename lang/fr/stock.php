@@ -23,6 +23,7 @@ return [
     'price_differs' => 'Prix différent',
     'price_differs_tip' => 'Au moins une succursale vend à un autre prix (détail ou gros) — détails dans « Aperçu »',
     'preview' => 'Aperçu',
+    'preview_hint' => '↑ ↓ autre article · F2 ou Échap fermer',
 
     'refresh_now' => 'Actualiser',
     'refreshing' => 'Actualisation…',
