@@ -9,6 +9,8 @@
 @php
     $D = __('dashboard');
     $n0 = fn ($v) => $v === null ? '—' : number_format(round($v), 0, ',', ' ');
+    // l'argent de la caisse au centime, comme l'ecrit Gescomm
+    $n2 = fn ($v) => number_format($v, 2, ',', ' ');
     // un nombre dans une phrase : isole de gauche a droite, sinon "33 230" s'affiche "230 33" en arabe
     $iso = fn (string $s) => "\u{2066}{$s}\u{2069}";
     // une quantite : sans decimales quand elle est entiere (12 boulons), avec sinon (12,50 m)
@@ -74,6 +76,16 @@
     .axis span.last { justify-content: flex-end; }
     .axis span:not(.grid) { visibility: hidden; }
 
+    /* la caisse : l'argent qui y est maintenant, puis chaque branche */
+    .cash { display: grid; grid-template-columns: minmax(220px, 280px) minmax(0, 1fr); gap: 14px 28px; align-items: start; }
+    .cash .label { margin: 0; color: var(--muted); font-weight: 600; }
+    .cash .value { margin: 2px 0 0; font-size: 34px; line-height: 1.05; }
+    .cash .flows { display: flex; flex-wrap: wrap; gap: 4px 18px; margin: 8px 0 0; color: var(--muted); font-size: 13.5px; }
+    .cash .flows b { color: var(--text); font-weight: 600; }
+    .cash .sub { margin: 6px 0 0; color: var(--muted); font-size: 13px; }
+    /* la pastille toujours avant le nom, meme latin dans une page arabe */
+    .cash td .name { display: flex; align-items: center; gap: 7px; }
+
     .tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 14px; }
     .tile { display: flex; flex-direction: column; gap: 2px; }
     .tile .label { margin: 0; color: var(--muted); font-size: 13.5px; font-weight: 600; }
@@ -117,7 +129,7 @@
     .hours-axis span { flex: 1 1 0; text-align: center; }
 
     @media (max-width: 900px) {
-        .cols, .pair { grid-template-columns: minmax(0, 1fr); }
+        .cols, .pair, .cash { grid-template-columns: minmax(0, 1fr); }
     }
     @media (max-width: 700px) {
         .hero { grid-template-columns: minmax(0, 1fr); }
@@ -195,6 +207,62 @@
             @if ($totals['bons'] === 0)<p class="empty">{{ $D['no_sales'] }}</p>@endif
         </div>
     </section>
+
+    {{-- la caisse (cash.view) : son solde maintenant, ce qui est entre et sorti aujourd'hui, puis chaque branche --}}
+    @if ($cash !== null)
+        @php($C = $D['cash'])
+        @php($agentCash = App\Models\Branch::AGENT_FEATURES['cash'])
+        <section class="card" aria-labelledby="cash-title">
+            <div class="card-head">
+                <div><h2 id="cash-title">{{ $C['title'] }}</h2><p class="help">{{ $C['help'] }}</p></div>
+                @if ($cash['checked_at'])<p class="muted small" title="{{ $cash['checked_at']->format('d/m/Y H:i') }}">{{ __('dashboard.cash.checked', ['time' => $cash['checked_at']->diffForHumans()]) }}</p>@endif
+            </div>
+            @if ($cash['branches']->isEmpty())
+                <p class="empty">{{ __('dashboard.cash.none', ['names' => $cash['outdated']->join(__('stock.js.list_separator')), 'version' => $agentCash]) }}</p>
+            @else
+                <div class="cash">
+                    <div>
+                        <p class="label">{{ $C['now'] }}</p>
+                        {{-- le chiffre isole (.fig) dans un paragraphe de la langue de la page : du meme cote que son titre --}}
+                        <p class="value"><span class="fig">{{ $n2($cash['total']) }}</span></p>
+                        <p class="flows">
+                            <span>{{ $C['in_today'] }} <b class="fig">{{ $n2($cash['in_today']) }}</b></span>
+                            <span>{{ $C['out_today'] }} <b class="fig">{{ $n2($cash['out_today']) }}</b></span>
+                        </p>
+                        @if ($cash['branches']->count() === 1 && $cash['branches'][0]['last'])
+                            <p class="sub">{{ __('dashboard.cash.last', ['when' => $iso($cash['branches'][0]['last'])]) }}</p>
+                        @endif
+                    </div>
+                    @if ($cash['branches']->count() > 1)
+                        <table class="list">
+                            <thead><tr>
+                                <th>{{ $D['branches_title'] }}</th>
+                                <th class="n">{{ $C['col_balance'] }}</th>
+                                <th class="n hide-sm">{{ $C['in_today'] }}</th>
+                                <th class="n hide-sm">{{ $C['out_today'] }}</th>
+                            </tr></thead>
+                            <tbody>
+                            @foreach ($cash['branches'] as $b)
+                                <tr>
+                                    <td class="item" style="--bh: {{ $b['hue'] }}">
+                                        <span class="name"><span class="bdot"></span>{{ $b['branch'] }}</span>
+                                        @if ($b['last'])<span class="muted small">{{ __('dashboard.cash.last', ['when' => $iso($b['last'])]) }}</span>@endif
+                                    </td>
+                                    <td class="n"><span class="fig">{{ $n2($b['balance']) }}</span></td>
+                                    <td class="n hide-sm"><span class="num">{{ $n2($b['in_today']) }}</span></td>
+                                    <td class="n hide-sm"><span class="num">{{ $n2($b['out_today']) }}</span></td>
+                                </tr>
+                            @endforeach
+                            </tbody>
+                        </table>
+                    @endif
+                </div>
+                @if ($cash['outdated']->isNotEmpty())
+                    <p class="sub muted small">{{ __('dashboard.cash.outdated', ['version' => $agentCash, 'names' => $cash['outdated']->join(__('stock.js.list_separator'))]) }}</p>
+                @endif
+            @endif
+        </section>
+    @endif
 
     {{-- les cartes de la periode --}}
     <div class="tiles">

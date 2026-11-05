@@ -4,10 +4,12 @@ namespace App\Http\Controllers;
 
 use App\Models\Branch;
 use App\Support\BranchScope;
+use App\Support\CashBox;
 use App\Support\SalesDashboard;
 use App\Support\StockState;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
+use Illuminate\Support\Collection;
 use Illuminate\View\View;
 
 /**
@@ -15,6 +17,7 @@ use Illuminate\View\View;
  * ventes (BranchScope::salesIds, comme les bons). Les chiffres viennent de SalesDashboard ; ici on retire ce que le
  * compte ne peut pas voir : montants de vente sans prices.sale (il voit alors des bons et des quantites), marge,
  * achats et valeur du stock sans prices.buy, stock d'une branche dont il ne voit pas le stock.
+ * La caisse (CashBox) : seulement avec cash.view, dans les memes branches.
  */
 class DashboardController extends Controller
 {
@@ -42,6 +45,7 @@ class DashboardController extends Controller
             'branches' => $branches->count(),
             'outdated' => $branches->reject(fn (Branch $b) => $b->agentSupports('documents'))->pluck('name')->values(),
             'several' => $ready->count() > 1,
+            'cash' => $user->can('cash.view') ? $this->cash($branches) : null,
         ];
         if ($ready->isEmpty()) {
             return view('dashboard.index', $page + ['f' => null]);
@@ -149,6 +153,38 @@ class DashboardController extends Controller
             'busiest' => $hours->isEmpty() ? null : $hours->sortDesc()->keys()->first(),
             'syncedAt' => $f['synced_at'] ? Carbon::parse($f['synced_at']) : null,
         ]);
+    }
+
+    /**
+     * La caisse des branches affichees dont l'agent l'envoie (1.0.8+) : le total, puis chaque branche. Une branche
+     * d'agent plus ancien est nommee ("mettre l'agent a jour"), jamais comptee comme une caisse vide.
+     *
+     * @param  Collection<int, Branch>  $branches
+     */
+    private function cash(Collection $branches): array
+    {
+        $ready = $branches->filter(fn (Branch $b) => $b->agentSupports('cash'))->values();
+        $figures = $ready->isEmpty() ? [] : CashBox::figures($ready->pluck('id')->all());
+        $today = now()->toDateString();
+        $rows = $ready->map(function (Branch $b) use ($figures, $today) {
+            $f = $figures[$b->id];
+            $last = $f['last'] ? Carbon::parse($f['last']) : null;
+
+            return ['branch' => $b->name, 'hue' => $b->hue(), 'balance' => $f['balance'], 'in_today' => $f['in_today'], 'out_today' => $f['out_today'],
+                // aujourd'hui : l'heure seule ; un autre jour : le jour et l'heure
+                'last' => $last ? $last->format($last->toDateString() === $today ? 'H:i' : 'd/m H:i') : null,
+                'checked_at' => $f['checked_at'] ? Carbon::parse($f['checked_at']) : null];
+        })->sortByDesc('balance')->values();
+
+        return [
+            'total' => round((float) $rows->sum('balance'), 2),
+            'in_today' => round((float) $rows->sum('in_today'), 2),
+            'out_today' => round((float) $rows->sum('out_today'), 2),
+            'branches' => $rows,
+            // la caisse la moins recemment confirmee par son agent
+            'checked_at' => $rows->contains(fn (array $r) => $r['checked_at'] === null) ? null : $rows->min('checked_at'),
+            'outdated' => $branches->reject(fn (Branch $b) => $b->agentSupports('cash'))->pluck('name')->values(),
+        ];
     }
 
     /**

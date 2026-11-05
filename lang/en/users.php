@@ -58,6 +58,7 @@ return [
         'prices.sale' => ['title' => 'Selling prices', 'short' => 'Selling prices', 'help' => 'Sees the retail and wholesale prices in search and preview.'],
         'prices.buy' => ['title' => 'Purchase price', 'short' => 'Purchase price', 'help' => 'Sees the purchase price (Pu Achat). Sensitive information.'],
         'sales.view' => ['title' => 'Sales, purchases, customers and suppliers', 'short' => 'Sales', 'help' => 'Opens the Sales, Purchases, Customers and Suppliers apps, and sees on a product page what was sold and bought, in their own branch only (the owner: their branches). Sale and customer amounts need “Selling prices”; purchase and supplier amounts and the margin, “Purchase price”.'],
+        'cash.view' => ['title' => 'Cash box', 'short' => 'Cash', 'help' => 'Sees on the dashboard how much cash is in each branch\'s cash box, and what came in and went out today. Same branches as sales. Sensitive information.'],
         'branches.view' => ['title' => 'See branches', 'short' => 'Branches', 'help' => 'Opens the branches page: status, last sync, number of items.'],
         'branches.sync' => ['title' => 'Sync branches', 'short' => 'Sync', 'help' => '“Sync now” button: the branch sends its whole stock right away.'],
         'branches.manage' => ['title' => 'Manage branches', 'short' => 'Branch management', 'help' => 'Rename, disable, delete, main branch and install codes.'],

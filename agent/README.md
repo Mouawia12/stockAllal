@@ -5,6 +5,7 @@
 - يرسله إلى الـAPI المركزي **كل 5 دقائق**.
 - يجاوب على طلبات **«تحديث الآن»** خلال 10 ثوانٍ تقريباً.
 - **منذ 1.0.7:** يرسل أيضاً بونات البيع والشراء، والزبائن والموردين، والدفعات، **ما تغيّر فقط**، على دفعات (أسفل الصفحة: «البيانات»).
+- **منذ 1.0.8:** والصندوق، ما دخله وما خرج منه، فتعرض لوحة القيادة كم فيه من النقود.
 
 مكتوب بـ PowerShell 5.1 ويستعمل `isql.exe` الموجود مع InterBase، فلا يحتاج تثبيت أي برنامج.
 
@@ -231,6 +232,8 @@ SELECT CODEA, DESIGNATIONF2, STOCKREEL, PUGROS, PRIXVNFACT, PRIX FROM GC003 WHER
 | `suppliers` | `GC004` | `p00` … `p31` | `CODEFOU` |
 | `customer_payments` | `GC62` (`CODEFOU` فيه = كود الزبون) | اليوم (`DATEVER`) | `DATEVER\|NUMEROTATION` |
 | `supplier_payments` | `GC60` | اليوم (`DATEVER`) | `DATEVER\|NUMEROTATION` |
+| `cash_in` (1.0.8) | `C008`: ما دخل الصندوق | اليوم (`DATEENTREE`) | `DATEENTREE\|ORDERE` |
+| `cash_out` (1.0.8) | `C002`: ما خرج من الصندوق | اليوم (`DATEC`) | `DATEC\|ORDERE` |
 
 **1. البصمات:**
 ```json
@@ -267,7 +270,10 @@ SELECT CODEA, DESIGNATIONF2, STOCKREEL, PUGROS, PRIXVNFACT, PRIX FROM GC003 WHER
   - `sales` / `purchases`: `number`، `time`، `partner`، `amount` (`MONTANT` = مجموع `TOTAL` السطور)، `discount`، `gross`، `payment`، `entered_by`، `served_by`، `credit_days`، `note`. السطور: `code`، `qty` (**المرتجع = كمية سالبة**)، `price`، `discount`، `total`، `cost` (`PRIXACHAT` يوم البيع، للربح)، `vat`، `position`.
   - `customers` / `suppliers`: `code`، `name` (`MONCLIENT` / `MONFOURNISSEUR`، وإلا `name_alt`)، `phone`، `mobile`، `address` (وإلا `address_alt`)، `wilaya`، `contact`، `activity`، `type`، `opening_balance`، `credit_limit`، `credit_days`، `blocked` («Oui» / «Non»)، `nif`، `nis`، `rc`، `ai`.
   - `customer_payments` / `supplier_payments`: `number`، `time`، `partner`، `type` (`TYPEVER`: Espéce أو Autre)، `amount`، `cheque`، `cheque_state`، `paid_on`، `document_number`، `note`، `entered_by`.
-- **في اللوحة:** الجداول `documents` و`document_lines` و`partners` و`payments`، نفس جداول الفرع المعتمد لاحقاً (`origin = gescomm`). حالة كل مهمة في `branch_tasks`، وتظهر في صفحة الفروع.
+  - `cash_in` (`C008`): `number` (`ORDERE`)، `time`، `amount` (`MONTANTENTREE`)، `label` (`OBSERVATION2`، مثلاً «Client: …»)، `note`، `person`، `type`، `cheque`، `payment_number` (`NUMVER` = `NUMEROTATION` الدفعة في `GC62`)، `document_number`، `counter` (`COMPTOIR`: بيع الكونطوار)، `entered_by`.
+  - `cash_out` (`C002`): `number` (`ORDERE`)، `time`، `amount` (`MONTANT`)، `label` (`CHARGE2`، مثلاً «Fourn: …»)، `category` و`category_code` (`CHARGE` و`CODECHARGE`: نوع المصروف، `C0011`)، `expense` (`UNECHARGE`: O / N)، `note`، `payment_number` (`NUMEROTATION` الدفعة في `GC60`)، `document_number`، `entered_by`.
+- **رصيد الصندوق** = مجموع `cash_in` ناقص مجموع `cash_out`، على كل الأيام. هذا ما يحسبه Gescomm نفسه (`MONTANTCAISSE`)، وتُحقِّق منه في 05/11/2026 على هذا الفرع: 84 640 143,07 − 83 540 167,53 = **1 099 975,54**، نفس رقم «État de la caisse». في هذا الفرع: كل دخول = دفعة نقدية من زبون، وكل خروج = دفعة نقدية لمورد، بلا مصاريف.
+- **في اللوحة:** الجداول `documents` و`document_lines` و`partners` و`payments` و`cash_entries` (`direction` = `in` / `out`)، نفس جداول الفرع المعتمد لاحقاً (`origin = gescomm`). حالة كل مهمة في `branch_tasks`، وتظهر في صفحة الفروع.
 
 ### من جهة اللوحة
 - **`POST /refresh {code}`:** ينشئ طلباً لكل فرع نشط بالكود `code_key`. للكود المدموج: طلب لكل فرع ولكل كود في مجموعته، والوكيل يقرأ دائماً كوداً واحداً في كل طلب.
@@ -322,10 +328,11 @@ python -I tools\mock_api.py                      # http://127.0.0.1:8085/api ، 
 |---|---|---|
 | المخزون | كل 5 دقائق (`full_sync_minutes`) | كما قبل |
 | «تحديث الآن» و«مزامنة الآن» | كل 10 ثوانٍ | **أولوية دائماً:** تُسأل أيضاً بين كل دفعتين |
-| البيع والشراء والدفعات | كل 5 دقائق (`data_minutes`) | آخر 7 أيام (`data_recent_days`)، على `DATES` المفهرس |
+| البيع والشراء والدفعات والصندوق | كل 5 دقائق (`data_minutes`) | آخر 7 أيام (`data_recent_days`)، على `DATES` المفهرس |
 | نفسها | كل ساعة (`data_window_minutes`) | آخر 60 يوماً (`data_window_days`) |
 | الزبائن والموردون | كل 15 دقيقة (`partners_minutes`) | الجدول كاملاً (صغير) |
 | **التاريخ كله** | مرة في اليوم، بعد الساعة 22 (`history_hour`) أو قبل 6. وإن لم يتمّ منذ يومين: في أول فرصة. وفوراً بعد التركيب | **شهراً بعد شهر**، خطوة في كل دورة |
+| **تاريخ جدول جديد** | فوراً بعد التحديث (مثلاً الصندوق بعد التحديث إلى 1.0.8)، لهذا الجدول وحده | نفسه. رصيد الصندوق يحتاج كل الأيام، لا آخر 60 فقط |
 
 - **خطوة واحدة في كل دورة،** والأكثر استعجالاً أولاً: آخر 7 أيام، ثم الزبائن، ثم 60 يوماً، ثم التاريخ.
 - **حدّ لكل خطوة:** `data_step_seconds` (90 ثانية). بعده تتوقف الخطوة، والباقي يُكمَل في المرور القادم.
@@ -335,7 +342,7 @@ python -I tools\mock_api.py                      # http://127.0.0.1:8085/api ، 
   - جدول غائب من نسخة Gescomm: بعد 6 ساعات.
   - لوحة أقدم بلا `/agent/digest` (`404`): بعد ساعة.
   - المخزون و«تحديث الآن» يستمرّان في كل الحالات.
-- **`state.json`** (في مجلد الوكيل): آخر مرة تمّ فيها التحقق من التاريخ كله.
+- **`state.json`** (في مجلد الوكيل): آخر مرة تمّ فيها التحقق من التاريخ كله (`history_done_at`)، والجداول التي وصل تاريخها كله (`history_sets`، منذ 1.0.8). ملف 1.0.7 بلا `history_sets` = جداول 1.0.7 فقط.
 - **قراءة فقط:** كل الاستعلامات `SELECT` بعد `SET TRANSACTION READ ONLY`. البونات بـ `JOIN` على الرأس، والفلتر على التاريخ.
 
 ```sql
@@ -346,6 +353,9 @@ SELECT MIN(DATES) AS FIRSTDAY, MAX(DATES) AS LASTDAY FROM GC010;   -- التار
 
 ## الإصدارات
 
+- **1.0.8:**
+  - الصندوق: `cash_in` (`C008`) و`cash_out` (`C002`). لوحة القيادة تعرض رصيده لمن عنده صلاحية «الصندوق».
+  - تاريخ الجدول الجديد يُرسل فوراً بعد التحديث، بلا انتظار الليل (`history_sets` في `state.json`).
 - **1.0.7:**
   - البيع والشراء والزبائن والموردون والدفعات (`/agent/digest` و`/agent/records`).
   - حدّ التنبيه والحدّ الأقصى والعائلة والوحدة مع المخزون.

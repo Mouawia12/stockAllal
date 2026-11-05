@@ -82,5 +82,7 @@ return [
         'suppliers' => 'Fournisseurs',
         'customer_payments' => 'Versements clients',
         'supplier_payments' => 'Versements fournisseurs',
+        'cash_in' => 'Entrées de caisse',
+        'cash_out' => 'Sorties de caisse',
     ],
 ];

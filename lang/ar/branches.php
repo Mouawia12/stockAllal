@@ -85,5 +85,7 @@ return [
         'suppliers' => 'الموردون',
         'customer_payments' => 'دفعات الزبائن',
         'supplier_payments' => 'دفعات الموردين',
+        'cash_in' => 'دخول الصندوق',
+        'cash_out' => 'خروج الصندوق',
     ],
 ];

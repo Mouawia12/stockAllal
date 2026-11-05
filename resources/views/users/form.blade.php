@@ -189,12 +189,16 @@
         const boxes = [...document.querySelectorAll('input[name="permissions[]"]')].filter(b => !b.disabled);
         const box = p => boxes.find(b => b.value === p);
         const DEFAULTS = @json(Permissions::DEFAULTS);
-        const NEED_VIEW = @json(Permissions::NEED_BRANCHES_VIEW);
+        @php($needs = ['branches.view' => Permissions::NEED_BRANCHES_VIEW, 'sales.view' => Permissions::NEED_SALES_VIEW])
+        const NEEDS = @json($needs);
 
-        // memes dependances que Permissions::normalize() : sans "رؤية الفروع", pas de page des succursales
+        // memes dependances que Permissions::normalize() : sans "رؤية الفروع", pas de page des succursales ;
+        // sans "المبيعات", pas de "لوحة القيادة" ou se voit la caisse
         boxes.forEach(b => b.addEventListener('change', () => {
-            if (b.checked && NEED_VIEW.includes(b.value) && box('branches.view')) box('branches.view').checked = true;
-            if (!b.checked && b.value === 'branches.view') NEED_VIEW.forEach(p => { if (box(p)) box(p).checked = false; });
+            Object.entries(NEEDS).forEach(([view, perms]) => {
+                if (b.checked && perms.includes(b.value) && box(view)) box(view).checked = true;
+                if (!b.checked && b.value === view) perms.forEach(p => { if (box(p)) box(p).checked = false; });
+            });
         }));
 
         document.querySelectorAll('[data-preset]').forEach(btn => btn.addEventListener('click', () => {

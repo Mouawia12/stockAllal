@@ -70,7 +70,8 @@ if ($hasGescomm) {
         Assert ($r.db_items -gt 0) 'aucun article dans GC003'
         Write-Host "        $($r.db_items) articles, $($r.db_fields) colonnes dans GC003"
     }
-    # agent 1.0.7 : ventes, achats, clients, fournisseurs, versements, lus comme le fait la boucle (lecture seule, rien n'est envoye)
+    # agent 1.0.7 : ventes, achats, clients, fournisseurs, versements ; 1.0.8 : la caisse. Lus comme le fait la boucle
+    # (lecture seule, rien n'est envoye)
     Test-Case 'agent.ps1 -TestData : chaque jeu se lit, ses empreintes et ses groupes sont coherents' {
         $dataDir = Join-Path $Work 'testdata'
         New-Item -ItemType Directory -Force -Path $dataDir | Out-Null
@@ -85,7 +86,7 @@ if ($hasGescomm) {
         $code = $LASTEXITCODE
         $out | ForEach-Object { Write-Host "        $_" }
         Assert ($code -eq 0) 'un jeu ne se lit pas (voir ci-dessus)'
-        foreach ($name in 'sales', 'purchases', 'customers', 'suppliers', 'customer_payments', 'supplier_payments') {
+        foreach ($name in 'sales', 'purchases', 'customers', 'suppliers', 'customer_payments', 'supplier_payments', 'cash_in', 'cash_out') {
             $file = Join-Path $dataDir "outbox\data-$name.json"
             Assert (Test-Path $file) "$name : pas de fichier $file"
             $d = Get-Content $file -Raw -Encoding UTF8 | ConvertFrom-Json
@@ -99,18 +100,21 @@ if ($hasGescomm) {
                 }
                 $expected = '{0}:{1}' -f $records.Count, $sum
                 Assert ($d.digests.($g.Name) -eq $expected) "$name / $($g.Name) : empreinte du groupe $($d.digests.($g.Name)), attendu $expected"
-                if ($name -in 'sales', 'purchases', 'customer_payments', 'supplier_payments') {
+                if ($name -notin 'customers', 'suppliers') {
                     Assert ($g.Name -match '^\d{4}-\d{2}-\d{2}$') "$name : groupe '$($g.Name)' n'est pas un jour"
                 }
             }
             if ($name -in 'customers', 'suppliers') { Assert (@($d.groups.PSObject.Properties).Count -gt 0) "$name : aucun enregistrement" }
         }
-        # memes totaux que Gescomm sur les memes 30 jours : lignes de vente, quantite, montant (isql, lecture seule)
+        # memes totaux que Gescomm sur les memes 30 jours : lignes de vente, quantite, montant ; entrees et sorties de
+        # la caisse (isql, lecture seule)
         $from = (Get-Date).Date.AddDays(-29).ToString('yyyy-MM-dd')
         $to = (Get-Date).Date.ToString('yyyy-MM-dd')
         $sqlFile = Join-Path $dataDir 'totals.sql'
         [IO.File]::WriteAllLines($sqlFile, [string[]]@('SET TRANSACTION READ ONLY NO WAIT ISOLATION LEVEL READ COMMITTED RECORD_VERSION;', 'SET LIST ON;',
-            "SELECT COUNT(*) AS N, SUM(L.QTE) AS Q, SUM(L.TOTAL) AS T FROM GC010 H JOIN GC011 L ON L.NUMEROS = H.NUMEROS WHERE H.DATES BETWEEN CAST('$from' AS DATE) AND CAST('$to' AS DATE);"))
+            "SELECT COUNT(*) AS N, SUM(L.QTE) AS Q, SUM(L.TOTAL) AS T FROM GC010 H JOIN GC011 L ON L.NUMEROS = H.NUMEROS WHERE H.DATES BETWEEN CAST('$from' AS DATE) AND CAST('$to' AS DATE);",
+            "SELECT SUM(MONTANTENTREE) AS CI FROM C008 WHERE DATEENTREE BETWEEN CAST('$from' AS DATE) AND CAST('$to' AS DATE);",
+            "SELECT SUM(MONTANT) AS CO FROM C002 WHERE DATEC BETWEEN CAST('$from' AS DATE) AND CAST('$to' AS DATE);"))
         $env:ISC_USER = 'SYSDBA'
         $env:ISC_PASSWORD = 'masterkey'
         # sortie dans un fichier, comme l'agent : isql ecrit "Rolling back work." sur stderr, et avec 2>&1
@@ -121,8 +125,8 @@ if ($hasGescomm) {
             -NoNewWindow -Wait -RedirectStandardError $isqlErr | Out-Null
         $isqlOut = @(Get-Content $isqlRes, $isqlErr -ErrorAction SilentlyContinue)
         $gc = @{}
-        foreach ($l in $isqlOut) { if ([string]$l -match '^(N|Q|T)\s+(\S+)') { $gc[$Matches[1]] = $Matches[2] } }
-        if ($gc.Count -eq 3) {
+        foreach ($l in $isqlOut) { if ([string]$l -match '^(N|Q|T|CI|CO)\s+(\S+)') { $gc[$Matches[1]] = $Matches[2] } }
+        if ($gc.Count -eq 5) {
             $sales = Get-Content (Join-Path $dataDir 'outbox\data-sales.json') -Raw -Encoding UTF8 | ConvertFrom-Json
             $n = 0
             [decimal]$q = 0
@@ -141,6 +145,15 @@ if ($hasGescomm) {
             Assert ([math]::Abs($q - (& $num $gc.Q)) -lt 0.01) "quantite vendue : agent $q, Gescomm $($gc.Q)"
             Assert ([math]::Abs($t - (& $num $gc.T)) -lt 0.01) "montant : agent $t, Gescomm $($gc.T)"
             Write-Host "        30 jours : $n lignes de vente, quantite $q, montant $t = Gescomm"
+            foreach ($c in @(@{ name = 'cash_in'; col = 'CI' }, @{ name = 'cash_out'; col = 'CO' })) {
+                $cash = Get-Content (Join-Path $dataDir "outbox\data-$($c.name).json") -Raw -Encoding UTF8 | ConvertFrom-Json
+                [decimal]$sum = 0
+                foreach ($grp in $cash.groups.PSObject.Properties) {
+                    foreach ($r in @($grp.Value)) { if ($r.amount) { $sum += [decimal]::Parse($r.amount, [Globalization.CultureInfo]::InvariantCulture) } }
+                }
+                Assert ([math]::Abs($sum - (& $num $gc[$c.col])) -lt 0.01) "$($c.name) : agent $sum, Gescomm $($gc[$c.col])"
+                Write-Host "        30 jours : $($c.name) $sum = Gescomm"
+            }
         } else {
             Write-Host "        (totaux Gescomm non lus avec SYSDBA / masterkey : comparaison sautee) $($isqlOut -join ' ')" -ForegroundColor Yellow
         }

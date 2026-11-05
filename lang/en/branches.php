@@ -82,5 +82,7 @@ return [
         'suppliers' => 'Suppliers',
         'customer_payments' => 'Customer payments',
         'supplier_payments' => 'Supplier payments',
+        'cash_in' => 'Cash in',
+        'cash_out' => 'Cash out',
     ],
 ];

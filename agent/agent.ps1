@@ -7,7 +7,7 @@
     agent.ps1 -TestCode 820AC                   lit un code dans la base et affiche le resultat
     agent.ps1 -Once [-DryRun]                   une synchro complete puis sortie (-DryRun : JSON dans outbox\)
     agent.ps1 -SelfTest [-SkipApi]              verifie la base, la table GC003, les tables des ventes... et l'API
-    agent.ps1 -TestData [-Days 7]               lit ventes, achats, clients... des N derniers jours, sans rien envoyer
+    agent.ps1 -TestData [-Days 7]               lit ventes, achats, clients, caisse... des N derniers jours, sans rien envoyer
     agent.ps1 -Register -BranchName X -InstallCode Y   enregistre la branche aupres de l'API (utilise par install.ps1)
 #>
 param(
@@ -26,7 +26,7 @@ param(
 
 $ErrorActionPreference = 'Stop'
 Add-Type -AssemblyName System.Net.Http
-$AgentVersion = '1.0.7'
+$AgentVersion = '1.0.8'
 $Table = 'GC003'
 $Fields = @('CODEA', 'DESIGNATIONF2', 'STOCKREEL')
 # Prix comme dans la liste des articles de Gescomm (colonne de GC003 = titre dans Gescomm => champ envoye a l'API).
@@ -463,8 +463,25 @@ $Datasets = @(
         name = 'supplier_payments'; table = 'GC60'; key = @('DATEVER', 'NUMEROTATION'); date = 'DATEVER'
         cols = [ordered]@{ NUMEROTATION = 'number'; HEURE = 'time'; CODEFOU = 'partner'; TYPEVER = 'type'; MONTANT = 'amount'
             NUMCHEQUE = 'cheque'; ETATCHEQUE = 'cheque_state'; NUMEROBON = 'document_number'; OBSERVATION = 'note'; AGENT = 'entered_by' }
+    },
+    # la caisse (1.0.8) : ce qui y entre (C008 : versement d'un client, vente au comptoir, entree a la main) et ce qui en sort
+    # (C002 : versement a un fournisseur, depense). Solde = somme des entrees - somme des sorties, comme MONTANTCAISSE de Gescomm.
+    # ORDERE numerote toute la table ; NUMVER = le NUMEROTATION du versement (GC62 / GC60) qui a fait la ligne.
+    @{
+        name = 'cash_in'; table = 'C008'; key = @('DATEENTREE', 'ORDERE'); date = 'DATEENTREE'
+        cols = [ordered]@{ ORDERE = 'number'; HEURE = 'time'; MONTANTENTREE = 'amount'; OBSERVATION2 = 'label'; OBSERVATION = 'note'
+            PERSONNE = 'person'; TYPEENTREE = 'type'; NUMCHEQUE = 'cheque'; NUMVER = 'payment_number'; NUMEROBON = 'document_number'
+            COMPTOIR = 'counter'; AGENT = 'entered_by' }
+    },
+    @{
+        name = 'cash_out'; table = 'C002'; key = @('DATEC', 'ORDERE'); date = 'DATEC'
+        cols = [ordered]@{ ORDERE = 'number'; HEURE = 'time'; MONTANT = 'amount'; CHARGE2 = 'label'; CHARGE = 'category'
+            CODECHARGE = 'category_code'; UNECHARGE = 'expense'; OBSERVATION = 'note'; NUMVER = 'payment_number'
+            NUMEROBON = 'document_number'; AGENT = 'entered_by' }
     }
 )
+# Jeux dates deja dans l'historique avant que state.json ne les nomme (1.0.7) : les autres le recoivent tout de suite
+$HistorySets107 = @('sales', 'purchases', 'customer_payments', 'supplier_payments')
 $Sep = [string][char]0x1F
 $LineSep = [string][char]0x1E
 $script:DataCols = @{}     # nom du jeu -> colonnes presentes (en-tete, lignes), rempli par Test-DatasetSchema
@@ -472,18 +489,22 @@ $script:DataQueue = New-Object System.Collections.ArrayList
 $script:DataNext = @{}     # "jeu|palier" -> prochaine fois
 $script:DataBroken = @{}   # nom du jeu -> pas avant (apres une erreur)
 $script:HistoryRunning = $false
+$script:HistoryFull = $false   # l'historique en cours est celui de la nuit (tous les jeux), pas seulement des nouveaux
 $script:State = $null
 
 function Get-Today { (Get-Date).Date }
 function Format-Day([datetime]$Day) { $Day.ToString('yyyy-MM-dd', $Invariant) }
 
+# history_sets : les jeux dates dont tout l'historique est deja passe (un jeu ajoute par une mise a jour n'y est pas)
 function Read-State {
     $file = Join-Path $Dir 'state.json'
-    $state = @{ history_done_at = $null }
+    $state = @{ history_done_at = $null; history_sets = @() }
     if (Test-Path $file) {
         try {
             $raw = Get-Content $file -Raw -Encoding UTF8 | ConvertFrom-Json
             if ($raw.history_done_at) { $state.history_done_at = [string]$raw.history_done_at }
+            if ($null -ne $raw.history_sets) { $state.history_sets = @($raw.history_sets | ForEach-Object { [string]$_ }) }
+            elseif ($state.history_done_at) { $state.history_sets = $HistorySets107 }
         } catch { }
     }
     $state
@@ -679,6 +700,8 @@ function Invoke-DataStep($Step) {
 
 # Les etapes dues : 7 derniers jours toutes les 5 min, 60 derniers jours toutes les heures, clients toutes les 15 min,
 # et une fois par jour (le soir, ou des que possible si la derniere date de plus de 2 jours) tout l'historique, mois par mois.
+# Un jeu qui n'a jamais eu son historique (la caisse apres la mise a jour en 1.0.8) l'a tout de suite : son solde
+# compte tous les jours depuis le debut, pas seulement les 60 derniers.
 function Add-DueDataSteps {
     $now = Get-Date
     $today = Get-Today
@@ -706,9 +729,11 @@ function Add-DueDataSteps {
     if ($script:State.history_done_at) { try { $last = [datetime]::Parse($script:State.history_done_at, $Invariant) } catch { } }
     $hours = ($now - $last).TotalHours
     $quiet = $now.Hour -ge [int]$cfg.history_hour -or $now.Hour -lt 6
-    if (-not ($last -eq [datetime]::MinValue -or ($hours -ge 20 -and $quiet) -or $hours -ge 44)) { return }
-    foreach ($ds in $Datasets) {
-        if (-not $ds.date) { continue }
+    $full = $last -eq [datetime]::MinValue -or ($hours -ge 20 -and $quiet) -or $hours -ge 44
+    $sets = @($Datasets | Where-Object { $_.date })
+    if (-not $full) { $sets = @($sets | Where-Object { $script:State.history_sets -notcontains $_.name }) }
+    if (-not $sets.Count) { return }
+    foreach ($ds in $sets) {
         if ($script:DataBroken.ContainsKey($ds.name) -and $now -lt $script:DataBroken[$ds.name]) { continue }
         try {
             $null = Test-DatasetSchema $ds
@@ -729,7 +754,9 @@ function Add-DueDataSteps {
         }
     }
     $script:HistoryRunning = $true
-    Write-Log 'DONNEES : verification de tout l''historique, mois par mois'
+    $script:HistoryFull = $full
+    if ($full) { Write-Log 'DONNEES : verification de tout l''historique, mois par mois' }
+    else { Write-Log ('DONNEES : tout l''historique de {0}, mois par mois' -f (@($sets | ForEach-Object { $_.name }) -join ', ')) }
 }
 
 # Une tache qui echoue s'arrete 5 minutes (sa table manque : 6 heures), le serveur le note, les autres continuent.
@@ -766,7 +793,8 @@ function Invoke-NextDataStep {
         $script:DataQueue.Clear()
         if ($script:HistoryRunning) {
             $script:HistoryRunning = $false
-            $script:State.history_done_at = (Get-Date).ToString('o', $Invariant)
+            if ($script:HistoryFull) { $script:State.history_done_at = (Get-Date).ToString('o', $Invariant) }
+            $script:State.history_sets = @($Datasets | Where-Object { $_.date } | ForEach-Object { $_.name })
             Save-State
             Write-Log 'DONNEES : historique verifie'
         }

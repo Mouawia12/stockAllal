@@ -23,20 +23,21 @@ class AgentCompatibilityTest extends TestCase
     use RefreshDatabase;
 
     /**
-     * @return array<string, array{0: string, 1: bool, 2: bool, 3: bool}>
-     *                                                                    version => [version, envoie les prix, comprend la demande "sync", envoie ventes / achats / clients (digest + records)]
+     * @return array<string, array{0: string, 1: bool, 2: bool, 3: bool, 4: bool}>
+     *                                                                             version => [version, envoie les prix, comprend la demande "sync", envoie ventes / achats / clients (digest + records), envoie la caisse]
      */
     public static function versions(): array
     {
         return [
-            '1.0.0' => ['1.0.0', false, false, false],
-            '1.0.1' => ['1.0.1', false, false, false],
-            '1.0.2' => ['1.0.2', false, false, false],
-            '1.0.3' => ['1.0.3', false, false, false],
-            '1.0.4' => ['1.0.4', false, true, false],
-            '1.0.5' => ['1.0.5', true, true, false],
-            '1.0.6' => ['1.0.6', true, true, false],
-            '1.0.7' => ['1.0.7', true, true, true],
+            '1.0.0' => ['1.0.0', false, false, false, false],
+            '1.0.1' => ['1.0.1', false, false, false, false],
+            '1.0.2' => ['1.0.2', false, false, false, false],
+            '1.0.3' => ['1.0.3', false, false, false, false],
+            '1.0.4' => ['1.0.4', false, true, false, false],
+            '1.0.5' => ['1.0.5', true, true, false, false],
+            '1.0.6' => ['1.0.6', true, true, false, false],
+            '1.0.7' => ['1.0.7', true, true, true, false],
+            '1.0.8' => ['1.0.8', true, true, true, true],
         ];
     }
 
@@ -47,7 +48,7 @@ class AgentCompatibilityTest extends TestCase
     }
 
     #[DataProvider('versions')]
-    public function test_a_released_agent_still_syncs_and_answers_refresh(string $version, bool $prices, bool $syncJob, bool $documents): void
+    public function test_a_released_agent_still_syncs_and_answers_refresh(string $version, bool $prices, bool $syncJob, bool $documents, bool $cash): void
     {
         $agent = ['X-Agent-Version' => $version, 'Accept' => 'application/json'];
         $token = $this->withHeaders($agent)->postJson('/api/agents/register', [
@@ -82,6 +83,21 @@ class AgentCompatibilityTest extends TestCase
             $this->withHeaders($agent)->postJson('/api/agent/records', ['dataset' => 'sales', 'groups' => [$day => [$bon]]])->assertOk();
             $this->withHeaders($agent)->postJson('/api/agent/records', ['dataset' => 'customers', 'groups' => ['p12' => [['key' => 'C001', 'digest' => 5, 'name' => 'Benali']]]])->assertOk();
             $this->actingAs($seller)->get('/stock/item?code=820AC')->assertOk()->assertSee('1475')->assertSee('Benali');
+
+            // la caisse : 1.0.8 envoie ses entrees et ses sorties ; avant, "لوحة القيادة" dit de mettre l'agent a jour
+            $cashier = User::factory()->inBranch($branch)->withPermissions(['sales.view', 'cash.view'])->create();
+            if ($cash) {
+                $this->withHeaders($agent)->postJson('/api/agent/records', ['dataset' => 'cash_in', 'groups' => [$day => [
+                    ['key' => $day.'|1252', 'digest' => 7, 'number' => '1252', 'time' => '10:47:00.0000', 'amount' => '66000.00', 'label' => 'Client: Benali', 'payment_number' => '1536', 'counter' => '0'],
+                ]]])->assertOk();
+                $this->withHeaders($agent)->postJson('/api/agent/records', ['dataset' => 'cash_out', 'groups' => [$day => [
+                    ['key' => $day.'|189', 'digest' => 8, 'number' => '189', 'time' => '10:51:46.0000', 'amount' => '20000.50', 'label' => 'Fourn: TPL', 'expense' => 'N'],
+                ]]])->assertOk();
+                $this->actingAs($cashier)->get('/dashboard')->assertOk()->assertSee('45 999,50');
+            } else {
+                $this->actingAs($cashier)->get('/dashboard')->assertOk()
+                    ->assertSee(__('dashboard.cash.none', ['names' => 'Oran', 'version' => Branch::AGENT_FEATURES['cash']]));
+            }
         } else {
             $this->actingAs($seller)->get('/stock/item?code=820AC')->assertOk()
                 ->assertSee(__('stock.activity.outdated', ['names' => 'Oran']));

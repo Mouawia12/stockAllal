@@ -7,7 +7,8 @@ use Illuminate\Support\Carbon;
 use Throwable;
 
 /**
- * Les donnees que l'agent 1.0.7 envoie en plus du stock (agent/README.md, "POST /agent/digest" et "POST /agent/records").
+ * Les donnees que l'agent 1.0.7 envoie en plus du stock (agent/README.md, "POST /agent/digest" et "POST /agent/records"),
+ * et la caisse depuis 1.0.8.
  * Chaque jeu va dans une table partagee avec la future branche approuvee, borne par "scope" (ventes et achats dans
  * documents...). dated : les groupes sont des jours (YYYY-MM-DD), sinon des paquets choisis par l'agent (clients).
  * Les champs recus sont tous facultatifs sauf key et digest : une colonne absente d'une version de Gescomm arrive vide.
@@ -21,6 +22,9 @@ final class AgentDatasets
         'suppliers' => ['table' => 'partners', 'scope' => ['kind' => 'supplier'], 'dated' => false, 'lines' => false],
         'customer_payments' => ['table' => 'payments', 'scope' => ['partner_kind' => 'customer'], 'dated' => true, 'lines' => false],
         'supplier_payments' => ['table' => 'payments', 'scope' => ['partner_kind' => 'supplier'], 'dated' => true, 'lines' => false],
+        // agent 1.0.8 : la caisse, entrees (C008) et sorties (C002)
+        'cash_in' => ['table' => 'cash_entries', 'scope' => ['direction' => 'in'], 'dated' => true, 'lines' => false],
+        'cash_out' => ['table' => 'cash_entries', 'scope' => ['direction' => 'out'], 'dated' => true, 'lines' => false],
     ];
 
     /** Empreinte d'une ligne : 48 bits (12 chiffres hexadecimaux d'un SHA-1), la somme d'un groupe tient dans 64 bits. */
@@ -104,6 +108,24 @@ final class AgentDatasets
                 'note' => self::text($record['note'] ?? null, 255),
                 'entered_by' => self::text($record['entered_by'] ?? null, 30),
             ],
+            'cash_entries' => [
+                'date' => $date,
+                'number' => self::int($record['number'] ?? null),
+                'time' => self::time($record['time'] ?? null),
+                'amount' => self::number($record['amount'] ?? null),
+                'label' => self::text($record['label'] ?? null, 250),
+                'category' => self::text($record['category'] ?? null, 40),
+                'category_code' => self::text($record['category_code'] ?? null, 20),
+                'expense' => self::yes($record['expense'] ?? null),
+                'counter' => self::yes($record['counter'] ?? null),
+                'person' => self::text($record['person'] ?? null, 60),
+                'type' => self::text($record['type'] ?? null, 20),
+                'cheque' => self::text($record['cheque'] ?? null, 60),
+                'payment_number' => self::int($record['payment_number'] ?? null),
+                'document_number' => self::int($record['document_number'] ?? null),
+                'note' => self::text($record['note'] ?? null, 255),
+                'entered_by' => self::text($record['entered_by'] ?? null, 30),
+            ],
         };
     }
 
@@ -181,7 +203,7 @@ final class AgentDatasets
         }
     }
 
-    /** "Oui" / "Non" de Gescomm (Bloqué?) ; autre chose = inconnu. */
+    /** "Oui" / "Non" de Gescomm (Bloqué?), "O" / "N" (UNECHARGE), 1 / 0 (COMPTOIR) ; autre chose = inconnu. */
     private static function yes(mixed $value): ?bool
     {
         $text = is_scalar($value) ? mb_strtolower(trim((string) $value)) : '';

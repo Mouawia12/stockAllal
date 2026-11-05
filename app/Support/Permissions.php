@@ -14,8 +14,9 @@ final class Permissions
     /** Groupes de la page d'un compte, dans l'ordre d'affichage. Textes : lang/<langue>/users.php (perms). */
     public const GROUPS = [
         'stock' => ['stock.refresh', 'prices.sale', 'prices.buy'],
-        // ventes et achats d'un article, de sa branche seulement (User::salesBranchIds) ; pas coche par defaut
-        'sales' => ['sales.view'],
+        // ventes et achats d'un article, de sa branche seulement (User::salesBranchIds) ; pas coche par defaut.
+        // cash.view : l'argent dans la caisse, sur "لوحة القيادة" (memes branches que les ventes)
+        'sales' => ['sales.view', 'cash.view'],
         'branches' => ['branches.view', 'branches.sync', 'branches.manage', 'agent.download'],
         'products' => ['merge.manage'],
     ];
@@ -25,6 +26,9 @@ final class Permissions
 
     /** Ces permissions passent par la page des succursales : elles entrainent "branches.view". */
     public const NEED_BRANCHES_VIEW = ['branches.sync', 'branches.manage', 'agent.download'];
+
+    /** La caisse se voit sur "لوحة القيادة", qui demande "sales.view". */
+    public const NEED_SALES_VIEW = ['cash.view'];
 
     /** @return list<string> */
     public static function all(): array
@@ -43,6 +47,9 @@ final class Permissions
         $given = collect($permissions ?? [])->map(fn ($p) => (string) $p)->all();
         if (array_intersect($given, self::NEED_BRANCHES_VIEW) !== []) {
             $given[] = 'branches.view';
+        }
+        if (array_intersect($given, self::NEED_SALES_VIEW) !== []) {
+            $given[] = 'sales.view';
         }
 
         return array_values(array_filter(self::all(), fn (string $p) => in_array($p, $given, true)));
