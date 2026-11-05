@@ -7,6 +7,7 @@ use App\Support\BranchScope;
 use App\Support\CashBox;
 use App\Support\SalesDashboard;
 use App\Support\StockState;
+use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Collection;
@@ -17,7 +18,8 @@ use Illuminate\View\View;
  * ventes (BranchScope::salesIds, comme les bons). Les chiffres viennent de SalesDashboard ; ici on retire ce que le
  * compte ne peut pas voir : montants de vente sans prices.sale (il voit alors des bons et des quantites), marge,
  * achats et valeur du stock sans prices.buy, stock d'une branche dont il ne voit pas le stock.
- * La caisse (CashBox) : seulement avec cash.view, dans les memes branches.
+ * La periode : un bouton (aujourd'hui, 7, 30 jours, 12 mois) ou un jour / des jours choisis dans le calendrier
+ * (calendar(), le JSON d'un mois). La caisse (CashBox) : seulement avec cash.view, dans les memes branches.
  */
 class DashboardController extends Controller
 {
@@ -33,11 +35,23 @@ class DashboardController extends Controller
         $branches = Branch::where('active', true)->among(BranchScope::salesIds($request))->orderBy('name')->get();
         // un agent d'avant 1.0.7 n'envoie pas les ventes : sa branche est nommee, jamais comptee comme "zero vente"
         $ready = $branches->filter(fn (Branch $b) => $b->agentSupports('documents'))->values();
-        $period = in_array($request->query('period'), SalesDashboard::PERIODS, true) ? $request->query('period') : '30';
+        $period = SalesDashboard::period($request->query(), now());
+        $kind = SalesDashboard::kind($period);
+        $window = SalesDashboard::window($period, now());
         $rank = $sale && $request->query('rank') !== 'qty' ? 'amount' : 'qty';
+        $rankQuery = $rank === 'qty' && $sale ? 'qty' : null;
 
         $page = [
             'period' => $period,
+            'kind' => $kind,
+            'window' => $window,
+            // la periode dans l'adresse, gardee par les autres liens de la page (classement)
+            'here' => match ($kind) {
+                'day' => ['day' => $window['from']],
+                'range' => ['from' => $window['from'], 'to' => $window['to']],
+                default => ['period' => $period === '30' ? null : $period],
+            },
+            'date' => $this->dateNav($kind, $window, $rankQuery),
             'rank' => $rank,
             'money' => $sale,
             'buy' => $buy,
@@ -45,7 +59,7 @@ class DashboardController extends Controller
             'branches' => $branches->count(),
             'outdated' => $branches->reject(fn (Branch $b) => $b->agentSupports('documents'))->pluck('name')->values(),
             'several' => $ready->count() > 1,
-            'cash' => $user->can('cash.view') ? $this->cash($branches) : null,
+            'cash' => $user->can('cash.view') ? $this->cash($branches, $window) : null,
         ];
         if ($ready->isEmpty()) {
             return view('dashboard.index', $page + ['f' => null]);
@@ -156,30 +170,141 @@ class DashboardController extends Controller
     }
 
     /**
-     * La caisse des branches affichees dont l'agent l'envoie (1.0.8+) : le total, puis chaque branche. Une branche
-     * d'agent plus ancien est nommee ("mettre l'agent a jour"), jamais comptee comme une caisse vide.
+     * Le calendrier de "لوحة القيادة", un mois (?month=2026-11, le mois en cours par defaut, jamais un mois a venir) :
+     * chaque jour avec ses ventes (le montant avec prices.sale, sinon les bons) et sa caisse (cash.view), dans les
+     * memes branches que la page. La semaine commence le samedi, comme les calendriers algeriens.
+     */
+    public function calendar(Request $request): JsonResponse
+    {
+        $user = $request->user();
+        $today = now()->startOfDay();
+        $asked = $request->query('month');
+        $month = is_string($asked) && preg_match('/^\d{4}-(0[1-9]|1[0-2])$/', $asked) ? Carbon::parse($asked.'-01') : $today->copy()->startOfMonth();
+        if ($month->gt($today)) {
+            $month = $today->copy()->startOfMonth();
+        }
+        $from = $month->toDateString();
+        $to = $month->copy()->endOfMonth()->toDateString();
+
+        $branches = Branch::where('active', true)->among(BranchScope::salesIds($request))->get();
+        $salesIds = $branches->filter(fn (Branch $b) => $b->agentSupports('documents'))->pluck('id')->values()->all();
+        $cashIds = $user->can('cash.view') ? $branches->filter(fn (Branch $b) => $b->agentSupports('cash'))->pluck('id')->values()->all() : [];
+        $sale = $user->can('prices.sale');
+        $days = $salesIds === [] ? [] : SalesDashboard::days($salesIds, $from, $to);
+        $cash = $cashIds === [] ? [] : CashBox::days($cashIds, $from, $to);
+        $first = $salesIds === [] ? null : SalesDashboard::firstDay($salesIds);
+        $locale = app()->getLocale();
+
+        $list = [];
+        for ($d = $month->copy(); $d->toDateString() <= $to; $d->addDay()) {
+            $key = $d->toDateString();
+            $list[] = [
+                'date' => $key,
+                'label' => $d->copy()->locale($locale)->translatedFormat('l j F Y'),
+                'future' => $d->gt($today),
+                'bons' => $days[$key]['bons'] ?? 0,
+                'amount' => $sale ? ($days[$key]['amount'] ?? 0.0) : null,
+                'cash_in' => $cashIds === [] ? null : ($cash[$key]['in'] ?? 0.0),
+                'cash_out' => $cashIds === [] ? null : ($cash[$key]['out'] ?? 0.0),
+            ];
+        }
+
+        return response()->json([
+            'month' => $month->format('Y-m'),
+            'label' => $month->copy()->locale($locale)->translatedFormat('F Y'),
+            'today' => $today->toDateString(),
+            // pas avant le mois de la premiere vente, pas apres le mois en cours
+            'prev' => $first === null || $first >= $from ? null : $month->copy()->subMonth()->format('Y-m'),
+            'next' => $month->copy()->addMonth()->gt($today) ? null : $month->copy()->addMonth()->format('Y-m'),
+            // cases vides avant le 1er : la semaine commence le samedi (dayOfWeek : 0 = dimanche, 6 = samedi)
+            'offset' => ($month->dayOfWeek + 1) % 7,
+            'money' => $sale,
+            'cash' => $cashIds !== [],
+            'days' => $list,
+            'total' => ['amount' => $sale ? round(array_sum(array_column($days, 'amount')), 2) : null, 'bons' => array_sum(array_column($days, 'bons'))],
+        ]);
+    }
+
+    /**
+     * Le bouton du calendrier : ce qui est choisi (un jour, des jours), la veille et le lendemain d'un jour, et les
+     * choix rapides (hier, cette semaine, ce mois, le mois dernier).
+     *
+     * @return array{label: ?string, month: string, prev: ?string, next: ?string, picks: list<array{label: string, url: string, on: bool}>}
+     */
+    private function dateNav(string $kind, array $w, ?string $rank): array
+    {
+        $locale = app()->getLocale();
+        $today = now()->startOfDay();
+        $url = fn (array $q) => route('dashboard.index', array_filter($q + ['rank' => $rank]));
+        // l'annee seulement quand ce n'est pas celle-ci
+        $short = fn (Carbon $d) => $d->format($d->year === $today->year ? 'd/m' : 'd/m/Y');
+        [$from, $to] = [Carbon::parse($w['from']), Carbon::parse($w['to'])];
+
+        $label = match ($kind) {
+            'day' => $from->copy()->locale($locale)->translatedFormat('l').' '.$short($from),
+            'range' => $short($from).' – '.$short($to),
+            default => null,
+        };
+        $prev = $next = null;
+        if ($kind === 'day' || $kind === 'today') {
+            $prev = $url(['day' => $from->copy()->subDay()->toDateString()]);
+            $after = $from->copy()->addDay();
+            $next = $kind === 'today' ? null : ($after->equalTo($today) ? $url(['period' => 'today']) : $url(['day' => $after->toDateString()]));
+        }
+
+        $lastMonth = $today->copy()->subMonthNoOverflow()->startOfMonth();
+        $picks = [
+            'yesterday' => ['day' => $today->copy()->subDay()->toDateString()],
+            'week' => ['from' => $today->copy()->startOfWeek(Carbon::SATURDAY)->toDateString(), 'to' => $today->toDateString()],
+            'month' => ['from' => $today->copy()->startOfMonth()->toDateString(), 'to' => $today->toDateString()],
+            'last_month' => ['from' => $lastMonth->toDateString(), 'to' => $lastMonth->copy()->endOfMonth()->toDateString()],
+        ];
+        $current = SalesDashboard::period(['from' => $w['from'], 'to' => $w['to']], now());
+
+        return [
+            'label' => $label,
+            'month' => substr($w['to'], 0, 7),
+            'prev' => $prev,
+            'next' => $next,
+            'picks' => collect($picks)->map(fn (array $q, string $key) => [
+                'label' => __('dashboard.calendar.picks.'.$key),
+                'url' => $url($q),
+                'on' => in_array($kind, ['day', 'range'], true) && SalesDashboard::period($q, now()) === $current,
+            ])->values()->all(),
+        ];
+    }
+
+    /**
+     * La caisse des branches affichees dont l'agent l'envoie (1.0.8+), pour la periode : le solde a la fin de son
+     * dernier jour (maintenant si c'est aujourd'hui), ce qui est entre et sorti pendant la periode, puis chaque branche.
+     * Une branche d'agent plus ancien est nommee ("mettre l'agent a jour"), jamais comptee comme une caisse vide.
      *
      * @param  Collection<int, Branch>  $branches
      */
-    private function cash(Collection $branches): array
+    private function cash(Collection $branches, array $w): array
     {
         $ready = $branches->filter(fn (Branch $b) => $b->agentSupports('cash'))->values();
-        $figures = $ready->isEmpty() ? [] : CashBox::figures($ready->pluck('id')->all());
+        $figures = $ready->isEmpty() ? [] : CashBox::figures($ready->pluck('id')->all(), $w['from'], $w['to']);
         $today = now()->toDateString();
         $rows = $ready->map(function (Branch $b) use ($figures, $today) {
             $f = $figures[$b->id];
             $last = $f['last'] ? Carbon::parse($f['last']) : null;
 
-            return ['branch' => $b->name, 'hue' => $b->hue(), 'balance' => $f['balance'], 'in_today' => $f['in_today'], 'out_today' => $f['out_today'],
+            return ['branch' => $b->name, 'hue' => $b->hue(), 'balance' => $f['balance'], 'in' => $f['in'], 'out' => $f['out'],
                 // aujourd'hui : l'heure seule ; un autre jour : le jour et l'heure
                 'last' => $last ? $last->format($last->toDateString() === $today ? 'H:i' : 'd/m H:i') : null,
                 'checked_at' => $f['checked_at'] ? Carbon::parse($f['checked_at']) : null];
         })->sortByDesc('balance')->values();
+        $now = $w['to'] >= $today;
 
         return [
             'total' => round((float) $rows->sum('balance'), 2),
-            'in_today' => round((float) $rows->sum('in_today'), 2),
-            'out_today' => round((float) $rows->sum('out_today'), 2),
+            'in' => round((float) $rows->sum('in'), 2),
+            'out' => round((float) $rows->sum('out'), 2),
+            // les titres : le solde maintenant ou a la fin d'un jour passe ; l'argent d'aujourd'hui, d'un jour ou de la periode
+            'now' => $now,
+            'end' => Carbon::parse($w['to'])->format('d/m/Y'),
+            'flow' => $w['from'] !== $w['to'] ? 'period' : ($now ? 'today' : 'day'),
             'branches' => $rows,
             // la caisse la moins recemment confirmee par son agent
             'checked_at' => $rows->contains(fn (array $r) => $r['checked_at'] === null) ? null : $rows->min('checked_at'),

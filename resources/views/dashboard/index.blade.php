@@ -40,6 +40,73 @@
     .chip:hover { background: var(--row-hover); }
     .chip.on { border-color: var(--accent); background: var(--accent-soft); color: var(--accent); font-weight: 600; }
     .note { margin: 0 0 14px; }
+    .dash-head .sub .when { color: var(--text); font-weight: 600; }
+
+    /* les periodes : les boutons, puis le calendrier (un jour, des jours) et, pour un jour, la veille et le lendemain */
+    .periods { display: flex; align-items: center; gap: 6px 10px; flex-wrap: wrap; }
+    .date-pick { display: flex; align-items: center; gap: 4px; }
+    .chip svg { width: 16px; height: 16px; display: block; }
+    .chip.step { padding: 4px 6px; color: var(--muted); }
+    .cal-btn { gap: 7px; }
+    .ico-back, .ico-fwd { display: inline-flex; }
+    /* le passe vers le debut de la ligne : a droite en arabe */
+    [dir="rtl"] .ico-back, [dir="ltr"] .ico-fwd { transform: scaleX(-1); }
+
+    .cal-pop { position: absolute; inset-inline-end: 0; top: calc(100% + 8px); z-index: 30; width: 356px; padding: 14px;
+        background: var(--card); border: 1px solid var(--border); border-radius: 14px; box-shadow: var(--shadow), 0 18px 44px rgba(0, 0, 0, .18); }
+    .cal-top { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 10px; }
+    .cal-modes { display: inline-flex; padding: 3px; border-radius: 99px; background: var(--row-hover); }
+    .cal-modes button { border: 0; background: none; border-radius: 99px; padding: 4px 15px; font-size: 13.5px; color: var(--muted); }
+    .cal-modes button[aria-pressed="true"] { background: var(--card); color: var(--text); font-weight: 600; box-shadow: 0 1px 3px rgba(0, 0, 0, .14); }
+    .cal-link { border: 0; background: none; color: var(--accent); font-size: 13.5px; font-weight: 600; padding: 4px 8px; }
+    .cal-nav { display: flex; align-items: center; justify-content: space-between; margin-bottom: 6px; }
+    .cal-month { font-size: 15.5px; }
+    .cal-arrow { display: grid; place-items: center; width: 32px; height: 32px; padding: 0; border: 0; border-radius: 50%; background: none; color: var(--muted); }
+    .cal-arrow:hover:not(:disabled) { background: var(--row-hover); color: var(--text); }
+    .cal-arrow:disabled { opacity: .3; cursor: default; }
+    .cal-arrow svg { width: 18px; height: 18px; }
+    .cal-week, .cal-grid { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 3px; }
+    .cal-week span { text-align: center; color: var(--muted); font-size: 12px; font-weight: 600; padding: 2px 0 6px; }
+    .cal-week .fri { color: var(--accent); }
+    .cal-grid { min-height: 282px; align-content: start; }
+    /* un jour : son numero, ce qu'il a vendu en court (1,1M, 950k), et un fond d'autant plus fort qu'il a vendu (--heat) */
+    .cal-day { position: relative; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px; height: 44px; padding: 0;
+        border: 0; border-radius: 9px; background: color-mix(in srgb, var(--accent) var(--heat, 0%), transparent); color: var(--text); }
+    .cal-day:hover:not(:disabled) { background: color-mix(in srgb, var(--accent) var(--heat, 0%), transparent); box-shadow: inset 0 0 0 1.5px var(--accent); }
+    .cal-day:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+    .cal-day .n { font: 600 15px/1 var(--font-code); font-variant-numeric: tabular-nums; }
+    .cal-day .v { font: 600 10.5px/1 var(--font-code); letter-spacing: .02em; color: var(--muted); direction: ltr; min-height: 10px; }
+    .cal-day.today { box-shadow: inset 0 0 0 1.5px var(--accent); }
+    .cal-day.today .n { color: var(--accent); }
+    .cal-day.best .v { color: var(--text); }
+    /* entre le premier et le dernier jour : un anneau, le fond garde ce que le jour a vendu */
+    .cal-day.in, .cal-day.in:hover:not(:disabled) { box-shadow: inset 0 0 0 1.5px color-mix(in srgb, var(--accent) 70%, transparent); }
+    .cal-day.sel, .cal-day.start, .cal-day.end, .cal-day.sel:hover, .cal-day.start:hover, .cal-day.end:hover { background: var(--accent); color: var(--on-accent); }
+    .cal-day.sel .n, .cal-day.start .n, .cal-day.end .n, .cal-day.sel .v, .cal-day.start .v, .cal-day.end .v { color: inherit; }
+    .cal-day:disabled { opacity: .3; cursor: default; background: none; box-shadow: none; }
+    .cal-foot { display: flex; align-items: center; justify-content: space-between; gap: 6px 10px; flex-wrap: wrap; margin-top: 10px; padding-top: 10px;
+        border-top: 1px solid var(--border); color: var(--muted); font-size: 12.5px; }
+    .cal-sum { margin: 0; }
+    .cal-sum b { color: var(--text); font-weight: 600; direction: ltr; unicode-bidi: isolate; }
+    .cal-legend { display: inline-flex; align-items: center; gap: 3px; }
+    .cal-legend i { width: 12px; height: 12px; border-radius: 3px; border: 1px solid var(--border); background: color-mix(in srgb, var(--accent) var(--heat), transparent); }
+    .cal-legend i:first-of-type { margin-inline-start: 3px; }
+    .cal-legend i:last-of-type { margin-inline-end: 3px; }
+    .cal-picks { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px; }
+    .cal-picks .chip { padding: 3px 11px; font-size: 13px; }
+    /* la bulle d'un jour : en couleurs inversees, au-dessus de la case (sous elle en haut du calendrier) */
+    .cal-tip { position: absolute; z-index: 2; min-width: 196px; max-width: 260px; padding: 10px 12px; border-radius: 10px; background: var(--text); color: var(--card);
+        box-shadow: 0 10px 28px rgba(0, 0, 0, .28); pointer-events: none; font-size: 13px; }
+    .cal-tip strong { display: block; margin-bottom: 6px; font-size: 13.5px; }
+    .cal-tip dl { display: grid; gap: 3px; margin: 0; }
+    .cal-tip dl div { display: flex; justify-content: space-between; gap: 16px; }
+    .cal-tip dt { opacity: .72; }
+    .cal-tip dd { margin: 0; font: 600 14px/1.3 var(--font-code); direction: ltr; unicode-bidi: isolate; }
+    .cal-tip .note { margin: 6px 0 0; opacity: .8; }
+    @supports not (background: color-mix(in srgb, red 50%, blue)) {
+        .cal-day.has { background: var(--accent-soft); }
+        .cal-legend { display: none; }
+    }
 
     .dash { display: grid; gap: 14px; }
     .dash h2 { margin: 0; font-size: 16px; }
@@ -140,30 +207,339 @@
         .axis span.keep { visibility: visible; }
         .tiles { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
         .tile .value { font-size: 26px; }
-        .dash-head .chips { width: 100%; }
+        .dash-head .chips, .periods { width: 100%; }
+        /* sur telephone : le calendrier en bas de l'ecran, sur toute la largeur */
+        .cal-pop { position: fixed; inset-inline: 8px; top: auto; bottom: 8px; width: auto; max-height: calc(100vh - 16px); overflow-y: auto; }
     }
 </style>
 @endpush
 
 @push('keys')
     @include('partials.key', ['keys' => ['Alt', '1…4'], 'label' => $D['period']])
+    @include('partials.key', ['keys' => ['Alt', '5'], 'run' => 'Alt+5', 'label' => $D['calendar']['open']])
+@endpush
+
+@php
+    $calendarPage = [
+        'base' => route('dashboard.index'),
+        'json' => route('dashboard.calendar'),
+        'rank' => $rank === 'qty' && $money ? 'qty' : null,
+        'month' => $date['month'],
+        'today' => now()->toDateString(),
+        // ce qui est choisi : un jour (from = to) ou des jours ; rien pour 7, 30 jours ou 12 mois
+        'chosen' => in_array($kind, ['today', 'day', 'range'], true) ? ['from' => $window['from'], 'to' => $window['to']] : null,
+        'mode' => $kind === 'range' ? 'range' : 'day',
+    ];
+@endphp
+@push('scripts')
+<script>
+// Le calendrier de "لوحة القيادة" : un mois (DashboardController::calendar), chaque jour avec ce qu'il a vendu (en court
+// dans la case, un fond d'autant plus fort qu'il a vendu), et sa bulle au survol ou au clavier : ventes, bons, caisse.
+// "يوم" : un clic ouvre ce jour ; "مدة" : le premier jour puis le dernier. Fleches = jour / semaine (dans le sens de la
+// langue), Page precedente / suivante = mois, Entree = choisir, Echap = annuler le debut d'une periode, puis fermer.
+(() => {
+    const cal = document.getElementById('cal');
+    if (!cal) return;
+    const P = @json($calendarPage);
+    const T = @json($D['calendar']);
+    const pop = cal.querySelector('.cal-pop');
+    const grid = pop.querySelector('.cal-grid');
+    const monthEl = pop.querySelector('.cal-month');
+    const sum = pop.querySelector('.cal-sum');
+    const tip = pop.querySelector('.cal-tip');
+    const RTL = document.documentElement.dir === 'rtl';
+    const months = new Map();
+    let month = P.month, mode = P.mode, start = null, data = null;
+
+    const fmt = v => Math.round(v).toString().replace(/\B(?=(\d{3})+(?!\d))/g, ' ');
+    // dans la case : 1,1M, 18M, 950k, 75
+    const compact = v => {
+        const a = Math.abs(v);
+        if (a >= 1e6) return (v / 1e6).toFixed(a >= 1e7 ? 0 : 1).replace('.', ',') + 'M';
+        if (a >= 1e3) return Math.round(v / 1e3) + 'k';
+        return String(Math.round(v));
+    };
+    const esc = s => Object.assign(document.createElement('span'), {textContent: s}).innerHTML;
+    const iso = d => d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+    const short = date => date.slice(8, 10) + '/' + date.slice(5, 7);
+    const metric = () => data.money ? 'amount' : 'bons';
+
+    function urlFor(from, to) {
+        const q = new URLSearchParams();
+        if (from !== to) { q.set('from', from); q.set('to', to); }
+        else if (from === P.today) q.set('period', 'today');
+        else q.set('day', from);
+        if (P.rank) q.set('rank', P.rank);
+        return P.base + '?' + q;
+    }
+
+    async function load(m) {
+        if (!months.has(m)) {
+            months.set(m, fetchRetry(P.json + '?month=' + m, {headers: {Accept: 'application/json'}}).then(res => {
+                if (!res.ok) throw new Error('HTTP ' + res.status);
+                return res.json();
+            }));
+        }
+        try { return await months.get(m); } catch (e) { months.delete(m); throw e; }
+    }
+
+    // focus : le jour qui prend le clavier (navigation au clavier) ; sans, le clavier reste ou il est (souris)
+    async function show(m, focus) {
+        grid.setAttribute('aria-busy', 'true');
+        sum.textContent = T.loading;
+        tip.hidden = true;
+        try { data = await load(m); }
+        catch (e) {
+            if (e.name !== 'AbortError') sum.textContent = T.error;
+            grid.setAttribute('aria-busy', 'false');
+            return;
+        }
+        month = data.month;
+        render(focus);
+    }
+
+    function render(focus) {
+        monthEl.textContent = data.label;
+        pop.querySelector('[data-go="prev"]').disabled = !data.prev;
+        pop.querySelector('[data-go="next"]').disabled = !data.next;
+        const key = metric();
+        const max = Math.max(0, ...data.days.map(d => d[key]));
+        const best = max > 0 ? data.days.find(d => d[key] === max).date : null;
+        const cells = [];
+        for (let i = 0; i < data.offset; i++) cells.push(Object.assign(document.createElement('span'), {className: 'cal-blank'}));
+        for (const d of data.days) {
+            const b = document.createElement('button');
+            const v = d[key];
+            b.type = 'button';
+            b.className = 'cal-day';
+            b.dataset.date = d.date;
+            b.tabIndex = -1;
+            b.disabled = d.future;
+            if (v > 0) { b.classList.add('has'); b.style.setProperty('--heat', (8 + 40 * v / max).toFixed(1) + '%'); }
+            if (d.date === data.today) b.classList.add('today');
+            if (d.date === best) b.classList.add('best');
+            b.innerHTML = '<span class="n">' + Number(d.date.slice(8)) + '</span><span class="v">' + (v > 0 ? compact(v) : '') + '</span>';
+            b.setAttribute('aria-label', d.label + (v > 0 ? ' — ' + (data.money ? fmt(v) : T.bons + ' ' + v) : ''));
+            cells.push(b);
+        }
+        grid.replaceChildren(...cells);
+        grid.setAttribute('aria-busy', 'false');
+        paint();
+        hint();
+        const days = [...grid.querySelectorAll('.cal-day:not(:disabled)')];
+        const target = (focus && grid.querySelector('[data-date="' + focus + '"]:not(:disabled)'))
+            || grid.querySelector('.sel, .end') || grid.querySelector('.today') || days[days.length - 1];
+        if (target) {
+            target.tabIndex = 0;
+            if (focus) target.focus();
+        }
+    }
+
+    // le jour ou les jours choisis ; pendant un choix "مدة" : du premier jour jusqu'au jour survole
+    function paint(hover) {
+        let from = null, to = null;
+        if (start) [from, to] = [start, hover || start].sort();
+        else if (P.chosen) [from, to] = [P.chosen.from, P.chosen.to];
+        for (const b of grid.querySelectorAll('.cal-day')) {
+            const d = b.dataset.date;
+            const range = from !== null && from !== to;
+            b.classList.toggle('sel', from !== null && !range && d === from);
+            b.classList.toggle('start', range && d === from);
+            b.classList.toggle('end', range && d === to);
+            b.classList.toggle('in', range && d > from && d < to);
+            b.setAttribute('aria-selected', String(from !== null && d >= from && d <= to));
+        }
+    }
+
+    // sous la grille : le total du mois, ou ce qu'il faut faire pendant un choix "مدة"
+    function hint() {
+        if (mode === 'range') {
+            sum.textContent = start ? T.range_from.replace(':date', '⁦' + short(start) + '⁩') : T.range_hint;
+            return;
+        }
+        const total = data.days.reduce((t, d) => ({amount: t.amount + (d.amount || 0), bons: t.bons + d.bons}), {amount: 0, bons: 0});
+        // un nombre dans une phrase : isole de gauche a droite, sinon "2 483 475" s'affiche "475 483 2" en arabe
+        const bons = esc(T.month_bons.replace(':count', '⁦' + fmt(total.bons) + '⁩'));
+        sum.innerHTML = data.money ? esc(T.month_total).replace(':amount', '<b>' + fmt(total.amount) + '</b>') + ' · ' + bons : '<b>' + bons + '</b>';
+    }
+
+    function tipFor(b) {
+        const d = data.days.find(x => x.date === b.dataset.date);
+        if (!d) return;
+        let html = '<strong>' + esc(d.label) + '</strong>';
+        const row = (label, value) => '<div><dt>' + esc(label) + '</dt><dd>' + value + '</dd></div>';
+        if (d.future) {
+            html += '<p class="note">' + esc(T.future) + '</p>';
+        } else {
+            let rows = '';
+            if (d.bons > 0) {
+                if (data.money) rows += row(T.sales, fmt(d.amount));
+                rows += row(T.bons, fmt(d.bons));
+            }
+            if (data.cash && (d.cash_in || d.cash_out)) rows += row(T.cash_in, '+' + fmt(d.cash_in)) + row(T.cash_out, '−' + fmt(d.cash_out));
+            if (rows) html += '<dl>' + rows + '</dl>';
+            if (d.bons === 0) html += '<p class="note">' + esc(T.no_sales) + '</p>';
+            if (b.classList.contains('best')) html += '<p class="note">★ ' + esc(T.best) + '</p>';
+        }
+        tip.innerHTML = html;
+        tip.hidden = false;
+        // au-dessus de la case, dans le calendrier ; sous elle s'il n'y a pas la place
+        const p = pop.getBoundingClientRect(), r = b.getBoundingClientRect();
+        const left = Math.max(6, Math.min(r.left - p.left + r.width / 2 - tip.offsetWidth / 2, p.width - tip.offsetWidth - 6));
+        let top = r.top - p.top - tip.offsetHeight - 8;
+        if (top < 6) top = r.bottom - p.top + 8;
+        tip.style.left = left + 'px';
+        tip.style.top = top + pop.scrollTop + 'px';
+    }
+
+    function pick(date) {
+        if (mode === 'day') { location.href = urlFor(date, date); return; }
+        if (!start) { start = date; paint(); hint(); return; }
+        const [from, to] = [start, date].sort();
+        location.href = urlFor(from, to);
+    }
+
+    function move(from, step) {
+        const d = new Date(from + 'T12:00:00');
+        d.setDate(d.getDate() + step);
+        const day = iso(d);
+        if (day > data.today) return;
+        const m = day.slice(0, 7);
+        if (m === month) {
+            const t = grid.querySelector('[data-date="' + day + '"]');
+            if (!t) return;
+            grid.querySelectorAll('[tabindex="0"]').forEach(x => { x.tabIndex = -1; });
+            t.tabIndex = 0;
+            t.focus();
+        } else if ((m < month && data.prev) || (m > month && data.next)) {
+            show(m, day);
+        }
+    }
+
+    grid.addEventListener('click', e => {
+        const b = e.target.closest('.cal-day');
+        if (b && !b.disabled) pick(b.dataset.date);
+    });
+    grid.addEventListener('pointerover', e => {
+        const b = e.target.closest('.cal-day');
+        if (!b || e.pointerType === 'touch') return;
+        if (start) paint(b.dataset.date);
+        tipFor(b);
+    });
+    grid.addEventListener('pointerleave', () => { tip.hidden = true; if (start) paint(); });
+    grid.addEventListener('focusin', e => {
+        const b = e.target.closest('.cal-day');
+        if (!b || !b.matches(':focus-visible')) return;
+        if (start) paint(b.dataset.date);
+        tipFor(b);
+    });
+    grid.addEventListener('focusout', e => { if (!grid.contains(e.relatedTarget)) tip.hidden = true; });
+    grid.addEventListener('keydown', e => {
+        const b = e.target.closest('.cal-day');
+        if (!b) return;
+        const step = {ArrowRight: RTL ? -1 : 1, ArrowLeft: RTL ? 1 : -1, ArrowDown: 7, ArrowUp: -7}[e.key];
+        if (step) { e.preventDefault(); move(b.dataset.date, step); return; }
+        if (e.key === 'PageUp' || e.key === 'PageDown') {
+            e.preventDefault();
+            const m = e.key === 'PageUp' ? data.prev : data.next;
+            if (m) show(m, (m + b.dataset.date.slice(7)) > data.today ? data.today : m + b.dataset.date.slice(7));
+        }
+    });
+
+    pop.querySelectorAll('[data-mode]').forEach(btn => btn.addEventListener('click', () => {
+        mode = btn.dataset.mode;
+        start = null;
+        pop.querySelectorAll('[data-mode]').forEach(x => x.setAttribute('aria-pressed', String(x === btn)));
+        if (data) { paint(); hint(); }
+    }));
+    pop.querySelector('[data-go="prev"]').addEventListener('click', () => { if (data?.prev) show(data.prev); });
+    pop.querySelector('[data-go="next"]').addEventListener('click', () => { if (data?.next) show(data.next); });
+    pop.querySelector('[data-go="today"]').addEventListener('click', () => show(P.today.slice(0, 7), P.today));
+
+    // Echap pendant un choix "مدة" : annuler le premier jour, sans fermer (avant le Echap qui ferme les menus, layouts/app)
+    document.addEventListener('keydown', e => {
+        if (e.key !== 'Escape' || !cal.open || !start) return;
+        e.preventDefault();
+        e.stopImmediatePropagation();
+        start = null;
+        paint();
+        hint();
+    }, true);
+
+    // le mois se charge des que la souris approche, il est pret a l'ouverture
+    cal.querySelector('summary').addEventListener('pointerenter', () => { load(month).catch(() => {}); }, {once: true});
+    cal.addEventListener('toggle', () => {
+        if (!cal.open) { start = null; tip.hidden = true; return; }
+        const focus = P.chosen ? P.chosen.to : P.today;
+        if (data && data.month === month) render(focus);
+        else show(month, focus);
+    });
+})();
+</script>
 @endpush
 
 @section('content')
+@php
+    $Cal = $D['calendar'];
+    // fleche vers le debut de la ligne (le passe) : a gauche en francais, a droite en arabe (.ico-back / .ico-fwd)
+    $chevron = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m15 18-6-6 6-6"/></svg>';
+@endphp
 <div class="dash-head">
     <div>
         <h1>{{ $D['title'] }}</h1>
         <p class="sub">
             <span>{{ $selected ? $selected->name : __('common.scope.all').' ('.trans_choice('dashboard.scope_all', $branches, ['count' => $branches]).')' }}</span>
+            @if ($date['label'])<span class="when">{{ $date['label'] }}</span>@endif
             @if (! empty($syncedAt))<span title="{{ $syncedAt->format('d/m/Y H:i') }}">{{ __('dashboard.synced', ['time' => $syncedAt->diffForHumans()]) }}</span>@endif
         </p>
     </div>
-    <nav class="chips" aria-label="{{ $D['period'] }}">
-        @foreach (App\Support\SalesDashboard::PERIODS as $p)
-            <a href="{{ route('dashboard.index', array_filter(['period' => $p === '30' ? null : $p, 'rank' => $rank === 'qty' && $money ? 'qty' : null])) }}" data-key="Alt+{{ $loop->iteration }}"
-               @class(['chip', 'on' => $period === $p]) @if ($period === $p) aria-current="true" @endif>{{ $D['periods'][$p] }}</a>
-        @endforeach
-    </nav>
+    <div class="periods">
+        <nav class="chips" aria-label="{{ $D['period'] }}">
+            @foreach (App\Support\SalesDashboard::PERIODS as $p)
+                <a href="{{ route('dashboard.index', array_filter(['period' => $p === '30' ? null : $p, 'rank' => $rank === 'qty' && $money ? 'qty' : null])) }}" data-key="Alt+{{ $loop->iteration }}"
+                   @class(['chip', 'on' => $period === $p]) @if ($period === $p) aria-current="true" @endif>{{ $D['periods'][$p] }}</a>
+            @endforeach
+        </nav>
+        {{-- un jour ou des jours choisis : le calendrier (details.drop : un clic ailleurs ou Echap le ferme, layouts/app) --}}
+        <div class="date-pick">
+            @if ($date['prev'])<a class="chip step" href="{{ $date['prev'] }}" title="{{ $Cal['prev_day'] }}" aria-label="{{ $Cal['prev_day'] }}"><span class="ico-back">{!! $chevron !!}</span></a>@endif
+            <details class="drop cal" id="cal">
+                <summary @class(['chip', 'cal-btn', 'on' => in_array($kind, ['day', 'range'], true)]) data-key="Alt+5" title="{{ $Cal['open'] }}" aria-label="{{ $Cal['open'] }}{{ $date['label'] ? ': '.$date['label'] : '' }}">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3.5" y="5" width="17" height="15.5" rx="2.5"/><path d="M3.5 9.5h17M8 3v4M16 3v4M8 13.5h2M14 13.5h2M8 17h2"/></svg>
+                    <span>{{ $date['label'] ?? $Cal['pick'] }}</span>
+                </summary>
+                <div class="cal-pop" role="dialog" aria-label="{{ $Cal['title'] }}">
+                    <div class="cal-top">
+                        <div class="cal-modes" role="group" aria-label="{{ $Cal['title'] }}">
+                            <button type="button" data-mode="day" aria-pressed="{{ $kind === 'range' ? 'false' : 'true' }}">{{ $Cal['modes']['day'] }}</button>
+                            <button type="button" data-mode="range" aria-pressed="{{ $kind === 'range' ? 'true' : 'false' }}">{{ $Cal['modes']['range'] }}</button>
+                        </div>
+                        <button type="button" class="cal-link" data-go="today">{{ $Cal['today'] }}</button>
+                    </div>
+                    <div class="cal-nav">
+                        <button type="button" class="cal-arrow" data-go="prev" title="{{ $Cal['prev_month'] }}" aria-label="{{ $Cal['prev_month'] }}"><span class="ico-back">{!! $chevron !!}</span></button>
+                        <strong class="cal-month" aria-live="polite"></strong>
+                        <button type="button" class="cal-arrow" data-go="next" title="{{ $Cal['next_month'] }}" aria-label="{{ $Cal['next_month'] }}"><span class="ico-fwd">{!! $chevron !!}</span></button>
+                    </div>
+                    <div class="cal-week" aria-hidden="true">
+                        @foreach ($Cal['weekdays'] as $w)<span @class(['fri' => $loop->last]) title="{{ $Cal['weekdays_long'][$loop->index] }}">{{ $w }}</span>@endforeach
+                    </div>
+                    <div class="cal-grid" role="grid" aria-busy="true"></div>
+                    <div class="cal-foot">
+                        <p class="cal-sum" aria-live="polite"></p>
+                        <span class="cal-legend" aria-hidden="true">{{ $Cal['less'] }}<i style="--heat: 10%"></i><i style="--heat: 22%"></i><i style="--heat: 34%"></i><i style="--heat: 46%"></i>{{ $Cal['more'] }}</span>
+                    </div>
+                    <nav class="cal-picks" aria-label="{{ $D['period'] }}">
+                        @foreach ($date['picks'] as $pick)
+                            <a href="{{ $pick['url'] }}" @class(['chip', 'on' => $pick['on']]) @if ($pick['on']) aria-current="true" @endif>{{ $pick['label'] }}</a>
+                        @endforeach
+                    </nav>
+                    <div class="cal-tip" role="tooltip" hidden></div>
+                </div>
+            </details>
+            @if ($date['next'])<a class="chip step" href="{{ $date['next'] }}" title="{{ $Cal['next_day'] }}" aria-label="{{ $Cal['next_day'] }}"><span class="ico-fwd">{!! $chevron !!}</span></a>@endif
+        </div>
+    </div>
 </div>
 
 @if ($outdated->isNotEmpty())
@@ -181,7 +557,7 @@
             <p class="label" id="hero-label">{{ $money ? $D['net_sales'] : $D['bons'] }}</p>
             @php($big = $n0($money ? $totals['amount'] : $totals['bons']))
             <p class="big fig" style="--chars: {{ max(5, mb_strlen($big)) }}">{{ $big }}</p>
-            <p class="compare trend {{ $t['class'] }}">@if ($t['arrow'])<span aria-hidden="true">{{ $t['arrow'] }}</span> @endif{{ $t['text'] }}@if ($trends[$metric] !== null) <span class="ctx">{{ $D['compare'][$period] }}</span>@endif</p>
+            <p class="compare trend {{ $t['class'] }}">@if ($t['arrow'])<span aria-hidden="true">{{ $t['arrow'] }}</span> @endif{{ $t['text'] }}@if ($trends[$metric] !== null) <span class="ctx">{{ $D['compare'][$kind] }}</span>@endif</p>
             @if ($money)<p class="help">{{ $D['net_sales_help'] }}</p>@endif
             @if ($peak && count($series) > 1)<p class="peak">{{ __('dashboard.peak', ['when' => $peak['tip']]) }}</p>@endif
         </div>
@@ -222,12 +598,12 @@
             @else
                 <div class="cash">
                     <div>
-                        <p class="label">{{ $C['now'] }}</p>
+                        <p class="label">{{ $cash['now'] ? $C['now'] : __('dashboard.cash.at_end', ['date' => $iso($cash['end'])]) }}</p>
                         {{-- le chiffre isole (.fig) dans un paragraphe de la langue de la page : du meme cote que son titre --}}
                         <p class="value"><span class="fig">{{ $n2($cash['total']) }}</span></p>
                         <p class="flows">
-                            <span>{{ $C['in_today'] }} <b class="fig">{{ $n2($cash['in_today']) }}</b></span>
-                            <span>{{ $C['out_today'] }} <b class="fig">{{ $n2($cash['out_today']) }}</b></span>
+                            <span>{{ $C['in_'.$cash['flow']] }} <b class="fig">{{ $n2($cash['in']) }}</b></span>
+                            <span>{{ $C['out_'.$cash['flow']] }} <b class="fig">{{ $n2($cash['out']) }}</b></span>
                         </p>
                         @if ($cash['branches']->count() === 1 && $cash['branches'][0]['last'])
                             <p class="sub">{{ __('dashboard.cash.last', ['when' => $iso($cash['branches'][0]['last'])]) }}</p>
@@ -238,8 +614,8 @@
                             <thead><tr>
                                 <th>{{ $D['branches_title'] }}</th>
                                 <th class="n">{{ $C['col_balance'] }}</th>
-                                <th class="n hide-sm">{{ $C['in_today'] }}</th>
-                                <th class="n hide-sm">{{ $C['out_today'] }}</th>
+                                <th class="n hide-sm">{{ $C['in_'.$cash['flow']] }}</th>
+                                <th class="n hide-sm">{{ $C['out_'.$cash['flow']] }}</th>
                             </tr></thead>
                             <tbody>
                             @foreach ($cash['branches'] as $b)
@@ -249,8 +625,8 @@
                                         @if ($b['last'])<span class="muted small">{{ __('dashboard.cash.last', ['when' => $iso($b['last'])]) }}</span>@endif
                                     </td>
                                     <td class="n"><span class="fig">{{ $n2($b['balance']) }}</span></td>
-                                    <td class="n hide-sm"><span class="num">{{ $n2($b['in_today']) }}</span></td>
-                                    <td class="n hide-sm"><span class="num">{{ $n2($b['out_today']) }}</span></td>
+                                    <td class="n hide-sm"><span class="num">{{ $n2($b['in']) }}</span></td>
+                                    <td class="n hide-sm"><span class="num">{{ $n2($b['out']) }}</span></td>
                                 </tr>
                             @endforeach
                             </tbody>
@@ -314,7 +690,7 @@
                 @if ($money)
                     <nav class="chips" aria-label="{{ $D['rank'] }}">
                         @foreach (App\Http\Controllers\DashboardController::RANKS as $r)
-                            <a href="{{ route('dashboard.index', array_filter(['period' => $period === '30' ? null : $period, 'rank' => $r === 'amount' ? null : $r])) }}"
+                            <a href="{{ route('dashboard.index', array_filter($here + ['rank' => $r === 'amount' ? null : $r])) }}"
                                @class(['chip', 'on' => $rank === $r]) @if ($rank === $r) aria-current="true" @endif>{{ $D['ranks'][$r] }}</a>
                         @endforeach
                     </nav>

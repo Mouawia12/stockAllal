@@ -26,6 +26,11 @@ final class SalesDashboard
     /** ?period= : aujourd'hui (compare a hier jusqu'a la meme heure), 7 ou 30 jours, 12 mois (par mois). */
     public const PERIODS = ['today', '7', '30', '12m'];
 
+    /** Des jours choisis dans le calendrier : au plus deux ans ; jusqu'a deux mois, une barre par jour, au-dela par mois. */
+    public const MAX_DAYS = 731;
+
+    private const DAILY_UP_TO = 62;
+
     public const TOP = 10;
 
     /** En stock et pas vendu depuis ce nombre de jours = dormant. */
@@ -48,13 +53,67 @@ final class SalesDashboard
     }
 
     /**
-     * La fenetre d'une periode et celle d'avant, pour la tendance. Aujourd'hui : hier jusqu'a la meme heure.
+     * La periode demandee : ?period= (PERIODS), ou ce qui est choisi dans le calendrier, un jour (?day=, "day:2026-11-03")
+     * ou des jours (?from=&to=, "range:2026-10-01:2026-10-15"). Aujourd'hui choisi = "today" (avec sa comparaison a la
+     * meme heure) ; des jours a venir sont coupes a aujourd'hui ; une date illisible = la periode demandee ou 30 jours.
+     *
+     * @param  array<string, mixed>  $query
+     */
+    public static function period(array $query, Carbon $now): string
+    {
+        $today = $now->toDateString();
+        $date = fn ($v) => is_string($v) && preg_match('/^(\d{4})-(\d{2})-(\d{2})$/', $v, $m) && checkdate((int) $m[2], (int) $m[3], (int) $m[1]) ? $v : null;
+        $from = $date($query['day'] ?? null) ?? $date($query['from'] ?? null);
+        $to = $date($query['day'] ?? null) ?? $date($query['to'] ?? null);
+        if ($from !== null && $to !== null) {
+            if ($from > $to) {
+                [$from, $to] = [$to, $from];
+            }
+            $to = min($to, $today);
+            if ($from <= $to && Carbon::parse($from)->diffInDays(Carbon::parse($to)) < self::MAX_DAYS) {
+                return match (true) {
+                    $from === $today => 'today',
+                    $from === $to => 'day:'.$from,
+                    default => 'range:'.$from.':'.$to,
+                };
+            }
+        }
+        $period = $query['period'] ?? null;
+
+        return in_array($period, self::PERIODS, true) ? $period : '30';
+    }
+
+    /** today, 7, 30, 12m, ou day / range pour des jours choisis dans le calendrier. */
+    public static function kind(string $period): string
+    {
+        return explode(':', $period)[0];
+    }
+
+    /**
+     * La fenetre d'une periode et celle d'avant, pour la tendance. Aujourd'hui : hier jusqu'a la meme heure ; un autre
+     * jour : la veille entiere ; des jours choisis : autant de jours juste avant.
      *
      * @return array{from: string, to: string, prev_from: string, prev_to: string, until: ?string, unit: string}
      */
     public static function window(string $period, Carbon $now): array
     {
         $today = $now->copy()->startOfDay();
+        $parts = explode(':', $period);
+        if ($parts[0] === 'day') {
+            $day = Carbon::parse($parts[1]);
+
+            return ['from' => $day->toDateString(), 'to' => $day->toDateString(),
+                'prev_from' => $day->copy()->subDay()->toDateString(), 'prev_to' => $day->copy()->subDay()->toDateString(),
+                'until' => null, 'unit' => 'hour'];
+        }
+        if ($parts[0] === 'range') {
+            [$from, $to] = [Carbon::parse($parts[1]), Carbon::parse($parts[2])];
+            $days = (int) $from->diffInDays($to) + 1;
+
+            return ['from' => $from->toDateString(), 'to' => $to->toDateString(),
+                'prev_from' => $from->copy()->subDays($days)->toDateString(), 'prev_to' => $from->copy()->subDay()->toDateString(),
+                'until' => null, 'unit' => $days <= self::DAILY_UP_TO ? 'day' : 'month'];
+        }
 
         return match ($period) {
             'today' => ['from' => $today->toDateString(), 'to' => $today->toDateString(),
@@ -137,7 +196,7 @@ final class SalesDashboard
     }
 
     /**
-     * Les ventes par heure (aujourd'hui), par jour ou par mois, chaque case de la fenetre presente (un jour sans
+     * Les ventes par heure (un jour), par jour ou par mois, chaque case de la fenetre presente (un jour sans
      * vente = 0, pas un trou dans la courbe).
      *
      * @return list<array{key: string, amount: float, bons: int}>
@@ -147,16 +206,20 @@ final class SalesDashboard
         if ($w['unit'] === 'hour') {
             $rows = $query->whereNotNull('time')->groupByRaw('SUBSTR(time, 1, 2)')
                 ->selectRaw('SUBSTR(time, 1, 2) as k, COUNT(*) as bons, SUM(amount) as amount')->get()->keyBy(fn ($r) => (int) $r->k);
-            // de 7 h (ou de la premiere vente) jusqu'a l'heure actuelle
+            // de 7 h (ou de la premiere vente) jusqu'a maintenant ; un jour passe : jusqu'a sa derniere vente (18 h sans vente)
             $first = min(7, (int) ($rows->keys()->min() ?? 7));
-            $keys = range($first, max($first, (int) $now->format('G'), (int) ($rows->keys()->max() ?? 0)));
+            $end = $w['until'] !== null ? (int) $now->format('G') : ($rows->isEmpty() ? 18 : 0);
+            $keys = range($first, max($first, $end, (int) ($rows->keys()->max() ?? 0)));
         } else {
+            $month = $w['unit'] === 'month';
             $rows = $query->groupBy('date')->selectRaw('date as k, COUNT(*) as bons, SUM(amount) as amount')->get()
-                ->groupBy(fn ($r) => substr((string) $r->k, 0, $w['unit'] === 'month' ? 7 : 10))
+                ->groupBy(fn ($r) => substr((string) $r->k, 0, $month ? 7 : 10))
                 ->map(fn ($g) => (object) ['bons' => $g->sum('bons'), 'amount' => $g->sum('amount')]);
             $keys = [];
-            for ($d = Carbon::parse($w['from']); $d->lte(Carbon::parse($w['to'])); $w['unit'] === 'month' ? $d->addMonth() : $d->addDay()) {
-                $keys[] = $w['unit'] === 'month' ? $d->format('Y-m') : $d->toDateString();
+            // par mois, du premier du mois : des jours choisis du 15 au 10 comptent aussi le dernier mois
+            $end = $month ? Carbon::parse($w['to'])->endOfMonth() : Carbon::parse($w['to']);
+            for ($d = $month ? Carbon::parse($w['from'])->startOfMonth() : Carbon::parse($w['from']); $d->lte($end); $month ? $d->addMonth() : $d->addDay()) {
+                $keys[] = $month ? $d->format('Y-m') : $d->toDateString();
             }
         }
 
@@ -305,6 +368,36 @@ final class SalesDashboard
             ])->all();
 
         return ['per_branch' => $perBranch, 'items' => $items];
+    }
+
+    /**
+     * Les ventes de chaque jour de [from, to], pour le calendrier de "لوحة القيادة" : montant net et bons ; un jour sans
+     * vente n'y est pas. Gardees une minute, comme le reste.
+     *
+     * @param  list<int>  $ids
+     * @return array<string, array{amount: float, bons: int}>
+     */
+    public static function days(array $ids, string $from, string $to): array
+    {
+        sort($ids);
+
+        return Cache::remember('sales-days:'.implode(',', $ids).':'.$from.':'.$to, self::CACHE_SECONDS, fn () => Document::query()
+            ->where('kind', 'sale')->whereIn('branch_id', $ids)->whereBetween('date', [$from, $to])
+            ->groupBy('date')->selectRaw('date as d, COUNT(*) as bons, SUM(amount) as amount')->get()
+            ->mapWithKeys(fn ($r) => [substr((string) $r->d, 0, 10) => ['amount' => round((float) $r->amount, 2), 'bons' => (int) $r->bons]])
+            ->all());
+    }
+
+    /** Le premier jour de vente connu de ces branches (le calendrier ne remonte pas avant), null sans vente. */
+    public static function firstDay(array $ids): ?string
+    {
+        sort($ids);
+
+        return Cache::remember('sales-first-day:'.implode(',', $ids), self::CACHE_SECONDS, function () use ($ids) {
+            $first = Document::query()->where('kind', 'sale')->whereIn('branch_id', $ids)->min('date');
+
+            return $first === null ? null : substr((string) $first, 0, 10);
+        });
     }
 
     /** La tendance en %, null quand il n'y a rien a comparer. */

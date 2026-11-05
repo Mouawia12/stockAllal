@@ -100,11 +100,25 @@ class CashBoxTest extends TestCase
         $boss =User::factory()->inBranch($oran)->withPermissions(['sales.view', 'cash.view'])->create();
 
         // 84 137 398,07 + 436 745 + 66 000 - 82 740 167,53 - 800 000 ; aujourd'hui 502 745 entres, 800 000 sortis
-        $html = $this->actingAs($boss)->get('/dashboard')->assertOk()->getContent();
-        foreach ([__('dashboard.cash.now'), '1 099 975,54', '502 745,00', '800 000,00',
+        $html = $this->actingAs($boss)->get('/dashboard?period=today')->assertOk()->getContent();
+        foreach ([__('dashboard.cash.now'), '1 099 975,54', __('dashboard.cash.in_today'), '502 745,00', '800 000,00',
             __('dashboard.cash.last', ['when' => "\u{2066}10:51\u{2069}"]), __('dashboard.cash.checked', ['time' => now()->diffForHumans()])] as $text) {
             $this->assertStringContainsString(e($text), $html, $text);
         }
+
+        // 30 jours : le meme solde, et ce qui est entre et sorti pendant ces 30 jours (pas la sortie du 23/06)
+        $html = $this->actingAs($boss)->get('/dashboard')->assertOk()->getContent();
+        foreach (['1 099 975,54', __('dashboard.cash.in_period'), '502 745,00', '83 540 167,53'] as $text) {
+            $this->assertStringContainsString(e($text), $html, $text);
+        }
+
+        // un jour passe, choisi dans le calendrier : la caisse a la fin de ce jour, comme ETAT_CAISSE3 de Gescomm
+        $html = $this->actingAs($boss)->get('/dashboard?day=2026-11-04')->assertOk()->getContent();
+        foreach ([__('dashboard.cash.at_end', ['date' => "\u{2066}04/11/2026\u{2069}"]), '1 397 230,54', __('dashboard.cash.out_day'), '82 740 167,53',
+            __('dashboard.cash.last', ['when' => "\u{2066}04/11 15:39\u{2069}"])] as $text) {
+            $this->assertStringContainsString(e($text), $html, $text);
+        }
+        $this->assertStringNotContainsString('1 099 975,54', $html);
 
         // une sortie de plus dans Gescomm : le solde suit (apres le cache de 60 s)
         $this->cash($token, 'cash_out', ['2026-11-05' => [
@@ -112,7 +126,23 @@ class CashBoxTest extends TestCase
             $this->line('2026-11-05', 190, '10:58:00', '99975.54', ['category' => 'MASARIFE HANOUT', 'expense' => 'O']),
         ]]);
         Cache::flush();
-        $this->actingAs($boss)->get('/dashboard')->assertOk()->assertSee('1 000 000,00')->assertSee('899 975,54');
+        $this->actingAs($boss)->get('/dashboard?period=today')->assertOk()->assertSee('1 000 000,00')->assertSee('899 975,54');
+    }
+
+    public function test_the_calendar_gives_the_cash_of_each_day_only_with_the_permission(): void
+    {
+        [, $oran] = $this->oran();
+        $boss = User::factory()->inBranch($oran)->withPermissions(['sales.view', 'cash.view'])->create();
+
+        $json = $this->actingAs($boss)->getJson('/dashboard/calendar?month=2026-11')->assertOk()->assertJson(['cash' => true]);
+        $days = collect($json->json('days'))->keyBy('date');
+        $this->assertEquals([0, 82740167.53], [$days['2026-11-04']['cash_in'], $days['2026-11-04']['cash_out']]);
+        $this->assertEquals([502745, 800000], [$days['2026-11-05']['cash_in'], $days['2026-11-05']['cash_out']]);
+
+        $seller = User::factory()->inBranch($oran)->withPermissions(['sales.view', 'prices.sale'])->create();
+        $json = $this->actingAs($seller)->getJson('/dashboard/calendar?month=2026-11')->assertOk()->assertJson(['cash' => false]);
+        $this->assertNull($json->json('days.4.cash_in'));
+        $this->assertStringNotContainsString('82740167', $json->getContent());
     }
 
     public function test_only_with_the_cash_permission(): void

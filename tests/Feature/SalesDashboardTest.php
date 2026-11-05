@@ -138,6 +138,74 @@ class SalesDashboardTest extends TestCase
         $this->assertSame(12, substr_count($bars, '<span '));
     }
 
+    public function test_a_day_or_days_chosen_in_the_calendar(): void
+    {
+        [, $oran] = $this->oran();
+        $boss = User::factory()->inBranch($oran)->withPermissions(['sales.view', 'prices.sale'])->create();
+
+        // hier (le 03/11) : 500 + 9 000, heure par heure, rien la veille pour comparer ; la veille et le lendemain (aujourd'hui)
+        $html = $this->actingAs($boss)->get('/dashboard?day=2026-11-03')->assertOk()->getContent();
+        $label = Carbon::parse('2026-11-03')->locale('ar')->translatedFormat('l').' 03/11';
+        foreach (['9 500', __('dashboard.no_compare'), __('dashboard.chart.amount.hour'), $label,
+            route('dashboard.index', ['day' => '2026-11-02']), route('dashboard.index', ['period' => 'today']),
+            route('dashboard.index', ['day' => '2026-11-03', 'rank' => 'qty'])] as $text) {
+            $this->assertStringContainsString(e($text), $html, $text);
+        }
+        $this->assertStringNotContainsString('11 250', $html);
+        // de 7 h a 18 h (la derniere vente) : la courbe d'un jour passe s'arrete a sa derniere vente
+        $bars = substr($html, strpos($html, 'class="bars"'), strpos($html, 'class="axis"') - strpos($html, 'class="bars"'));
+        $this->assertSame(12, substr_count($bars, '<span '));
+
+        // aujourd'hui choisi = "اليوم", avec sa comparaison a la meme heure ; un jour a venir = 30 jours
+        $this->actingAs($boss)->get('/dashboard?day=2026-11-04')->assertOk()->assertSee('1 750')->assertSee(__('dashboard.compare.today'));
+        $this->actingAs($boss)->get('/dashboard?day=2026-12-01')->assertOk()->assertSee('11 250');
+
+        // des jours (dans n'importe quel ordre) : 7 777 le 25/09 + 9 500 le 03/11, un jour par barre
+        $html = $this->actingAs($boss)->get('/dashboard?from=2026-11-03&to=2026-09-25')->assertOk()->getContent();
+        foreach (['17 277', '25/09 – 03/11', __('dashboard.chart.amount.day')] as $text) {
+            $this->assertStringContainsString(e($text), $html, $text);
+        }
+        // plus de deux mois : une barre par mois, le mois de depart compris
+        $html = $this->actingAs($boss)->get('/dashboard?from=2026-01-15&to=2026-11-04')->assertOk()->getContent();
+        $bars = substr($html, strpos($html, 'class="bars"'), strpos($html, 'class="axis"') - strpos($html, 'class="bars"'));
+        $this->assertSame(11, substr_count($bars, '<span '));
+    }
+
+    public function test_the_calendar_gives_each_day_of_a_month(): void
+    {
+        [, $oran] = $this->oran();
+        [$setifToken] = $this->register('Setif');
+        $this->sales($setifToken, ['2026-11-03' => [$this->bon(70777, '11:00:00', 'C001', [['code' => 'SET9', 'qty' => 3, 'price' => 3333, 'total' => 9999, 'position' => 1]])]]);
+        $boss = User::factory()->inBranch($oran)->withPermissions(['sales.view', 'prices.sale'])->create();
+
+        // novembre 2026 : le 1er est un dimanche (la semaine commence le samedi), aujourd'hui le 4, la suite a venir
+        $json = $this->actingAs($boss)->getJson('/dashboard/calendar?month=2026-11')->assertOk()
+            ->assertJson(['month' => '2026-11', 'today' => '2026-11-04', 'offset' => 1, 'prev' => '2026-10', 'next' => null, 'money' => true, 'cash' => false]);
+        $days = collect($json->json('days'))->keyBy('date');
+        $this->assertCount(30, $days);
+        $this->assertEquals([9500, 2], [$days['2026-11-03']['amount'], $days['2026-11-03']['bons']]);
+        $this->assertEquals([1750, 2], [$days['2026-11-04']['amount'], $days['2026-11-04']['bons']]);
+        $this->assertSame([false, true], [$days['2026-11-04']['future'], $days['2026-11-05']['future']]);
+        $this->assertSame(Carbon::parse('2026-11-03')->locale('ar')->translatedFormat('l j F Y'), $days['2026-11-03']['label']);
+        // Setif : une branche dont il voit le stock, pas les ventes
+        $this->assertStringNotContainsString('9999', $json->getContent());
+
+        // pas avant le mois de la premiere vente (juillet), pas apres ce mois-ci
+        $this->actingAs($boss)->getJson('/dashboard/calendar?month=2026-07')->assertOk()->assertJson(['prev' => null, 'next' => '2026-08']);
+        $this->actingAs($boss)->getJson('/dashboard/calendar?month=2027-01')->assertOk()->assertJson(['month' => '2026-11']);
+        $this->actingAs($boss)->getJson('/dashboard/calendar?month=nope')->assertOk()->assertJson(['month' => '2026-11']);
+
+        // sans "أسعار البيع" : les bons, jamais les montants
+        $karim = User::factory()->inBranch($oran)->withPermissions(['sales.view'])->create();
+        $json = $this->actingAs($karim)->getJson('/dashboard/calendar?month=2026-11')->assertOk()->assertJson(['money' => false]);
+        $this->assertNull($json->json('days.2.amount'));
+        $this->assertSame(2, $json->json('days.2.bons'));
+        $this->assertStringNotContainsString('9500', $json->getContent());
+
+        // sans "المبيعات" : rien
+        $this->actingAs(User::factory()->inBranch($oran)->withPermissions([])->create())->getJson('/dashboard/calendar')->assertForbidden();
+    }
+
     public function test_without_price_permissions_it_counts_bons_and_quantities_only(): void
     {
         [, $oran] = $this->oran();
