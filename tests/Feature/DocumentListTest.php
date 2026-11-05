@@ -153,6 +153,36 @@ class DocumentListTest extends TestCase
         $this->assertStringContainsString('<dd class="num">200,00</dd>', $html);
     }
 
+    public function test_f2_previews_a_bon_with_the_same_rules_as_its_page(): void
+    {
+        [$token, $oran] = $this->register('Oran');
+        [$setifToken] = $this->register('Setif');
+        $this->history($token);
+        $this->withToken($setifToken)->postJson('/api/agent/records', ['dataset' => 'sales', 'groups' => [now()->toDateString() => [
+            ['key' => '9001', 'digest' => 9, 'number' => 9001, 'amount' => 100, 'lines' => [['code' => '820Z', 'qty' => 1, 'total' => 100]]],
+        ]]])->assertOk();
+        $karim = User::factory()->inBranch($oran)->withPermissions(['sales.view', 'prices.sale'])->create();
+
+        // la liste a l'apercu et sa touche
+        $html = $this->actingAs($karim)->get('/sales')->assertOk()->getContent();
+        $this->assertStringContainsString('id="bon-bg"', $html);
+        $this->assertStringContainsString(e(__('documents.keys.preview')), $html);
+
+        // ?partial=1 : le bon seul (sans la page autour), sans cartes, avec ses lignes et ses montants
+        $html = $this->actingAs($karim)->get(route('sales.show', $this->bon(184)).'?partial=1')->assertOk()->getContent();
+        $this->assertStringNotContainsString('<html', $html);
+        $this->assertStringNotContainsString('class="card', $html);
+        foreach (['bon-number', '>184<', 'Ets Benali', 'GONE1', '1 100,00', '550,00'] as $text) {
+            $this->assertStringContainsString($text, $html, $text);
+        }
+
+        // memes regles que la page : sans prix, pas de montant ; un bon d'une autre branche n'existe pas
+        $noPrices = User::factory()->inBranch($oran)->withPermissions(['sales.view'])->create();
+        $html = $this->actingAs($noPrices)->get(route('sales.show', $this->bon(184)).'?partial=1')->assertOk()->getContent();
+        $this->assertStringNotContainsString('1 100,00', $html);
+        $this->actingAs($karim)->get(route('sales.show', $this->bon(9001)).'?partial=1')->assertNotFound();
+    }
+
     public function test_the_owner_sees_each_branch_in_its_colour_and_an_old_agent_is_named(): void
     {
         [$oranToken, $oran] = $this->register('Oran');

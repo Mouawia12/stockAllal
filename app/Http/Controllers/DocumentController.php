@@ -16,9 +16,9 @@ use Illuminate\View\View;
 
 /**
  * Bons de vente et d'achat venus de Gescomm (agent 1.0.7), comme sa "Consultation des Ventes" : la liste des bons,
- * jour par jour, puis un bon et ses lignes. sales.view, et seulement les branches dont le compte voit les ventes
- * (BranchScope::salesIds) : un bon d'une autre branche n'existe pas (404). Montants de vente : prices.sale ;
- * montants d'achat et marge : prices.buy.
+ * jour par jour, puis un bon et ses lignes (sa page, ou seul pour l'apercu F2 de la liste). sales.view, et seulement
+ * les branches dont le compte voit les ventes (BranchScope::salesIds) : un bon d'une autre branche n'existe pas (404).
+ * Montants de vente : prices.sale ; montants d'achat et marge : prices.buy.
  */
 class DocumentController extends Controller
 {
@@ -150,7 +150,7 @@ class DocumentController extends Controller
             ->where('kind', self::PARTNER_KIND[$kind])->where('code', $document->partner_code)->first();
         $costed = $lines->whereNotNull('cost');
 
-        return view('documents.show', [
+        $data = [
             'kind' => $kind,
             'route' => self::ROUTES[$kind],
             'document' => $document,
@@ -182,7 +182,10 @@ class DocumentController extends Controller
             'margin' => $kind === 'sale' && $buy && $costed->isNotEmpty()
                 ? round($costed->sum(fn (DocumentLine $l) => (float) $l->total - (float) $l->qty * (float) $l->cost), 2) : null,
             'marginPartial' => $costed->count() < $lines->count(),
-        ]);
+        ];
+
+        // ?partial=1 : le bon seul, pour l'apercu de la liste (F2)
+        return $request->boolean('partial') ? view('documents._bon', $data + ['inModal' => true]) : view('documents.show', $data);
     }
 
     /** Bons d'une sorte dans ces branches, la periode, la recherche (numero, code ou nom du client) et le filtre. */
