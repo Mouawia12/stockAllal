@@ -36,6 +36,8 @@ return [
         'ai_key_removed' => 'حذف مفتاح :subject',
     ],
     'fields' => [
+        'print_header' => 'ترويسة الطباعة',
+        'print_footer' => 'أسفل الطباعة',
         'name' => 'الاسم',
         'username' => 'اسم المستخدم',
         'role' => 'نوع الحساب',

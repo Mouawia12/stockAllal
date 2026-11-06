@@ -25,6 +25,9 @@
     .chip.on { border-color: var(--accent); background: var(--accent-soft); color: var(--accent); font-weight: 600; }
     .chip.on .n { background: var(--card); color: var(--accent); }
     .note { margin: 0 0 12px; }
+    .print-drop { margin-inline-start: auto; }
+    .print-drop .drop-menu a { padding: 8px 10px; border-radius: 8px; color: var(--text); }
+    .print-drop .drop-menu a:hover, .print-drop .drop-menu a:focus-visible { background: var(--row-hover); }
     .people th.n, .people td.n { text-align: end; white-space: nowrap; }
     a.who { color: var(--text); font-weight: 600; }
     a.who:hover { color: var(--accent); text-decoration: underline; text-underline-offset: 3px; }
@@ -42,6 +45,7 @@
     @include('partials.key', ['keys' => ['↑', '↓'], 'label' => __('common.keys.move')])
     @include('partials.key', ['keys' => [__('common.keys.enter')], 'label' => $P['keys']['open'][$kind]])
     @include('partials.key', ['keys' => ['Alt', '1…3'], 'label' => $P['period']])
+    @include('partials.key', ['keys' => ['Alt', 'P'], 'run' => 'Alt+P', 'label' => __('print.print')])
 @endpush
 
 @section('content')
@@ -67,6 +71,13 @@
                @class(['chip', 'on' => $filter === $f]) @if ($filter === $f) aria-current="true" @endif>{{ $P['filters'][$kind][$f] }} <span class="n">{{ number_format($counts[$f], 0, ',', ' ') }}</span></a>
         @endforeach
     </nav>
+    <details class="drop print-drop">
+        <summary class="btn print-btn" data-key="Alt+P" title="{{ __('print.print') }} (Alt+P)">@include('partials.app-icon', ['name' => 'print']){{ __('print.print') }}</summary>
+        <div class="drop-menu">
+            <a href="{{ route("{$route}.print", array_filter(['q' => $q, 'period' => $period, 'f' => $filter === 'all' ? null : $filter])) }}" target="_blank">{{ __("print.partners.menu_list.{$kind}") }}</a>
+            <a href="{{ route("{$route}.print-payments") }}" target="_blank">{{ __("print.partners.menu_payments.{$kind}") }}</a>
+        </div>
+    </details>
 </div>
 
 @if ($outdated->isNotEmpty())

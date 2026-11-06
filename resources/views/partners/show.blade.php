@@ -33,6 +33,10 @@
     .crumbs { display: flex; align-items: center; gap: 8px; margin: 0 0 14px; color: var(--muted); font-size: 14px; }
     .crumbs a { color: var(--muted); }
     .crumbs a:hover { color: var(--accent); }
+    .print-drop { margin-inline-start: auto; }
+    .print-drop summary, .crumbs .print-drop a { color: var(--text); }
+    .print-drop .drop-menu a { padding: 8px 10px; border-radius: 8px; }
+    .print-drop .drop-menu a:hover, .print-drop .drop-menu a:focus-visible { background: var(--row-hover); color: var(--text); }
     .who-head { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.2fr); gap: 16px; margin-bottom: 16px; }
     .who-id { display: flex; flex-direction: column; gap: 6px; }
     .who-kind { margin: 0; color: var(--muted); font-weight: 600; }
@@ -75,6 +79,7 @@
 @push('keys')
     @include('partials.key', ['keys' => [__('common.keys.esc')], 'run' => 'Escape', 'label' => __('common.keys.back')])
     @include('partials.key', ['keys' => ['Alt', '1…4'], 'label' => $P['period']])
+    @include('partials.key', ['keys' => ['Alt', 'P'], 'run' => 'Alt+P', 'label' => __('print.print')])
 @endpush
 
 @section('content')
@@ -83,6 +88,16 @@
     <a href="{{ route("{$route}.index") }}" data-key="Escape" data-back>{{ $P['title'][$kind] }}</a>
     <span aria-hidden="true">/</span>
     <bdi>{{ $partner->name ?? $partner->code }}</bdi>
+    @php($printPeriod = $period === 'all' ? null : $period)
+    <details class="drop print-drop">
+        <summary class="btn print-btn" data-key="Alt+P" title="{{ __('print.print') }} (Alt+P)">@include('partials.app-icon', ['name' => 'print']){{ __('print.print') }}</summary>
+        <div class="drop-menu">
+            <a href="{{ route("{$route}.print-card", array_filter(['partner' => $partner->id, 'period' => $printPeriod])) }}" target="_blank">{{ __("print.statement.title.{$kind}") }}</a>
+            <a href="{{ route("{$route}.print-card", array_filter(['partner' => $partner->id, 'period' => $printPeriod, 'show' => 'payments'])) }}" target="_blank">{{ __("print.statement.title_payments.{$kind}") }}</a>
+            <a href="{{ route("{$route}.print-card", array_filter(['partner' => $partner->id, 'period' => $printPeriod, 'show' => 'bons'])) }}" target="_blank">{{ __("print.statement.title_bons.{$kind}") }}</a>
+            <a href="{{ route("{$route}.print-card", array_filter(['partner' => $partner->id, 'period' => $printPeriod, 'show' => 'items'])) }}" target="_blank">{{ __("print.statement.title_items.{$kind}") }}</a>
+        </div>
+    </details>
 </nav>
 
 <div class="who-head">

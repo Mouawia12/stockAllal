@@ -10,7 +10,7 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 
 // is_main et mode hors Fillable : is_main ne change que par BranchController::main (une seule branche principale),
 // mode seulement par l'approbation d'une branche (docs/roadmap.md)
-#[Fillable(['name', 'hostname', 'token_hash', 'active', 'agent_version', 'last_seen_at', 'last_sync_at', 'db_file_mtime', 'items_count'])]
+#[Fillable(['name', 'hostname', 'token_hash', 'active', 'agent_version', 'last_seen_at', 'last_sync_at', 'db_file_mtime', 'items_count', 'print_header', 'print_footer'])]
 #[Hidden(['token_hash'])]
 class Branch extends Model
 {
@@ -91,6 +91,24 @@ class Branch extends Model
     {
         return $this->agent_version !== null
             && version_compare($this->agent_version, self::AGENT_FEATURES[$feature], '>=');
+    }
+
+    /** @return list<string> les lignes d'en-tete de ses impressions (la premiere = le nom de la societe), sinon le nom de la branche */
+    public function printHeaderLines(): array
+    {
+        return self::textLines($this->print_header) ?: [$this->name];
+    }
+
+    /** @return list<string> */
+    public function printFooterLines(): array
+    {
+        return self::textLines($this->print_footer);
+    }
+
+    /** @return list<string> */
+    private static function textLines(?string $text): array
+    {
+        return array_values(array_filter(array_map('trim', preg_split('/\R/u', (string) $text) ?: []), fn (string $line) => $line !== ''));
     }
 
     public function hue(): int

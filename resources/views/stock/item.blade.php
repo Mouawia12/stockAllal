@@ -181,6 +181,7 @@
                 @can('merge.manage')
                     <a class="btn" href="{{ route('merge.index', ['q' => $code]) }}">{{ __('common.nav.merge') }}</a>
                 @endcan
+                @include('partials.print-button', ['href' => route('stock.print-item', array_filter(['code' => $code, 'period' => isset($activity['period']) && $activity['period'] !== 'all' ? $activity['period'] : null]))])
             </div>
             <p class="muted small" id="refresh-note" aria-live="polite"></p>
         </aside>

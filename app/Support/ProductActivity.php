@@ -27,9 +27,11 @@ final class ProductActivity
     /**
      * @param  list<string>  $codes  codes de l'article (ProductGroup::codesOf)
      * @param  Collection<int, Branch>  $shown  branches affichees (BranchScope)
+     * @param  int  $limit  lignes de chaque liste (plus sur une impression)
+     * @param  array{from: ?string, to: ?string}|null  $window  une periode choisie, a la place de $period (impression)
      * @return array<string, mixed>|null null : le compte ne voit pas les ventes
      */
-    public static function for(User $user, array $codes, Collection $shown, string $period): ?array
+    public static function for(User $user, array $codes, Collection $shown, string $period, int $limit = self::LIST_LIMIT, ?array $window = null): ?array
     {
         if (! $user->can('sales.view')) {
             return null;
@@ -40,7 +42,8 @@ final class ProductActivity
         $ready = $branches->filter(fn (Branch $b) => $b->agentSupports('documents'))->values();
         $period = array_key_exists($period, self::PERIODS) ? $period : 'all';
         $days = self::PERIODS[$period];
-        $since = $days === null ? null : now()->subDays($days - 1)->toDateString();
+        $since = $window === null ? ($days === null ? null : now()->subDays($days - 1)->toDateString()) : $window['from'];
+        $until = $window['to'] ?? null;
         $sale = $user->can('prices.sale');
         $buy = $user->can('prices.buy');
         $ids = $ready->pluck('id')->all();
@@ -49,6 +52,7 @@ final class ProductActivity
         $stats = DocumentLine::query()
             ->whereIn('code_key', $codes)->whereIn('branch_id', $ids)
             ->when($since, fn ($q) => $q->where('date', '>=', $since))
+            ->when($until, fn ($q) => $q->where('date', '<=', $until))
             ->groupBy('branch_id', 'kind')
             ->selectRaw('branch_id, kind, COUNT(*) as line_count,
                 SUM(CASE WHEN qty > 0 THEN qty ELSE 0 END) as out_qty,
@@ -99,8 +103,8 @@ final class ProductActivity
             'purchase' => $sum($stats, 'purchase'),
             'per_branch' => $perBranch,
             'lists' => [
-                'sale' => self::lines('sale', $codes, $ids, $since, $names, $sale),
-                'purchase' => self::lines('purchase', $codes, $ids, $since, $names, $buy),
+                'sale' => self::lines('sale', $codes, $ids, $since, $until, $names, $sale, $limit),
+                'purchase' => self::lines('purchase', $codes, $ids, $since, $until, $names, $buy, $limit),
             ],
             'show_sale' => $sale,
             'show_buy' => $buy,
@@ -109,7 +113,7 @@ final class ProductActivity
     }
 
     /** Les dernieres lignes, du plus recent au plus ancien, avec le bon et le nom du client ou du fournisseur. */
-    private static function lines(string $kind, array $codes, array $ids, ?string $since, Collection $names, bool $money): Collection
+    private static function lines(string $kind, array $codes, array $ids, ?string $since, ?string $until, Collection $names, bool $money, int $limit): Collection
     {
         return DocumentLine::query()
             ->join('documents', 'documents.id', '=', 'document_lines.document_id')
@@ -120,8 +124,9 @@ final class ProductActivity
             ->whereIn('document_lines.branch_id', $ids)
             ->where('document_lines.kind', $kind)
             ->when($since, fn ($q) => $q->where('document_lines.date', '>=', $since))
+            ->when($until, fn ($q) => $q->where('document_lines.date', '<=', $until))
             ->orderByDesc('document_lines.date')->orderByDesc('documents.time')->orderByDesc('documents.number')
-            ->limit(self::LIST_LIMIT)
+            ->limit($limit)
             ->get(['document_lines.*', 'documents.number', 'documents.time', 'documents.partner_code', 'partners.name as partner_name', 'partners.id as partner_id'])
             ->map(fn (DocumentLine $line) => [
                 'date' => $line->date?->format('d/m/Y'),

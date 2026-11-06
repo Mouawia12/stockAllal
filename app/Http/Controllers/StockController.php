@@ -7,6 +7,7 @@ use App\Models\BranchStock;
 use App\Models\ProductGroup;
 use App\Models\RefreshJob;
 use App\Support\BranchScope;
+use App\Support\PrintPeriod;
 use App\Support\ProductActivity;
 use App\Support\StockState;
 use Illuminate\Http\JsonResponse;
@@ -18,6 +19,15 @@ use Illuminate\View\View;
 class StockController extends Controller
 {
     private const MAX_RESULTS = 100;
+
+    /** Une impression : tout le catalogue affiche, jusqu'a cette limite (annoncee sur la page au-dela). */
+    private const PRINT_LIMIT = 20000;
+
+    /** Lignes de ventes et d'achats de la fiche de stock imprimee. */
+    private const PRINT_ITEM_LINES = 1000;
+
+    /** Au-dela, l'etat du stock imprime ne montre que le total : les colonnes ne tiendraient plus sur la feuille. */
+    private const PRINT_BRANCH_COLUMNS = 8;
 
     /** Filtres de la recherche (?f=), sur le total de l'article dans les branches affichees ; couleurs : App\Support\StockState. */
     public const FILTERS = ['all', 'available', 'zero', 'negative'];
@@ -57,6 +67,56 @@ class StockController extends Controller
             'scope' => BranchScope::selected($request),
             'activity' => $data['designation'] === null ? null
                 : ProductActivity::for($request->user(), $data['codes'], $shown, (string) $request->query('period', 'all')),
+        ]);
+    }
+
+    /**
+     * L'etat du stock sur papier : tout ce que la recherche et le filtre trouvent (sans mot : tout le catalogue affiche),
+     * le stock de chaque branche et les prix que le compte peut voir. ?mode=count : la fiche d'inventaire, sans prix, avec
+     * une colonne vide pour ce qui est compte.
+     */
+    public function printList(Request $request): View
+    {
+        $q = trim(mb_substr((string) $request->query('q', ''), 0, 60));
+        $terms = $this->terms($q);
+        $filter = in_array($request->query('f'), self::FILTERS, true) ? $request->query('f') : 'all';
+        $mode = $request->query('mode') === 'count' ? 'count' : 'list';
+        $sort = $request->query('sort') === 'name' ? 'name' : 'code';
+        $ids = BranchScope::ids($request);
+        $main = $this->priceBranch($request, $ids);
+        $visible = $mode === 'count' ? [] : $this->visiblePrices($request);
+        $found = $this->search($q, $terms, $main, $visible, $ids, $filter, self::PRINT_LIMIT);
+        $branches = Branch::where('active', true)->among($ids)->orderBy('name')->get();
+
+        return view('print.stock', [
+            'q' => $q,
+            'filter' => $filter,
+            'mode' => $mode,
+            'sort' => $sort,
+            'results' => $found['results']->sortBy(fn (object $r) => $sort === 'name' ? (string) $r->designation : $r->code, SORT_NATURAL | SORT_FLAG_CASE)->values(),
+            'matched' => $found['matched'],
+            'mainBranch' => $main,
+            'showSale' => $main !== null && in_array('price', $visible, true),
+            'showBuy' => $main !== null && in_array('price_buy', $visible, true),
+            'columns' => $mode === 'list' && $branches->count() > 1 && $branches->count() <= self::PRINT_BRANCH_COLUMNS ? $branches : collect(),
+            'letter' => $branches->count() === 1 ? $branches->first() : $branches->firstWhere('is_main', true),
+            'branchNames' => $branches->pluck('name'),
+        ]);
+    }
+
+    /** La fiche de stock d'un article sur papier : son stock dans chaque branche affichee, puis ses ventes et achats. */
+    public function printItem(Request $request): View
+    {
+        $data = $this->productData($request, (string) $request->query('code', ''), '');
+        // un article que le compte ne voit dans aucune branche affichee n'existe pas pour lui
+        abort_if($data['designation'] === null, 404);
+        $shown = Branch::where('active', true)->among(BranchScope::ids($request))->orderBy('name')->get();
+        $window = PrintPeriod::read($request, ProductActivity::PERIODS, 'all');
+
+        return view('print.item', $data + [
+            'window' => $window,
+            'letter' => $shown->count() === 1 ? $shown->first() : $shown->firstWhere('is_main', true),
+            'activity' => ProductActivity::for($request->user(), $data['codes'], $shown, 'all', self::PRINT_ITEM_LINES, $window),
         ]);
     }
 
@@ -403,6 +463,9 @@ class StockController extends Controller
                 'designation' => $group->sortByDesc('stock')->first()?->designation,
                 'total' => $unit['total'],
                 'branches' => $group->pluck('branch_id')->unique()->count(),
+                // le stock de chaque branche et l'unite : pour l'impression (la page et la barre Ctrl+K ne les montrent pas)
+                'by_branch' => $group->groupBy('branch_id')->map(fn (Collection $list) => round((float) $list->sum('stock'), 2))->all(),
+                'unit' => $group->first()?->unit,
                 // prix de la branche de reference : detail (تجزئة) et gros (جملة) avec "prices.sale", achat avec "prices.buy"
                 'price' => $sale ? $mainRow?->price : null,
                 'wholesale' => $sale ? $mainRow?->price_wholesale : null,

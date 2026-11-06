@@ -9,6 +9,9 @@
                 {{ __("stock.filters.{$f}") }}<span class="n">{{ number_format($counts[$f], 0, ',', ' ') }}</span>
             </a>
         @endforeach
+        @unless ($merge)
+            @include('partials.print-button', ['href' => route('stock.print', array_filter(['q' => $q, 'f' => $filter === 'all' ? null : $filter]))])
+        @endunless
     </div>
 @endif
 @if ($q === '' && $filter === 'all')

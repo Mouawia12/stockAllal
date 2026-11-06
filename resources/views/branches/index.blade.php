@@ -40,6 +40,8 @@
     .row-menu .drop-menu { min-width: 210px; }
     .row-menu form { margin: 0; }
     .row-menu .drop-menu button { display: flex; align-items: center; gap: 10px; width: 100%; padding: 8px 10px; border: 0; border-radius: 8px; background: none; color: var(--text); text-align: start; white-space: nowrap; }
+    .row-menu .drop-menu a { display: flex; align-items: center; gap: 10px; width: 100%; padding: 8px 10px; border-radius: 8px; color: var(--text); text-align: start; font-size: 14px; }
+    .row-menu .drop-menu a:hover, .row-menu .drop-menu a:focus-visible { background: var(--row-hover); }
     .row-menu .drop-menu button:hover, .row-menu .drop-menu button:focus-visible { background: var(--row-hover); }
     .row-menu .drop-menu button.danger, .row-menu .drop-menu button.danger svg { color: var(--bad); }
     .row-menu .drop-menu svg { width: 17px; height: 17px; flex: none; color: var(--muted); }
@@ -209,6 +211,7 @@
                                         {{ $b->is_main ? __('branches.unset_main') : __('branches.set_main') }}
                                     </button>
                                 </form>
+                                <a href="{{ route('branches.print-header', $b) }}">@include('partials.app-icon', ['name' => 'print']){{ __('print.header.menu') }}</a>
                                 {{-- reinstallation de son agent : meme branche, nouveau jeton (install_codes.for_branch_id) --}}
                                 <form method="post" action="{{ route('branches.install-code') }}">
                                     @csrf

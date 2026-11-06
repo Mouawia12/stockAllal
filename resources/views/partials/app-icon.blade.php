@@ -1,5 +1,9 @@
 {{-- Icones des applications (SVG plats, facon Odoo). $name = cle de config/apps.php, "grid" (lanceur) ou "logo". --}}
 @switch($name)
+    {{-- le bouton "طباعة" : une icone de bouton (currentColor), pas une application --}}
+    @case('print')
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7 9V3.5h10V9"/><path d="M7 17.5H4.5v-6A2.5 2.5 0 0 1 7 9h10a2.5 2.5 0 0 1 2.5 2.5v6H17"/><path d="M7 14.5h10v6H7z"/></svg>
+        @break
     {{-- لوحة القيادة : un cadran (le tableau de bord d'une voiture), aiguille vers le haut --}}
     @case('dashboard')
         <svg viewBox="0 0 48 48" aria-hidden="true">

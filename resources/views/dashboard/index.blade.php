@@ -32,6 +32,8 @@
 
 @push('head')
 <style>
+    /* sur le papier (Alt+P) : une carte du tableau de bord ne se coupe pas entre deux pages */
+    @media print { .card { break-inside: avoid; } }
     .dash-head { display: flex; align-items: flex-end; justify-content: space-between; gap: 12px 20px; flex-wrap: wrap; margin-bottom: 16px; }
     .dash-head h1 { margin: 0; font-size: 24px; line-height: 1.2; }
     .dash-head .sub { margin: 4px 0 0; color: var(--muted); font-size: 13.5px; display: flex; gap: 6px 14px; flex-wrap: wrap; }
@@ -494,6 +496,7 @@
         </p>
     </div>
     <div class="periods">
+        <button type="button" class="btn print-btn" data-key="Alt+P" title="{{ __('print.print') }} (Alt+P)" onclick="window.print()">@include('partials.app-icon', ['name' => 'print']){{ __('print.print') }}</button>
         <nav class="chips" aria-label="{{ $D['period'] }}">
             @foreach (App\Support\SalesDashboard::PERIODS as $p)
                 <a href="{{ route('dashboard.index', array_filter(['period' => $p === '30' ? null : $p, 'rank' => $rank === 'qty' && $money ? 'qty' : null])) }}" data-key="Alt+{{ $loop->iteration }}"
@@ -591,6 +594,9 @@
         <section class="card" aria-labelledby="cash-title">
             <div class="card-head">
                 <div><h2 id="cash-title">{{ $C['title'] }}</h2><p class="help">{{ $C['help'] }}</p></div>
+                @if ($cash['branches']->isNotEmpty())
+                    <a class="btn print-btn" href="{{ route('cash.print', ['from' => $window['from'], 'to' => $window['to']]) }}" target="_blank" title="{{ __('print.cash.button') }}">@include('partials.app-icon', ['name' => 'print']){{ __('print.cash.button') }}</a>
+                @endif
                 @if ($cash['checked_at'])<p class="muted small" title="{{ $cash['checked_at']->format('d/m/Y H:i') }}">{{ __('dashboard.cash.checked', ['time' => $cash['checked_at']->diffForHumans()]) }}</p>@endif
             </div>
             @if ($cash['branches']->isEmpty())

@@ -36,6 +36,8 @@ return [
         'ai_key_removed' => 'a supprimé la clé :subject',
     ],
     'fields' => [
+        'print_header' => 'En-tête d’impression',
+        'print_footer' => 'Pied d’impression',
         'name' => 'Nom',
         'username' => 'Nom d\'utilisateur',
         'role' => 'Type de compte',

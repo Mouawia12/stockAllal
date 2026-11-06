@@ -15,11 +15,13 @@
     .crumbs { display: flex; align-items: center; gap: 8px; margin: 0 0 14px; color: var(--muted); font-size: 14px; }
     .crumbs a { color: var(--muted); }
     .crumbs a:hover { color: var(--accent); }
+    .crumbs a.print-btn { margin-inline-start: auto; color: var(--text); }
 </style>
 @endpush
 
 @push('keys')
     @include('partials.key', ['keys' => [__('common.keys.esc')], 'run' => 'Escape', 'label' => __('common.keys.back')])
+    @include('partials.key', ['keys' => ['Alt', 'P'], 'run' => 'Alt+P', 'label' => __('print.print')])
 @endpush
 
 @section('content')
@@ -28,6 +30,7 @@
     <a href="{{ route("{$route}.index") }}" data-key="Escape" data-back>{{ $D['title'][$kind] }}</a>
     <span aria-hidden="true">/</span>
     <span class="num">{{ $document->number }}</span>
+    @include('partials.print-button', ['href' => route("{$route}.print-bon", ['document' => $document, 'auto' => 1]), 'label' => __('print.button_bon')])
 </nav>
 
 @include('documents._bon')

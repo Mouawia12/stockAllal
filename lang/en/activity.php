@@ -36,6 +36,8 @@ return [
         'ai_key_removed' => 'removed the :subject key',
     ],
     'fields' => [
+        'print_header' => 'Print header',
+        'print_footer' => 'Print footer',
         'name' => 'Name',
         'username' => 'Username',
         'role' => 'Account type',

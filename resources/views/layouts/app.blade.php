@@ -83,6 +83,16 @@
         .pill.bad { background: var(--bad-bg); color: var(--bad); }
         .flash { padding: 10px 14px; border-radius: 8px; margin-bottom: 14px; background: var(--ok-bg); color: var(--ok); }
         .errors { padding: 10px 14px; border-radius: 8px; margin-bottom: 14px; background: var(--bad-bg); color: var(--bad); }
+        .print-btn { display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; }
+        .print-btn svg { width: 17px; height: 17px; flex: none; }
+        /* Ctrl+P sur n'importe quelle page : le contenu seul (les documents ont leur propre page, layouts/print) */
+        @media print {
+            header, .print-btn, .print-drop, .noprint, .modal-bg, .cal, .date-pick, form.search, .live-hint { display: none !important; }
+            * { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+            body { background: #fff; }
+            main { max-width: none; padding: 0; }
+            .card { border-color: #bbb; overflow: visible; }
+        }
         @media (max-width: 700px) {
             .hide-sm { display: none; }
             td, th { padding: 7px 6px; }

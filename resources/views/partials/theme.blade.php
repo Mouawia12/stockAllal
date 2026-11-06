@@ -19,7 +19,8 @@
         /* couleur de chaque branche (Branch::HUES) : hsl(--bh saturation clarte) ; fond, fond au survol, pastille */
         --tint-s: 70%; --tint-l: 95.5%; --tint-hover-l: 91.5%; --tint-dot-l: 52%;
     }
-    @media (prefers-color-scheme: dark) {
+    /* "screen" : une page imprimee (Ctrl+P) reste en clair, meme en mode nuit */
+    @media screen and (prefers-color-scheme: dark) {
         :root:not([data-theme="light"]) {
             color-scheme: dark;
             --bg: #10161b; --card: #182027; --text: #e3e9ee; --muted: #8f9ca8; --border: #27323b;
@@ -33,17 +34,19 @@
             --tint-s: 18%; --tint-l: 16%; --tint-hover-l: 19.5%; --tint-dot-l: 62%;
         }
     }
-    :root[data-theme="dark"] {
-        color-scheme: dark;
-        --bg: #10161b; --card: #182027; --text: #e3e9ee; --muted: #8f9ca8; --border: #27323b;
-        --accent: #5bb8cf; --on-accent: #062029; --row-hover: #1f2931; --accent-soft: #15303a;
-        --tile: #1f2931; --shadow: 0 1px 2px rgba(0, 0, 0, .35), 0 8px 22px rgba(0, 0, 0, .3);
-        --ok: #4cc27a; --warn: #e0b13a; --bad: #f2735f; --ok-bg: #11301e; --warn-bg: #3a2e08; --bad-bg: #3d1915;
-        --tag: #e0b13a; --tag-ink: #1d1602; --tag-edge: #b88a14;
-        --zero: #ff8a7a; --zero-bg: #45191a; --negative: #f3cc5c; --negative-bg: #3d3008;
-        --low: #4cc27a; --low-bg: #11301e; --over: #ffa463; --over-bg: #43230b;
-        --bar: #2d5563; --bar-strong: #5bb8cf;
-        --tint-s: 18%; --tint-l: 16%; --tint-hover-l: 19.5%; --tint-dot-l: 62%;
+    @media screen {
+        :root[data-theme="dark"] {
+            color-scheme: dark;
+            --bg: #10161b; --card: #182027; --text: #e3e9ee; --muted: #8f9ca8; --border: #27323b;
+            --accent: #5bb8cf; --on-accent: #062029; --row-hover: #1f2931; --accent-soft: #15303a;
+            --tile: #1f2931; --shadow: 0 1px 2px rgba(0, 0, 0, .35), 0 8px 22px rgba(0, 0, 0, .3);
+            --ok: #4cc27a; --warn: #e0b13a; --bad: #f2735f; --ok-bg: #11301e; --warn-bg: #3a2e08; --bad-bg: #3d1915;
+            --tag: #e0b13a; --tag-ink: #1d1602; --tag-edge: #b88a14;
+            --zero: #ff8a7a; --zero-bg: #45191a; --negative: #f3cc5c; --negative-bg: #3d3008;
+            --low: #4cc27a; --low-bg: #11301e; --over: #ffa463; --over-bg: #43230b;
+            --bar: #2d5563; --bar-strong: #5bb8cf;
+            --tint-s: 18%; --tint-l: 16%; --tint-hover-l: 19.5%; --tint-dot-l: 62%;
+        }
     }
 </style>
 <script>

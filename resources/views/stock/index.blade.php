@@ -32,6 +32,7 @@
     .legend { display: flex; gap: 16px; flex-wrap: wrap; align-items: center; margin: 12px 0 0; }
     /* filtres facon Odoo : une pastille par filtre, son nombre a cote ; les couleurs de Gescomm pour epuise / negatif */
     .filters { display: flex; gap: 6px; flex-wrap: wrap; margin: 0 0 12px; }
+    .filters .print-btn { margin-inline-start: auto; }
     .chip { display: inline-flex; align-items: center; gap: 8px; padding: 4px 0; padding-inline: 12px 6px; border: 1px solid var(--border); border-radius: 99px; color: var(--text); font-size: 14px; background: var(--card); }
     .chip:hover { background: var(--row-hover); }
     .chip .n { font-variant-numeric: tabular-nums; font-size: 12.5px; color: var(--muted); background: var(--row-hover); border-radius: 99px; padding: 0 8px; }
@@ -70,6 +71,9 @@
     @include('partials.key', ['keys' => [__('common.keys.space')], 'label' => $merge ? __('common.keys.pick') : __('stock.preview')])
     @include('partials.key', ['keys' => ['F2'], 'label' => __('stock.preview')])
     @include('partials.key', ['keys' => ['Alt', '1…4'], 'label' => __('stock.filters.label')])
+    @unless ($merge)
+        @include('partials.key', ['keys' => ['Alt', 'P'], 'run' => 'Alt+P', 'label' => __('print.print')])
+    @endunless
 @endpush
 
 @section('content')

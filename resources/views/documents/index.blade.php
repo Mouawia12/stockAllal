@@ -25,7 +25,8 @@
     .chip .n { font-variant-numeric: tabular-nums; font-size: 12.5px; color: var(--muted); background: var(--row-hover); border-radius: 99px; padding: 0 8px; margin-inline-end: -6px; }
     .chip.on { border-color: var(--accent); background: var(--accent-soft); color: var(--accent); font-weight: 600; }
     .chip.on .n { background: var(--card); color: var(--accent); }
-    .sum { display: flex; gap: 6px 22px; flex-wrap: wrap; margin-inline-start: auto; color: var(--muted); font-size: 14px; }
+    .bar-end { display: flex; align-items: center; gap: 8px 16px; flex-wrap: wrap; margin-inline-start: auto; }
+    .sum { display: flex; gap: 6px 22px; flex-wrap: wrap; margin: 0; color: var(--muted); font-size: 14px; }
     .sum b { color: var(--text); font-variant-numeric: tabular-nums; }
     .note { margin: 0 0 12px; }
 
@@ -75,6 +76,7 @@
     @include('partials.key', ['keys' => [__('common.keys.enter')], 'label' => $D['keys']['open']])
     @include('partials.key', ['keys' => ['F2'], 'label' => $D['keys']['preview']])
     @include('partials.key', ['keys' => ['Alt', '1…4'], 'label' => $D['period']])
+    @include('partials.key', ['keys' => ['Alt', 'P'], 'run' => 'Alt+P', 'label' => __('print.print')])
 @endpush
 
 @section('content')
@@ -100,9 +102,12 @@
                @class(['chip', 'on' => $filter === $f]) @if ($filter === $f) aria-current="true" @endif>{{ $D['filters'][$f] }} <span class="n">{{ number_format($counts[$f], 0, ',', ' ') }}</span></a>
         @endforeach
     </nav>
-    @if ($money && $counts[$filter] > 0)
-        <p class="sum">{{ $D['stat_amount'] }} <b class="num">{{ $fmt($total) }}</b></p>
-    @endif
+    <div class="bar-end">
+        @if ($money && $counts[$filter] > 0)
+            <p class="sum">{{ $D['stat_amount'] }} <b class="num">{{ $fmt($total) }}</b></p>
+        @endif
+        @include('partials.print-button', ['href' => route("{$route}.print", array_filter(['q' => $q, 'period' => $period, 'f' => $filter === 'all' ? null : $filter]))])
+    </div>
 </div>
 
 @if ($outdated->isNotEmpty())
@@ -175,6 +180,7 @@
             <span class="grow"></span>
             <button type="button" class="step" id="bm-prev" title="{{ $P['prev'] }} (↑)" aria-label="{{ $P['prev'] }}"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m18 15-6-6-6 6"/></svg></button>
             <button type="button" class="step" id="bm-next" title="{{ $P['next'] }} (↓)" aria-label="{{ $P['next'] }}"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg></button>
+            <a class="btn print-btn" id="bm-print" href="#" target="_blank" data-key="Alt+P" title="{{ __('print.print') }} (Alt+P)">@include('partials.app-icon', ['name' => 'print']){{ __('print.print') }}</a>
             <a class="btn open-bon" id="bm-open" href="#">{{ $P['open'] }}</a>
             <button type="button" class="link" id="bm-close" title="{{ $P['close'] }} (Échap)" aria-label="{{ $P['close'] }}">✕</button>
         </div>
@@ -241,6 +247,7 @@
         prevBtn.disabled = i <= 0;
         nextBtn.disabled = i >= list.length - 1;
         openLink.href = link.href;
+        document.getElementById('bm-print').href = link.href + '/print?auto=1';
         const first = !bg.classList.contains('open');
         bg.classList.add('open');
         if (first) { body.textContent = T.loading; openLink.focus(); }

@@ -96,6 +96,30 @@ class BranchController extends Controller
         return back()->with('status', __('common.saved'));
     }
 
+    /** En-tete et pied des impressions de la branche (comme LIGNE1..5 et BAS1..2 de GC032 ; l'agent ne les lit pas encore). */
+    public function printHeader(Request $request, Branch $branch): View
+    {
+        $this->authorizeBranch($request, $branch);
+
+        return view('branches.print-header', ['branch' => $branch]);
+    }
+
+    public function savePrintHeader(Request $request, Branch $branch): RedirectResponse
+    {
+        $this->authorizeBranch($request, $branch);
+        $data = $request->validate([
+            'print_header' => ['nullable', 'string', 'max:600'],
+            'print_footer' => ['nullable', 'string', 'max:400'],
+        ]);
+        $changes = Activity::diff($branch->only(array_keys($data)), $data);
+        $branch->update($data);
+        if ($changes !== []) {
+            Activity::log('branch.updated', $branch, $changes);
+        }
+
+        return redirect()->route('branches.index')->with('status', __('common.saved'));
+    }
+
     /**
      * Branche principale = reference des prix : son prix s'affiche dans la recherche, et la fenetre "معاينة"
      * signale les branches dont le prix differe. Une seule a la fois ; un second clic retire le statut.

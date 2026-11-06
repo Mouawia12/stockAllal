@@ -7,6 +7,7 @@ use App\Http\Controllers\AiSettingsController;
 use App\Http\Controllers\Auth\LoginController;
 use App\Http\Controllers\BranchController;
 use App\Http\Controllers\BranchScopeController;
+use App\Http\Controllers\CashController;
 use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\DocumentController;
 use App\Http\Controllers\HomeController;
@@ -16,6 +17,7 @@ use App\Http\Controllers\PartnerController;
 use App\Http\Controllers\ProductGroupController;
 use App\Http\Controllers\StockController;
 use App\Http\Controllers\UserController;
+use App\Http\Middleware\PrintPreferences;
 use App\Support\AiProviders;
 use Illuminate\Support\Facades\Route;
 
@@ -40,6 +42,10 @@ Route::middleware('auth')->group(function () {
     Route::get('stock', [StockController::class, 'index'])->name('stock.index')->middleware('throttle:search');
     Route::get('product', [StockController::class, 'product'])->name('stock.product');
     Route::get('stock/item', [StockController::class, 'item'])->name('stock.item');
+    Route::middleware([PrintPreferences::class, 'throttle:search'])->group(function () {
+        Route::get('stock/print', [StockController::class, 'printList'])->name('stock.print');
+        Route::get('stock/item/print', [StockController::class, 'printItem'])->name('stock.print-item');
+    });
     // barre Ctrl+K (partials/palette) : articles qui correspondent, dans les branches affichees
     Route::get('palette', [StockController::class, 'palette'])->name('palette')->middleware('throttle:search');
     // selecteur de branche de la barre du haut (App\Support\BranchScope) ; un POST comme les boutons de langue
@@ -58,6 +64,21 @@ Route::middleware('auth')->group(function () {
         Route::get('customers/{partner}', [PartnerController::class, 'customer'])->name('customers.show')->whereNumber('partner');
         Route::get('suppliers', [PartnerController::class, 'suppliers'])->name('suppliers.index')->middleware('throttle:search');
         Route::get('suppliers/{partner}', [PartnerController::class, 'supplier'])->name('suppliers.show')->whereNumber('partner');
+
+        // pages d'impression (layouts/print) : memes branches et memes permissions que les pages d'ou elles viennent
+        Route::middleware([PrintPreferences::class, 'throttle:search'])->group(function () {
+            Route::get('sales/print', [DocumentController::class, 'salesPrint'])->name('sales.print');
+            Route::get('sales/{document}/print', [DocumentController::class, 'salePrint'])->name('sales.print-bon')->whereNumber('document');
+            Route::get('purchases/print', [DocumentController::class, 'purchasesPrint'])->name('purchases.print');
+            Route::get('purchases/{document}/print', [DocumentController::class, 'purchasePrint'])->name('purchases.print-bon')->whereNumber('document');
+            Route::get('customers/print', [PartnerController::class, 'customersPrint'])->name('customers.print');
+            Route::get('customers/payments/print', [PartnerController::class, 'customerPaymentsPrint'])->name('customers.print-payments');
+            Route::get('customers/{partner}/print', [PartnerController::class, 'customerPrint'])->name('customers.print-card')->whereNumber('partner');
+            Route::get('suppliers/print', [PartnerController::class, 'suppliersPrint'])->name('suppliers.print');
+            Route::get('suppliers/payments/print', [PartnerController::class, 'supplierPaymentsPrint'])->name('suppliers.print-payments');
+            Route::get('suppliers/{partner}/print', [PartnerController::class, 'supplierPrint'])->name('suppliers.print-card')->whereNumber('partner');
+            Route::get('cash/print', [CashController::class, 'print'])->name('cash.print')->middleware('can:cash.view');
+        });
     });
 
     Route::get('branches', [BranchController::class, 'index'])->name('branches.index')->middleware('can:branches.view');
@@ -69,6 +90,8 @@ Route::middleware('auth')->group(function () {
         Route::post('branches/install-code', [BranchController::class, 'installCode'])->name('branches.install-code');
         Route::patch('branches/{branch}', [BranchController::class, 'update'])->name('branches.update');
         Route::post('branches/{branch}/main', [BranchController::class, 'main'])->name('branches.main');
+        Route::get('branches/{branch}/print-header', [BranchController::class, 'printHeader'])->name('branches.print-header');
+        Route::put('branches/{branch}/print-header', [BranchController::class, 'savePrintHeader']);
         Route::delete('branches/{branch}', [BranchController::class, 'destroy'])->name('branches.destroy');
     });
     Route::put('branches/{branch}/access', [BranchController::class, 'access'])->name('branches.access')->middleware('can:manage-branch-access');

@@ -8,6 +8,7 @@ use App\Models\Document;
 use App\Models\DocumentLine;
 use App\Models\Partner;
 use App\Support\BranchScope;
+use App\Support\PrintPeriod;
 use App\Support\StockState;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\Request;
@@ -33,6 +34,9 @@ class DocumentController extends Controller
 
     private const PER_PAGE = 100;
 
+    /** Une impression : tous les bons de la periode, jusqu'a cette limite (annoncee sur la page au-dela). */
+    private const PRINT_LIMIT = 5000;
+
     private const PARTNER_KIND = ['sale' => 'customer', 'purchase' => 'supplier'];
 
     public function sales(Request $request): View
@@ -55,6 +59,26 @@ class DocumentController extends Controller
         return $this->bon($request, 'purchase', $document);
     }
 
+    public function salesPrint(Request $request): View
+    {
+        return $this->printList($request, 'sale');
+    }
+
+    public function purchasesPrint(Request $request): View
+    {
+        return $this->printList($request, 'purchase');
+    }
+
+    public function salePrint(Request $request, Document $document): View
+    {
+        return $this->printBon($request, 'sale', $document);
+    }
+
+    public function purchasePrint(Request $request, Document $document): View
+    {
+        return $this->printBon($request, 'purchase', $document);
+    }
+
     private function list(Request $request, string $kind): View
     {
         $money = $this->money($request, $kind);
@@ -71,14 +95,7 @@ class DocumentController extends Controller
         $q = trim(mb_substr((string) $request->query('q', ''), 0, 60));
         $base = fn (string $f) => $this->filtered($kind, $ids, $since, $q, $f);
 
-        $lines = fn () => DocumentLine::selectRaw('COUNT(*)')->whereColumn('document_lines.document_id', 'documents.id');
-        $documents = $base($filter)
-            ->leftJoin('partners', fn ($join) => $join->on('partners.branch_id', '=', 'documents.branch_id')
-                ->on('partners.code', '=', 'documents.partner_code')
-                ->where('partners.kind', '=', self::PARTNER_KIND[$kind]))
-            ->select(['documents.*', 'partners.name as partner_name', 'partners.id as partner_id'])
-            ->selectSub($lines(), 'lines_count')
-            ->selectSub($lines()->where('document_lines.qty', '<', 0), 'returns_count')
+        $documents = $this->listing($base($filter), $kind)
             ->orderByDesc('documents.date')->orderByDesc('documents.time')->orderByDesc('documents.number')
             ->simplePaginate(self::PER_PAGE)->withQueryString();
 
@@ -131,7 +148,91 @@ class DocumentController extends Controller
         ]);
     }
 
+    /**
+     * Impression de la liste : les bons de la periode et de la recherche, jour par jour, du plus ancien au plus recent,
+     * avec le total de chaque jour et de la periode. Memes branches et memes montants que la liste.
+     */
+    private function printList(Request $request, string $kind): View
+    {
+        $money = $this->money($request, $kind);
+        $branches = Branch::where('active', true)->among(BranchScope::salesIds($request))->orderBy('name')->get();
+        $ready = $branches->filter(fn (Branch $b) => $b->agentSupports('documents'))->values();
+        $ids = $ready->pluck('id')->all();
+        $window = PrintPeriod::read($request, self::PERIODS, '30');
+        $filter = in_array($request->query('f'), self::FILTERS, true) ? $request->query('f') : 'all';
+        $q = trim(mb_substr((string) $request->query('q', ''), 0, 60));
+        $base = fn () => $this->filtered($kind, $ids, $window['from'], $q, $filter)
+            ->when($window['to'], fn (Builder $b) => $b->where('documents.date', '<=', $window['to']));
+
+        $documents = $this->listing($base(), $kind)
+            ->orderBy('documents.date')->orderBy('documents.time')->orderBy('documents.number')
+            ->limit(self::PRINT_LIMIT)->get();
+        $days = $base()->groupBy('documents.date')
+            ->selectRaw('documents.date as day, COUNT(*) as bons, SUM(documents.amount) as amount')->get()
+            ->keyBy(fn ($row) => substr((string) $row->day, 0, 10));
+        $names = $ready->pluck('name', 'id');
+
+        return view('print.journal', [
+            'kind' => $kind,
+            'route' => self::ROUTES[$kind],
+            'money' => $money,
+            'q' => $q,
+            'filter' => $filter,
+            'window' => $window,
+            'groups' => $documents->groupBy(fn (Document $d) => $d->date?->toDateString() ?? '')->map(fn ($bons, string $day) => [
+                'label' => $this->dayLabel($day),
+                'bons' => (int) ($days[$day]->bons ?? $bons->count()),
+                'amount' => $money && isset($days[$day]) ? round((float) $days[$day]->amount, 2) : null,
+                'rows' => $bons->map(fn (Document $d) => [
+                    'number' => $d->number,
+                    'time' => $d->time ? substr($d->time, 0, 5) : null,
+                    'branch' => $names[$d->branch_id] ?? null,
+                    'partner' => $d->partner_name ?? $d->partner_code,
+                    'partner_code' => $d->partner_name ? $d->partner_code : null,
+                    'lines' => (int) $d->lines_count,
+                    'returns' => (int) $d->returns_count,
+                    'amount' => $money ? $d->amount : null,
+                    'served_by' => $d->served_by,
+                    'payment' => $d->payment,
+                ]),
+            ]),
+            'shown' => $documents->count(),
+            'count' => (int) $days->sum('bons'),
+            'total' => $money ? round((float) $days->sum('amount'), 2) : null,
+            'letter' => $this->letterOf($ready),
+            'branchNames' => $ready->pluck('name'),
+            'outdated' => $branches->reject(fn (Branch $b) => $b->agentSupports('documents'))->pluck('name')->values(),
+            'several' => $ready->count() > 1,
+        ]);
+    }
+
+    /**
+     * Impression d'un bon. Avec les prix (si le compte les voit), ou sans pour preparer ou controler la marchandise :
+     * ?prices=0, une case a cocher devant chaque ligne. Jamais la marge ni le stock : ce papier part chez le client.
+     */
+    private function printBon(Request $request, string $kind, Document $document): View
+    {
+        $data = $this->bonData($request, $kind, $document);
+
+        return view('print.bon', $data + [
+            'withPrices' => $data['money'] && $request->query('prices') !== '0',
+        ]);
+    }
+
     private function bon(Request $request, string $kind, Document $document): View
+    {
+        $data = $this->bonData($request, $kind, $document);
+
+        // ?partial=1 : le bon seul, pour l'apercu de la liste (F2)
+        return $request->boolean('partial') ? view('documents._bon', $data + ['inModal' => true]) : view('documents.show', $data);
+    }
+
+    /**
+     * Ce qu'un bon montre, sur sa page et sur le papier.
+     *
+     * @return array<string, mixed>
+     */
+    private function bonData(Request $request, string $kind, Document $document): array
     {
         $user = $request->user();
         $allowed = $user->salesBranchIds();
@@ -150,7 +251,7 @@ class DocumentController extends Controller
             ->where('kind', self::PARTNER_KIND[$kind])->where('code', $document->partner_code)->first();
         $costed = $lines->whereNotNull('cost');
 
-        $data = [
+        return [
             'kind' => $kind,
             'route' => self::ROUTES[$kind],
             'document' => $document,
@@ -168,6 +269,7 @@ class DocumentController extends Controller
                     'position' => $line->position,
                     'code' => $line->code_raw,
                     'designation' => $row?->designation,
+                    'unit' => $row?->unit,
                     'qty' => $line->qty,
                     'back' => $line->qty !== null && $line->qty < 0,
                     'price' => $money ? $line->price : null,
@@ -183,9 +285,26 @@ class DocumentController extends Controller
                 ? round($costed->sum(fn (DocumentLine $l) => (float) $l->total - (float) $l->qty * (float) $l->cost), 2) : null,
             'marginPartial' => $costed->count() < $lines->count(),
         ];
+    }
 
-        // ?partial=1 : le bon seul, pour l'apercu de la liste (F2)
-        return $request->boolean('partial') ? view('documents._bon', $data + ['inModal' => true]) : view('documents.show', $data);
+    /** Les bons avec le nom du client et leur nombre de lignes et de lignes rendues. */
+    private function listing(Builder $documents, string $kind): Builder
+    {
+        $lines = fn () => DocumentLine::selectRaw('COUNT(*)')->whereColumn('document_lines.document_id', 'documents.id');
+
+        return $documents
+            ->leftJoin('partners', fn ($join) => $join->on('partners.branch_id', '=', 'documents.branch_id')
+                ->on('partners.code', '=', 'documents.partner_code')
+                ->where('partners.kind', '=', self::PARTNER_KIND[$kind]))
+            ->select(['documents.*', 'partners.name as partner_name', 'partners.id as partner_id'])
+            ->selectSub($lines(), 'lines_count')
+            ->selectSub($lines()->where('document_lines.qty', '<', 0), 'returns_count');
+    }
+
+    /** L'en-tete d'un etat : celui de la branche s'il n'y en a qu'une, sinon de la principale si elle en est. */
+    private function letterOf($branches): ?Branch
+    {
+        return $branches->count() === 1 ? $branches->first() : $branches->firstWhere('is_main', true);
     }
 
     /** Bons d'une sorte dans ces branches, la periode, la recherche (numero, code ou nom du client) et le filtre. */
