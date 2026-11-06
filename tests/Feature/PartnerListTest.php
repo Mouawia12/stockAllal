@@ -123,7 +123,7 @@ class PartnerListTest extends TestCase
         $this->assertStringContainsString($card, $this->actingAs($karim)->get('/stock/item?code=820Z')->getContent());
     }
 
-    public function test_the_card_of_a_customer_bons_payments_and_items(): void
+    public function test_the_card_of_a_customer_and_its_bons_payments_and_items_in_the_window(): void
     {
         [$token, $oran] = $this->register('Oran');
         $this->history($token);
@@ -132,23 +132,34 @@ class PartnerListTest extends TestCase
 
         $html = $this->actingAs($karim)->get(route('customers.show', $benali))->assertOk()->getContent();
         foreach (['Ets Benali', '0550 12 34 56', '000216001234567', '50 000,00', '1 200,00', '1 750,00', '550,00', '800,00', 'Espéce', 'Autre', '-200,00',
-            'BOULON 8*20', 'GONE1', '2 300,00', __('partners.balance_soon')] as $text) {
+            'BOULON 8*20', __('partners.balance_soon'), 'data-open="bons"', 'data-open="payments"', 'data-open="items"'] as $text) {
             $this->assertStringContainsString($text, $html, $text);
         }
-        // ses bons, et le bon du versement de 1000
+        // le detail n'est plus dans la page : la fenetre le demande
+        $this->assertStringNotContainsString('<tr data-row', $html);
+
+        $records = fn (Partner $p, array $query) => $this->actingAs($karim)->get(route('customers.records', $p).'?'.http_build_query($query))->assertOk()->getContent();
         $bon183 = route('sales.show', Document::where('number', 183)->first());
-        $this->assertStringContainsString($bon183, $html);
-        $this->assertSame(2, substr_count($html, 'href="'.$bon183.'"'), 'le bon, puis le versement');
-        $this->assertStringContainsString(route('stock.item', ['code' => '820Z']), $html);
+        $this->assertStringContainsString('href="'.$bon183.'"', $records($benali, ['tab' => 'bons']));
+        // le bon du versement de 1000
+        $html = $records($benali, ['tab' => 'payments']);
+        $this->assertStringContainsString('href="'.$bon183.'"', $html);
+        foreach (['Espéce', 'Autre', '-200,00', '1 000,00'] as $text) {
+            $this->assertStringContainsString($text, $html, $text);
+        }
+        $html = $records($benali, ['tab' => 'items']);
+        foreach (['BOULON 8*20', 'GONE1', '2 300,00', e(route('stock.item', ['code' => '820Z']))] as $text) {
+            $this->assertStringContainsString($text, $html, $text);
+        }
 
         // 30 jours : le retour d'El Amel (40 jours) n'y est plus
-        $html = $this->actingAs($karim)->get(route('customers.show', $this->partner('C002')).'?period=30')->assertOk()->getContent();
-        $this->assertStringContainsString(__('partners.none_bons'), $html);
+        $this->assertStringContainsString(__('partners.none_bons'), $records($this->partner('C002'), ['tab' => 'bons', 'period' => '30']));
         $html = $this->actingAs($karim)->get(route('customers.show', $this->partner('C002')))->getContent();
         $this->assertStringContainsString('7 500,00', $html, 'le retour, en montant');
 
         // une fiche de client ne s'ouvre pas comme un fournisseur
         $this->actingAs($karim)->get(route('suppliers.show', $benali))->assertNotFound();
+        $this->actingAs($karim)->get(route('suppliers.records', $benali))->assertNotFound();
     }
 
     public function test_without_sales_view_or_prices_the_cards_show_nothing_they_should_not(): void

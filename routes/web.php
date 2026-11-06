@@ -62,8 +62,10 @@ Route::middleware('auth')->group(function () {
         Route::get('purchases/{document}', [DocumentController::class, 'purchase'])->name('purchases.show')->whereNumber('document');
         Route::get('customers', [PartnerController::class, 'customers'])->name('customers.index')->middleware('throttle:search');
         Route::get('customers/{partner}', [PartnerController::class, 'customer'])->name('customers.show')->whereNumber('partner');
+        Route::get('customers/{partner}/records', [PartnerController::class, 'customerRecords'])->name('customers.records')->whereNumber('partner')->middleware('throttle:search');
         Route::get('suppliers', [PartnerController::class, 'suppliers'])->name('suppliers.index')->middleware('throttle:search');
         Route::get('suppliers/{partner}', [PartnerController::class, 'supplier'])->name('suppliers.show')->whereNumber('partner');
+        Route::get('suppliers/{partner}/records', [PartnerController::class, 'supplierRecords'])->name('suppliers.records')->whereNumber('partner')->middleware('throttle:search');
 
         // pages d'impression (layouts/print) : memes branches et memes permissions que les pages d'ou elles viennent
         Route::middleware([PrintPreferences::class, 'throttle:search'])->group(function () {

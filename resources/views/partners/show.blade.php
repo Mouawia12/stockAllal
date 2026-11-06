@@ -2,7 +2,8 @@
 
 {{--
     Fiche d'un client ou d'un fournisseur (PartnerController) : qui il est, ce qu'il a achete sur la periode
-    (bons, montant, retours, versements), puis trois onglets : ses bons, ses versements, les articles qu'il prend le plus.
+    (bons, montant, retours, versements), trois boutons qui ouvrent le detail dans une fenetre par pages
+    (partners/_records-modal), puis la nature de la relation sur 12 mois (partners/_insights).
     Pas de solde ici tant que le calcul de Gescomm n'est pas verifie (agent/tools/check-balances.ps1).
 --}}
 @php
@@ -24,7 +25,12 @@
         'credit_limit' => $money && $partner->credit_limit ? $fmt($partner->credit_limit) : null,
         'opening_balance' => $money && $partner->opening_balance ? $fmt($partner->opening_balance) : null,
     ], fn ($v) => $v !== null && $v !== '');
-    $tabs = ['bons' => $stats['bons'], 'payments' => $stats['payments'], 'items' => $items->count()];
+    // la touche suit celles des periodes (Alt+1...4) : un chiffre reste le meme sur un clavier arabe ou AZERTY
+    $opens = [
+        'bons' => ['n' => $stats['bons'], 'key' => '5', 'sub' => $stats['last'] ? __('partners.open.last_bon', ['date' => $stats['last']]) : $P['open']['empty']],
+        'payments' => ['n' => $stats['payments'], 'key' => '6', 'sub' => $stats['last_payment'] ? __('partners.open.last_payment', ['date' => $stats['last_payment']]) : $P['open']['empty']],
+        'items' => ['n' => $stats['items'], 'key' => '7', 'sub' => $stats['top_item'] ? __('partners.open.top_item', ['name' => $stats['top_item']]) : $P['open']['empty']],
+    ];
 @endphp
 @section('title', ($partner->name ?? $partner->code).' — '.__('common.app_name'))
 
@@ -64,21 +70,29 @@
     .figures dd small { display: block; font-size: 12.5px; font-weight: 500; color: var(--muted); }
     .balance-note { margin: 12px 0 0; }
 
-    .tabs { display: flex; gap: 6px; margin: 18px 0 0; border-bottom: 1px solid var(--border); overflow-x: auto; }
-    .tabs button { border: 0; border-bottom: 2px solid transparent; border-radius: 0; background: none; color: var(--muted); padding: 8px 12px; display: inline-flex; gap: 8px; align-items: center; white-space: nowrap; }
-    .tabs button[aria-selected=true] { color: var(--text); border-bottom-color: var(--accent); font-weight: 600; }
-    .panel { padding-top: 6px; }
-    .panel th.n, .panel td.n { text-align: end; white-space: nowrap; }
-    .panel a.bon { font-family: var(--font-code); font-weight: 600; font-size: 16px; color: var(--text); }
-    .panel a.bon:hover, .panel a.code:hover { color: var(--accent); text-decoration: underline; text-underline-offset: 3px; }
-    .panel a.code { color: var(--text); }
+    /* les boutons d'une fiche Odoo : ce qu'il y a derriere, combien, et le dernier en date */
+    .open-btns { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; margin-top: 16px; }
+    .open-btn { display: grid; grid-template-columns: auto minmax(0, 1fr) auto auto; align-items: center; gap: 0 12px; padding: 12px 14px; text-align: start; border-radius: 10px; }
+    .open-btn:hover { border-color: var(--accent); background: var(--accent-soft); }
+    .open-btn .ic { width: 22px; height: 22px; color: var(--accent); }
+    .open-btn .what { min-width: 0; display: flex; flex-direction: column; gap: 1px; }
+    .open-btn .what b { font-weight: 700; font-size: 15px; }
+    .open-btn .what small { font-size: 12.5px; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .open-btn .how-many { font: 700 27px/1 var(--font-code); direction: ltr; font-variant-numeric: tabular-nums; }
+    .open-btn .go { width: 16px; height: 16px; color: var(--muted); }
+    .open-btn:hover .go { color: var(--accent); }
+    [dir=rtl] .flip { transform: scaleX(-1); }
     @media (max-width: 700px) { .who-head { grid-template-columns: 1fr; } }
+    @media (max-width: 760px) { .open-btns { grid-template-columns: 1fr; } }
 </style>
 @endpush
 
 @push('keys')
     @include('partials.key', ['keys' => [__('common.keys.esc')], 'run' => 'Escape', 'label' => __('common.keys.back')])
     @include('partials.key', ['keys' => ['Alt', '1…4'], 'label' => $P['period']])
+    @foreach ($opens as $tab => $open)
+        @include('partials.key', ['keys' => ['Alt', $open['key']], 'run' => 'Alt+'.$open['key'], 'label' => $P['tabs'][$tab]])
+    @endforeach
     @include('partials.key', ['keys' => ['Alt', 'P'], 'run' => 'Alt+P', 'label' => __('print.print')])
 @endpush
 
@@ -151,132 +165,24 @@
     </dl>
     <p class="balance-note muted small">{{ $P['balance_soon'] }}</p>
 
-    <div class="tabs" role="tablist" aria-label="{{ $P['activity'][$kind] }}">
-        @foreach ($tabs as $tab => $n)
-            <button type="button" role="tab" id="tab-{{ $tab }}" aria-controls="panel-{{ $tab }}" aria-selected="{{ $loop->first ? 'true' : 'false' }}" @if (! $loop->first) tabindex="-1" @endif>
-                {{ $P['tabs'][$tab] }} <span class="pill num">{{ number_format($n, 0, ',', ' ') }}</span>
+    <div class="open-btns">
+        @foreach ($opens as $tab => $open)
+            <button type="button" class="open-btn" data-open="{{ $tab }}" data-key="Alt+{{ $open['key'] }}" aria-haspopup="dialog" title="{{ $P['open'][$tab] }} (Alt+{{ $open['key'] }})">
+                <svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                    @switch($tab)
+                        @case('bons')<path d="M6 3h12v18l-3-2-3 2-3-2-3 2z"/><path d="M9 8h6M9 12h6"/>@break
+                        @case('payments')<rect x="3" y="6" width="18" height="12" rx="2"/><circle cx="12" cy="12" r="2.5"/><path d="M7 9v.01M17 15v.01"/>@break
+                        @default<path d="m12 3 8 4.5v9L12 21l-8-4.5v-9z"/><path d="m4 7.5 8 4.5 8-4.5M12 12v9"/>
+                    @endswitch
+                </svg>
+                <span class="what"><b>{{ $P['tabs'][$tab] }}</b><small><bdi>{{ $open['sub'] }}</bdi></small></span>
+                <span class="how-many">{{ number_format($open['n'], 0, ',', ' ') }}</span>
+                <svg class="go flip" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m9 6 6 6-6 6"/></svg>
             </button>
         @endforeach
     </div>
-
-    <div class="panel" role="tabpanel" id="panel-bons" aria-labelledby="tab-bons">
-        @if ($bons->isEmpty())
-            <p class="muted">{{ $P['none_bons'] }}</p>
-        @else
-            <table>
-                <thead>
-                <tr>
-                    <th scope="col">{{ __('documents.col_bon') }}</th>
-                    <th scope="col">{{ $P['col_date'] }}</th>
-                    <th scope="col" class="n">{{ __('documents.col_lines') }}</th>
-                    @if ($money)<th scope="col" class="n">{{ __('documents.col_amount') }}</th>@endif
-                </tr>
-                </thead>
-                <tbody>
-                @foreach ($bons as $b)
-                    <tr>
-                        <td><a class="bon ltr" href="{{ $b['url'] }}">{{ $b['number'] }}</a></td>
-                        <td class="num">{{ $b['date'] }} <span class="muted small">{{ $b['time'] }}</span></td>
-                        <td class="n">@if ($b['returns'] > 0)<span class="pill">{{ __('documents.return') }}</span> @endif<span class="num">{{ $b['lines'] }}</span></td>
-                        @if ($money)<td class="n"><span class="num">{{ $fmt($b['amount']) }}</span></td>@endif
-                    </tr>
-                @endforeach
-                </tbody>
-            </table>
-            @if ($stats['bons'] > $bons->count())
-                <p class="muted small">{{ __('partners.latest', ['shown' => $bons->count(), 'total' => number_format($stats['bons'], 0, ',', ' ')]) }}
-                    <a href="{{ route("{$docRoute}.index", ['q' => $partner->code, 'period' => 'all']) }}">{{ $P['all_bons'] }}</a></p>
-            @endif
-        @endif
-    </div>
-
-    <div class="panel" role="tabpanel" id="panel-payments" aria-labelledby="tab-payments" hidden>
-        @if ($payments->isEmpty())
-            <p class="muted">{{ $P['none_payments'] }}</p>
-        @else
-            <table>
-                <thead>
-                <tr>
-                    <th scope="col">{{ $P['col_date'] }}</th>
-                    <th scope="col" title="TYPEVER">{{ $P['col_type'] }}</th>
-                    @if ($money)<th scope="col" class="n">{{ $P['col_paid'] }}</th>@endif
-                    <th scope="col" class="hide-sm">{{ $P['col_cheque'] }}</th>
-                    <th scope="col">{{ __('documents.col_bon') }}</th>
-                    <th scope="col" class="hide-sm">{{ __('documents.note') }}</th>
-                </tr>
-                </thead>
-                <tbody>
-                @foreach ($payments as $p)
-                    <tr>
-                        <td class="num">{{ $p['date'] }} <span class="muted small">{{ $p['time'] }}</span></td>
-                        <td><span class="pill"><bdi>{{ $p['type'] ?? '—' }}</bdi></span></td>
-                        @if ($money)<td class="n"><span class="num">{{ $fmt($p['amount']) }}</span></td>@endif
-                        <td class="hide-sm"><span class="num">{{ $p['cheque'] }}</span>@if ($p['paid_on']) <span class="muted small">{{ __('partners.paid_on', ['date' => $p['paid_on']]) }}</span>@endif</td>
-                        <td>@if ($p['bon_url'])<a class="bon ltr" href="{{ $p['bon_url'] }}">{{ $p['bon'] }}</a>@else<span class="num muted">{{ $p['bon'] ?: '' }}</span>@endif</td>
-                        <td class="hide-sm muted"><bdi>{{ $p['note'] }}</bdi></td>
-                    </tr>
-                @endforeach
-                </tbody>
-            </table>
-            @if ($stats['payments'] > $payments->count())
-                <p class="muted small">{{ __('partners.latest', ['shown' => $payments->count(), 'total' => number_format($stats['payments'], 0, ',', ' ')]) }}</p>
-            @endif
-        @endif
-    </div>
-
-    <div class="panel" role="tabpanel" id="panel-items" aria-labelledby="tab-items" hidden>
-        @if ($items->isEmpty())
-            <p class="muted">{{ $P['none_items'] }}</p>
-        @else
-            <table>
-                <thead>
-                <tr>
-                    <th scope="col">{{ __('documents.col_code') }}</th>
-                    <th scope="col">{{ __('documents.col_designation') }}</th>
-                    <th scope="col" class="n" title="{{ $P['net_help'] }}">{{ $P['col_net'] }}</th>
-                    @if ($money)<th scope="col" class="n">{{ __('documents.col_amount') }}</th>@endif
-                    <th scope="col" class="n hide-sm">{{ __('documents.col_lines') }}</th>
-                </tr>
-                </thead>
-                <tbody>
-                @foreach ($items as $i)
-                    <tr>
-                        <td><a class="code ltr" href="{{ route('stock.item', ['code' => $i['code']]) }}">{{ $i['code'] }}</a></td>
-                        <td><bdi>{{ $i['designation'] ?? '—' }}</bdi></td>
-                        <td class="n"><span class="num">{{ $fmt($i['qty']) }}</span></td>
-                        @if ($money)<td class="n"><span class="num">{{ $fmt($i['amount']) }}</span></td>@endif
-                        <td class="n hide-sm muted"><span class="num">{{ $i['lines'] }}</span></td>
-                    </tr>
-                @endforeach
-                </tbody>
-            </table>
-        @endif
-    </div>
 </section>
-@endsection
 
-@push('scripts')
-<script>
-(() => {
-    // onglets facon Odoo ; les fleches passent de l'un a l'autre dans le sens de la langue
-    const tabs = [...document.querySelectorAll('.tabs [role=tab]')];
-    const pick = tab => tabs.forEach(t => {
-        const on = t === tab;
-        t.setAttribute('aria-selected', on ? 'true' : 'false');
-        t.tabIndex = on ? 0 : -1;
-        document.getElementById(t.getAttribute('aria-controls')).hidden = !on;
-    });
-    tabs.forEach((tab, i) => {
-        tab.addEventListener('click', () => pick(tab));
-        tab.addEventListener('keydown', e => {
-            if (e.key !== 'ArrowLeft' && e.key !== 'ArrowRight') return;
-            e.preventDefault();
-            const forward = (e.key === 'ArrowLeft') === (document.dir === 'rtl');
-            const next = tabs[(i + (forward ? 1 : tabs.length - 1)) % tabs.length];
-            pick(next);
-            next.focus();
-        });
-    });
-})();
-</script>
-@endpush
+@include('partners._insights')
+@include('partners._records-modal')
+@endsection
