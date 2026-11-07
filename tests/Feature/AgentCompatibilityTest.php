@@ -38,6 +38,8 @@ class AgentCompatibilityTest extends TestCase
             '1.0.6' => ['1.0.6', true, true, false, false],
             '1.0.7' => ['1.0.7', true, true, true, false],
             '1.0.8' => ['1.0.8', true, true, true, true],
+            // memes requetes que 1.0.8 : seule la tache planifiee change (retour de veille, surveillance sans fin)
+            '1.0.9' => ['1.0.9', true, true, true, true],
         ];
     }
 

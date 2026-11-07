@@ -57,13 +57,15 @@ namespace GescomAgentSetup
             if (form != null) form.ShowCrash(text);
         }
 
-        // Sans fenetre, pour les tests (agent/tests/run-tests.ps1) : ecrit en JSON ce que l'installateur trouve,
-        // et avec /testdb le resultat du test de lecture de la base. Ne modifie rien, pas besoin d'etre Administrateur.
+        // Sans fenetre, pour les tests (agent/tests/run-tests.ps1) : ecrit en JSON ce que l'installateur trouve et la
+        // tache qu'il creerait, et avec /testdb le resultat du test de lecture de la base. Ne modifie rien, pas besoin d'etre Administrateur.
         static int RunCli(Options o)
         {
             Installer inst = new Installer(o.InstallDir, o.TaskName, AppDomain.CurrentDomain.BaseDirectory, null);
             Detection d = inst.Detect();
             Dictionary<string, object> json = d.ToJson();
+            // la tache que l'installation creerait (rien n'est enregistre) : comparee a celle d'install.ps1 -Detect
+            json["task_xml"] = inst.TaskXml();
             int code = 0;
             if (o.TestDbOut != null)
             {

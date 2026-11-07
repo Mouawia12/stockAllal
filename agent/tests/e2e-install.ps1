@@ -83,6 +83,15 @@ try {
     [IO.File]::WriteAllText($queryPhp, '<?php $db = new PDO("sqlite:" . $argv[1]); echo json_encode($db->query($argv[2])->fetchAll(PDO::FETCH_ASSOC));')
     function Invoke-Sql([string]$Sql) { (& $Php $queryPhp $Sqlite $Sql) | ConvertFrom-Json }
 
+    # demarrage, retour de veille / demarrage rapide, toutes les 5 minutes sans fin (1.0.9)
+    function Assert-AgentTriggers($Task) {
+        $kinds = @($Task.Triggers | ForEach-Object { $_.CimClass.CimClassName }) -join ','
+        Assert ($kinds -eq 'MSFT_TaskBootTrigger,MSFT_TaskEventTrigger,MSFT_TaskTimeTrigger') "declencheurs : $kinds"
+        Assert ($Task.Triggers[1].Subscription -like '*Microsoft-Windows-Power-Troubleshooter*') "retour de veille : $($Task.Triggers[1].Subscription)"
+        $rep = $Task.Triggers[2].Repetition
+        Assert ($rep.Interval -eq 'PT5M' -and -not $rep.Duration) "surveillance : toutes les $($rep.Interval) pendant '$($rep.Duration)'"
+    }
+
     $branchName = 'Test E2E ' + (Get-Date -Format 'HHmmss')
     Write-Host "`n== Installation par la fenetre"
     $p = Start-Setup $Exe "/lang:fr /dir:`"$InstallDir`" /task:$TaskName /api:$Api"
@@ -99,7 +108,7 @@ try {
         $t = Get-ScheduledTask -TaskName $TaskName
         Assert ($t.Principal.UserId -match 'SYSTEM|S-1-5-18') "compte : $($t.Principal.UserId)"
         Assert ($t.Actions[0].Arguments -like "*$InstallDir\agent.ps1*") "arguments : $($t.Actions[0].Arguments)"
-        Assert (@($t.Triggers).Count -eq 2) "$(@($t.Triggers).Count) declencheur(s)"
+        Assert-AgentTriggers $t
         Assert ($t.Settings.MultipleInstances -eq 'IgnoreNew') "instances multiples : $($t.Settings.MultipleInstances)"
     }
     Test-Case 'dossier reserve a SYSTEM et aux Administrateurs, config avec token' {
@@ -136,12 +145,18 @@ try {
         Assert ($failing.Count -eq 0) ('taches en erreur : ' + (@($failing | ForEach-Object { "$($_.task) ($($_.last_error))" }) -join ', '))
         Write-Host "        $($counts[0].sales) bons de vente, $($counts[0].purchases) d'achat, $($counts[0].lines) lignes, $($counts[0].customers) clients"
     }
-    Test-Case 'mise a jour de l''agent' {
+    Test-Case 'mise a jour de l''agent : la tache d''une ancienne installation est reecrite' {
+        # comme une branche installee avant 1.0.9 : un seul declencheur de demarrage
+        [void](Set-ScheduledTask -TaskName $TaskName -Trigger (New-ScheduledTaskTrigger -AtStartup))
+        Assert (@((Get-ScheduledTask -TaskName $TaskName).Triggers).Count -eq 1) 'ancienne tache non simulee'
         Click-Element (Wait-Element $script:p '^Mettre . jour l''agent$')
         [void](Wait-Element $script:p '^Agent mis . jour' 60)
         $deadline = (Get-Date).AddSeconds(20)
         while ((Get-ScheduledTask -TaskName $TaskName).State -ne 'Running' -and (Get-Date) -lt $deadline) { Start-Sleep -Milliseconds 500 }
-        Assert ((Get-ScheduledTask -TaskName $TaskName).State -eq 'Running') 'la tache ne tourne pas apres la mise a jour'
+        $t = Get-ScheduledTask -TaskName $TaskName
+        Assert ($t.State -eq 'Running') 'la tache ne tourne pas apres la mise a jour'
+        Assert-AgentTriggers $t
+        Assert ($t.Principal.UserId -match 'SYSTEM|S-1-5-18') "compte apres la mise a jour : $($t.Principal.UserId)"
     }
     Test-Case 'diagnostic : rapport sur le Bureau, sans token ni mot de passe' {
         if (Test-Path $Report) { Move-Item $Report $ReportBackup -Force }

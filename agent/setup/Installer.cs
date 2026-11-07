@@ -517,22 +517,34 @@ namespace GescomAgentSetup
             catch (TargetInvocationException) { return null; }   // tache absente
         }
 
-        string TaskXml()
+        // Retour de veille, d'hibernation et du "demarrage rapide" de Windows (Power-Troubleshooter, evenement 1).
+        public const string ResumeQuery = "<QueryList><Query Id=\"0\" Path=\"System\"><Select Path=\"System\">"
+            + "*[System[Provider[@Name='Microsoft-Windows-Power-Troubleshooter'] and EventID=1]]</Select></Query></QueryList>";
+
+        // Meme XML qu'install.ps1 (Get-TaskXml), compare par tests\run-tests.ps1. Trois declencheurs :
+        // - demarrage du PC (+1 min : laisse InterBase et le reseau demarrer) ;
+        // - retour de veille / d'hibernation / du demarrage rapide (+1 min). Le demarrage rapide est actif par defaut :
+        //   "Arreter" met alors Windows en veille prolongee et le rallumage n'est pas un demarrage. Vu sur DESKTOP-9H7CGGI :
+        //   arrete le 05/11 a 12:02, rallume le 07/11 a 07:34, la tache lancee une fois a 07:34:41 et arretee (0x41306),
+        //   puis plus rien pendant des heures ;
+        // - toutes les 5 minutes, sans fin : sans effet si l'agent tourne deja (IgnoreNew), le relance s'il s'est arrete.
+        //   Jusqu'a 1.0.8 : quotidien a minuit, repete 1 jour, qui n'a plus rien relance apres ce retour.
+        public string TaskXml()
         {
             string args = "-NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File \"" + AgentPath + "\" -ConfigPath \"" + ConfigPath + "\"";
-            // memes reglages qu'install.ps1 : au demarrage (+1 min, laisse InterBase et le reseau demarrer),
-            // et toutes les 5 minutes (sans effet si l'agent tourne deja : IgnoreNew ; le relance s'il s'est arrete)
+            // calendrier gregorien quelle que soit la langue de Windows (ar-SA : annee hegirienne avec la culture du PC)
+            string today = DateTime.Today.ToString("yyyy-MM-dd", System.Globalization.CultureInfo.InvariantCulture);
             return "<?xml version=\"1.0\" encoding=\"UTF-16\"?>\n"
                 + "<Task version=\"1.2\" xmlns=\"http://schemas.microsoft.com/windows/2004/02/mit/task\">\n"
                 + "  <RegistrationInfo><Description>Envoie le stock Gescomm de cette branche vers l'API centrale (lecture seule).</Description></RegistrationInfo>\n"
                 + "  <Triggers>\n"
                 + "    <BootTrigger><Enabled>true</Enabled><Delay>PT1M</Delay></BootTrigger>\n"
-                + "    <CalendarTrigger>\n"
-                + "      <Repetition><Interval>PT5M</Interval><Duration>P1D</Duration><StopAtDurationEnd>false</StopAtDurationEnd></Repetition>\n"
-                + "      <StartBoundary>" + DateTime.Today.ToString("yyyy-MM-dd") + "T00:00:00</StartBoundary>\n"
+                + "    <EventTrigger><Enabled>true</Enabled><Subscription>" + SecurityElement.Escape(ResumeQuery) + "</Subscription><Delay>PT1M</Delay></EventTrigger>\n"
+                + "    <TimeTrigger>\n"
+                + "      <Repetition><Interval>PT5M</Interval><StopAtDurationEnd>false</StopAtDurationEnd></Repetition>\n"
+                + "      <StartBoundary>" + today + "T00:00:00</StartBoundary>\n"
                 + "      <Enabled>true</Enabled>\n"
-                + "      <ScheduleByDay><DaysInterval>1</DaysInterval></ScheduleByDay>\n"
-                + "    </CalendarTrigger>\n"
+                + "    </TimeTrigger>\n"
                 + "  </Triggers>\n"
                 + "  <Principals><Principal id=\"Author\"><UserId>S-1-5-18</UserId><RunLevel>HighestAvailable</RunLevel></Principal></Principals>\n"
                 + "  <Settings>\n"
@@ -645,7 +657,7 @@ namespace GescomAgentSetup
             if (ping.Status != 200) throw new SetupException(50, string.Format("HTTP {0} : {1}", ping.Status, ping.Text));
             Log(string.Format("API       : OK, branche '{0}' (id {1})", Str(ping.Body, "branch_name"), Str(ping.Body, "branch_id")));
 
-            Step(6, "Tache planifiee (demarrage du PC + surveillance toutes les 5 minutes)");
+            Step(6, "Tache planifiee (demarrage du PC, retour de veille + surveillance toutes les 5 minutes)");
             try { RegisterTask(); }
             catch (Exception ex) { throw new SetupException(60, "tache planifiee : " + Inner(ex).Message); }
 
@@ -655,6 +667,7 @@ namespace GescomAgentSetup
         }
 
         // Nouvelle version d'agent.ps1 sur une branche deja installee : sans nouvel enregistrement.
+        // La tache est toujours reecrite : une branche installee avant 1.0.9 recoit ainsi les declencheurs d'aujourd'hui.
         public void Update()
         {
             if (!IsAdmin()) throw new SetupException(10, "lancez l'installateur en tant qu'Administrateur.");
@@ -664,13 +677,9 @@ namespace GescomAgentSetup
             if (task != null) StopTask(task);
             File.Copy(PackageAgent, AgentPath, true);
             Log("agent.ps1 copie (version " + ReadAgentVersion(AgentPath) + ").");
-            try
-            {
-                if (task == null) RegisterTask();
-                else Com(task, "Run", new object[] { null });
-            }
+            try { RegisterTask(); }
             catch (Exception ex) { throw new SetupException(60, "tache planifiee : " + Inner(ex).Message); }
-            Log("Tache redemarree.");
+            Log("Tache planifiee reecrite (demarrage, retour de veille, toutes les 5 minutes) et redemarree.");
         }
 
         public void Uninstall()
@@ -729,8 +738,10 @@ namespace GescomAgentSetup
                 outLine(string.Format("etat={0} | dernier lancement={1} | resultat=0x{2:X} | prochain={3}",
                     state >= 0 && state < states.Length ? states[state] : state.ToString(), ComGet(task, "LastRunTime"),
                     Convert.ToInt32(ComGet(task, "LastTaskResult")), ComGet(task, "NextRunTime")));
+                outLine("declencheurs : " + TriggerSummary(task));
             }
             else outLine("tache ABSENTE");
+            outLine("demarrage rapide de Windows : " + FastStartup());
 
             outLine("");
             outLine("== Journal (30 dernieres lignes)");
@@ -779,6 +790,52 @@ namespace GescomAgentSetup
             outLine("");
             outLine("Rapport ecrit : " + report);
             return report;
+        }
+
+        // Les declencheurs de la tache, comme diagnose.ps1 : montre si la branche a ceux de 1.0.9.
+        static string TriggerSummary(object task)
+        {
+            try
+            {
+                object triggers = ComGet(ComGet(task, "Definition"), "Triggers");
+                int count = Convert.ToInt32(ComGet(triggers, "Count"));
+                List<string> parts = new List<string>();
+                bool resume = false, endless = false;
+                for (int i = 1; i <= count; i++)
+                {
+                    object t = triggers.GetType().InvokeMember("Item", BindingFlags.GetProperty, null, triggers, new object[] { i });
+                    int type = Convert.ToInt32(ComGet(t, "Type"));   // TASK_TRIGGER_TYPE2
+                    string name = type == 8 ? "demarrage" : type == 0 ? "evenement" : type == 1 ? "heure" : type == 2 ? "quotidien" : "type " + type;
+                    if (type == 0 && Convert.ToString(ComGet(t, "Subscription")).Contains("Power-Troubleshooter"))
+                    {
+                        name = "retour de veille";
+                        resume = true;
+                    }
+                    object rep = ComGet(t, "Repetition");
+                    string interval = Convert.ToString(ComGet(rep, "Interval")), duration = Convert.ToString(ComGet(rep, "Duration"));
+                    if (interval.Length > 0)
+                    {
+                        name += " toutes les " + interval + (duration.Length > 0 ? " pendant " + duration : " sans fin");
+                        if (duration.Length == 0) endless = true;
+                    }
+                    parts.Add(name);
+                }
+                string s = string.Join(", ", parts.ToArray());
+                return resume && endless ? s : s + " -> ANCIENNE TACHE : GescomAgent-Setup.exe > Mettre a jour l'agent";
+            }
+            catch (Exception ex) { return "illisible (" + Inner(ex).Message + ")"; }
+        }
+
+        // Avec le demarrage rapide, "Arreter" met Windows en veille prolongee : le declencheur "retour de veille" relance l'agent.
+        static string FastStartup()
+        {
+            try
+            {
+                object v = Registry.GetValue(@"HKEY_LOCAL_MACHINE\SYSTEM\CurrentControlSet\Control\Session Manager\Power", "HiberbootEnabled", null);
+                if (v == null) return "inconnu";
+                return Convert.ToInt32(v) == 1 ? "actif (arreter le PC = veille prolongee)" : "inactif";
+            }
+            catch (Exception) { return "inconnu"; }
         }
 
         static string[] ReadShared(string path)

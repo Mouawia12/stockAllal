@@ -54,10 +54,48 @@ Test-Case 'l''exe et install.ps1 -Detect trouvent la meme base et le meme isql' 
     Assert ($p.ExitCode -eq 0) "code de sortie $($p.ExitCode)"
     $script:detected = Get-Content $json -Raw -Encoding UTF8 | ConvertFrom-Json
     $ps = & powershell.exe -NoProfile -ExecutionPolicy Bypass -File (Join-Path $AgentDir 'install.ps1') -Detect | ConvertFrom-Json
+    $script:psDetected = $ps
     Assert ($script:detected.database -eq $ps.database) "base : exe '$($script:detected.database)', install.ps1 '$($ps.database)'"
     Assert ($script:detected.isql -eq $ps.isql) "isql : exe '$($script:detected.isql)', install.ps1 '$($ps.isql)'"
     Assert ($script:detected.package_version -match '^\d+\.\d+\.\d+$') "version du paquet : '$($script:detected.package_version)'"
     Assert ($null -eq $script:detected.installed) 'le dossier de test ne doit pas contenir d''agent installe'
+}
+
+Test-Case 'tache planifiee : l''exe et install.ps1 ecrivent la meme, et Windows l''accepte (rien n''est enregistre)' {
+    $exeXml = [string]$script:detected.task_xml
+    $psXml = [string]$script:psDetected.task_xml
+    Assert ($exeXml -and $psXml) 'task_xml absent de /detect ou de install.ps1 -Detect'
+    $nsUri = 'http://schemas.microsoft.com/windows/2004/02/mit/task'
+    $docs = foreach ($x in $exeXml, $psXml) {
+        $doc = New-Object Xml.XmlDocument
+        $doc.LoadXml($x)
+        $ns = New-Object Xml.XmlNamespaceManager($doc.NameTable)
+        $ns.AddNamespace('t', $nsUri)
+        , @($doc, $ns)
+    }
+    # memes declencheurs, compte et reglages (les chemins de l'action different : dossier de test pour l'exe)
+    foreach ($part in 'Triggers', 'Principals', 'Settings') {
+        $a = $docs[0][0].SelectSingleNode("/t:Task/t:$part", $docs[0][1]).OuterXml
+        $b = $docs[1][0].SelectSingleNode("/t:Task/t:$part", $docs[1][1]).OuterXml
+        Assert ($a -and $a -eq $b) "$part : exe et install.ps1 differents"
+    }
+    $doc, $ns = $docs[0]
+    $kinds = @($doc.SelectNodes('/t:Task/t:Triggers/*', $ns) | ForEach-Object { $_.LocalName }) -join ','
+    Assert ($kinds -eq 'BootTrigger,EventTrigger,TimeTrigger') "declencheurs : $kinds"
+    $rep = $doc.SelectSingleNode('/t:Task/t:Triggers/t:TimeTrigger/t:Repetition', $ns)
+    Assert ($rep.Interval -eq 'PT5M' -and -not $rep.SelectSingleNode('t:Duration', $ns)) 'surveillance : toutes les 5 minutes, sans fin'
+    # le Planificateur valide chaque XML (definition en memoire, jamais enregistree)
+    $svc = New-Object -ComObject Schedule.Service
+    $svc.Connect()
+    foreach ($x in $exeXml, $psXml) { $def = $svc.NewTask(0); $def.XmlText = $x }
+    # retour de veille / demarrage rapide : la requete est valide, et trouve l'evenement si ce PC est deja sorti de veille
+    $query = $doc.SelectSingleNode('/t:Task/t:Triggers/t:EventTrigger/t:Subscription', $ns).InnerText
+    try {
+        $e = Get-WinEvent -FilterXml ([xml]$query) -MaxEvents 1 -ErrorAction Stop
+        Write-Host "        dernier retour de veille sur ce PC : $($e.TimeCreated)"
+    } catch {
+        Assert ($_.FullyQualifiedErrorId -like 'NoMatchingEventsFound*') "requete du retour de veille refusee : $($_.Exception.Message)"
+    }
 }
 
 $hasGescomm = $detected -and $detected.database

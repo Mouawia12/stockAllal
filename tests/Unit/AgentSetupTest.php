@@ -57,6 +57,23 @@ class AgentSetupTest extends TestCase
         $this->assertSame($list($agent[1]), $list($setup[1]), 'Installer.RequiredFields must match $Fields in agent.ps1');
     }
 
+    /**
+     * L'exe et install.ps1 creent la meme tache (tests\run-tests.ps1 compare le XML entier sur Windows) : relancee au
+     * retour de veille et du demarrage rapide de Windows, et surveillee toutes les 5 minutes sans fin, pas un jour depuis
+     * minuit (jusqu'a 1.0.8 : l'agent ne repartait pas apres un "Arreter" avec le demarrage rapide, 07/11/2026).
+     */
+    public function test_setup_and_install_script_register_the_same_task_triggers(): void
+    {
+        foreach (['setup/Installer.cs', 'install.ps1'] as $file) {
+            $source = file_get_contents(self::AGENT.'/'.$file);
+            $this->assertStringContainsString("Provider[@Name='Microsoft-Windows-Power-Troubleshooter'] and EventID=1", $source, $file);
+            $this->assertStringContainsString('<Repetition><Interval>PT5M</Interval><StopAtDurationEnd>false</StopAtDurationEnd></Repetition>', $source, $file);
+            $this->assertStringContainsString('<MultipleInstancesPolicy>IgnoreNew</MultipleInstancesPolicy>', $source, $file);
+            $this->assertStringNotContainsString('<Duration>', $source, $file);
+            $this->assertStringNotContainsString('CalendarTrigger', $source, $file);
+        }
+    }
+
     public function test_setup_and_install_script_use_the_same_api_url(): void
     {
         preg_match("/\\\$DefaultApiUrl = '([^']+)'/", file_get_contents(self::AGENT.'/install.ps1'), $script);

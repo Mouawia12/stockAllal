@@ -26,7 +26,8 @@ param(
 
 $ErrorActionPreference = 'Stop'
 Add-Type -AssemblyName System.Net.Http
-$AgentVersion = '1.0.8'
+# 1.0.9 : meme boucle que 1.0.8 ; l'installation et la mise a jour reecrivent la tache planifiee (retour de veille)
+$AgentVersion = '1.0.9'
 $Table = 'GC003'
 $Fields = @('CODEA', 'DESIGNATIONF2', 'STOCKREEL')
 # Prix comme dans la liste des articles de Gescomm (colonne de GC003 = titre dans Gescomm => champ envoye a l'API).

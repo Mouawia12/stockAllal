@@ -40,9 +40,29 @@ $task = Get-ScheduledTask -TaskName GescomAgent -ErrorAction SilentlyContinue
 if ($task) {
     $info = $task | Get-ScheduledTaskInfo
     Out-Line ('etat={0} | dernier lancement={1} | resultat=0x{2:X} | prochain={3}' -f $task.State, $info.LastRunTime, $info.LastTaskResult, $info.NextRunTime)
+    # les declencheurs, comme le diagnostic de l'exe : montre si la branche a ceux de 1.0.9
+    $names = @{ Boot = 'demarrage'; Event = 'evenement'; Time = 'heure'; Daily = 'quotidien' }
+    $resume = $false
+    $endless = $false
+    $parts = @(foreach ($t in @($task.Triggers)) {
+        $kind = $t.CimClass.CimClassName -replace '^MSFT_Task', '' -replace 'Trigger$', ''
+        $name = if ($names[$kind]) { $names[$kind] } else { $kind }
+        if ($kind -eq 'Event' -and $t.Subscription -like '*Power-Troubleshooter*') { $name = 'retour de veille'; $resume = $true }
+        if ($t.Repetition -and $t.Repetition.Interval) {
+            if ($t.Repetition.Duration) { $name += " toutes les $($t.Repetition.Interval) pendant $($t.Repetition.Duration)" }
+            else { $name += " toutes les $($t.Repetition.Interval) sans fin"; $endless = $true }
+        }
+        $name
+    })
+    $line = 'declencheurs : ' + ($parts -join ', ')
+    if (-not ($resume -and $endless)) { $line += ' -> ANCIENNE TACHE : GescomAgent-Setup.exe > Mettre a jour l''agent' }
+    Out-Line $line
 } else {
     Out-Line 'tache ABSENTE'
 }
+# avec le demarrage rapide, "Arreter" met Windows en veille prolongee : le declencheur "retour de veille" relance l'agent
+$hiberboot = (Get-ItemProperty 'HKLM:\SYSTEM\CurrentControlSet\Control\Session Manager\Power' -ErrorAction SilentlyContinue).HiberbootEnabled
+Out-Line ('demarrage rapide de Windows : {0}' -f $(if ($null -eq $hiberboot) { 'inconnu' } elseif ($hiberboot -eq 1) { 'actif (arreter le PC = veille prolongee)' } else { 'inactif' }))
 
 Out-Line "`n== Processus de l'agent"
 $procs = @(Get-CimInstance Win32_Process -Filter "Name='powershell.exe'" | Where-Object { $_.CommandLine -match 'GescomAgent\\agent\.ps1' })
