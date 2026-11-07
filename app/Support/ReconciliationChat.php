@@ -60,6 +60,7 @@ Reading the report:
 - "items" gives the designation of each item code that appears in a problem.
 - "item_codes": the same item under a different code in each branch, learned from the code written differently, the same designation, or bons identical but for that code ("how": code, name, bons). The matching already counts them as one item; they should be merged in the page "دمج الأصناف".
 - "timeline": month by month, the problems' total effect and the running total: when the gap appeared and grew.
+- "previous_check" (when there was an earlier check of the same pair): its date, the gap then, how many problems are fixed since, still open ("still"), changed (the same bons, another problem: half fixed or fixed differently) or new; "fixed_problems" lists what was fixed. Each problem also has "since_previous_check": still, changed or new.
 
 How to answer:
 - Answer in {$language}. Be short and practical: what is wrong, in which branch, and what to enter or correct there. Start with the biggest effects.
@@ -88,6 +89,9 @@ TXT;
             }
             if (! empty($p['late'])) {
                 $out['late'] = true;
+            }
+            if (isset($p['status'])) {
+                $out['since_previous_check'] = $p['status'];
             }
             if (isset($p['twin'])) {
                 $out['twin'] = '{'.(str_ends_with($p['type'], '_a') ? 'A' : 'B').':'.$p['twin']['number'].'}';
@@ -137,7 +141,17 @@ TXT;
                 'code_in_A' => $c['a'], 'name_in_A' => $c['name_a'], 'code_in_B' => $c['b'], 'name_in_B' => $c['name_b'], 'how' => $c['how'], 'bons' => $c['bons'],
             ], $r['codes'] ?? []),
             'timeline' => $r['timeline'] ?? [],
-        ];
+        ] + (isset($r['since']) ? ['previous_check' => [
+            'date' => substr((string) ($r['since']['previous_at'] ?? ''), 0, 10),
+            'gap_then' => $r['since']['gap'],
+            'problems_then' => $r['since']['problems'],
+            'fixed' => $r['since']['fixed'], 'still' => $r['since']['still'], 'changed' => $r['since']['changed'], 'new' => $r['since']['new'],
+            'fixed_problems' => array_map(fn (array $p) => [
+                'type' => $p['type'], 'effect_then' => $p['effect'], 'date' => $p['date'],
+                'A' => array_map(fn (array $x) => empty($x['payment']) ? '{A:'.$x['number'].'}' : 'payment '.$x['number'], $p['a']),
+                'B' => array_map(fn (array $x) => empty($x['payment']) ? '{B:'.$x['number'].'}' : 'payment '.$x['number'], $p['b']),
+            ], array_slice($r['fixed'] ?? [], 0, 100)),
+        ]] : []);
     }
 
     /**
@@ -145,6 +159,7 @@ TXT;
      * puis gardee en debut de chaque conversation pour que les questions suivantes partent de la).
      */
     public const ANALYZE = 'Analyse this report in depth before you answer, then write your conclusion. '
+        .'If there is a "previous_check", start with what changed since then: what was fixed, the gap then and now, and what is still open or new. '
         .'Work out what really explains the gap: group the problems by cause (bons never entered, entered for another partner, '
         .'entered twice, different quantities or prices, items under two codes, payments, opening balance) with the total effect '
         .'of each cause, biggest first, and check that they add up to the gap. Say in which branch each fix must be made and '

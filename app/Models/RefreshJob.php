@@ -8,11 +8,13 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 /**
  * Demande envoyee a l'agent d'une branche, recuperee par GET /api/agent/pending.
- * type "code" : lire un produit (bouton "تحديث الآن") ; type "sync" : renvoyer tout le stock (bouton "مزامنة الآن").
+ * type "code" : lire un produit (bouton "تحديث الآن") ; type "sync" : renvoyer tout le stock (bouton "مزامنة الآن") ;
+ * type "data" (agent 1.0.10, "إعادة الفحص" de "المطابقة") : renvoyer maintenant les bons et versements d'une periode,
+ * params = {from, to, sets} ; l'agent repond quand tout est parti.
  * Statut "waiting" : "مزامنة الآن" pour un agent qui ne connait pas "sync" (avant 1.0.4). La demande ne lui est pas
  * envoyee : sa prochaine synchro automatique (toutes les 5 min) y repond.
  */
-#[Fillable(['batch', 'type', 'branch_id', 'code_key', 'status', 'requested_by', 'taken_at', 'answered_at', 'result'])]
+#[Fillable(['batch', 'type', 'branch_id', 'code_key', 'params', 'status', 'requested_by', 'taken_at', 'answered_at', 'result'])]
 class RefreshJob extends Model
 {
     /** Au-dela, une branche qui n'a pas repondu est affichee "pas de reponse". */
@@ -20,6 +22,9 @@ class RefreshJob extends Model
 
     /** Une synchro complete envoie tout le stock : on lui laisse plus de temps sur une ligne lente. */
     public const SYNC_TIMEOUT_SECONDS = 120;
+
+    /** Les bons et versements d'une paire, mois par mois, sur une ligne lente : jusqu'a 10 minutes. */
+    public const DATA_TIMEOUT_SECONDS = 600;
 
     /** Agent avant 1.0.4 : synchro automatique toutes les 5 min, plus le temps de l'envoi. */
     public const WAIT_SYNC_SECONDS = 420;
@@ -36,6 +41,7 @@ class RefreshJob extends Model
         return [
             'taken_at' => 'datetime',
             'answered_at' => 'datetime',
+            'params' => 'array',
             'result' => 'array',
         ];
     }
@@ -63,6 +69,7 @@ class RefreshJob extends Model
         return match (true) {
             $this->status === 'waiting' => self::WAIT_SYNC_SECONDS,
             $this->type === 'sync' => self::SYNC_TIMEOUT_SECONDS,
+            $this->type === 'data' => self::DATA_TIMEOUT_SECONDS,
             default => self::TIMEOUT_SECONDS,
         };
     }

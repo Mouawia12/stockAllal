@@ -166,7 +166,9 @@ class AgentController extends Controller
         }
 
         return response()->json([
-            'jobs' => $jobs->map(fn (RefreshJob $job) => ['id' => $job->id, 'type' => $job->type, 'code' => $job->code_key])->values(),
+            // "data" (1.0.10) : la periode et les jeux a renvoyer ; jamais envoye a un agent plus ancien (AGENT_FEATURES)
+            'jobs' => $jobs->map(fn (RefreshJob $job) => ['id' => $job->id, 'type' => $job->type, 'code' => $job->code_key]
+                + ($job->type === 'data' ? (array) $job->params : []))->values(),
         ]);
     }
 
@@ -179,8 +181,9 @@ class AgentController extends Controller
         }
 
         $error = $request->input('error');
-        if ($job->type === 'sync') {
-            // le stock lui-meme est deja arrive par POST /agent/sync ; ici l'agent confirme seulement
+        if ($job->type === 'sync' || $job->type === 'data') {
+            // le stock (POST /agent/sync) ou les bons et versements (POST /agent/records) sont deja arrives ;
+            // ici l'agent confirme seulement
             $job->update([
                 'status' => $error ? 'error' : 'done',
                 'answered_at' => now(),

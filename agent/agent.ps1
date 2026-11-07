@@ -27,7 +27,8 @@ param(
 $ErrorActionPreference = 'Stop'
 Add-Type -AssemblyName System.Net.Http
 # 1.0.9 : meme boucle que 1.0.8 ; l'installation et la mise a jour reecrivent la tache planifiee (retour de veille)
-$AgentVersion = '1.0.9'
+# 1.0.10 : la demande "data" (renvoyer maintenant les bons et versements d'une periode : bouton "re-verifier" du rapprochement)
+$AgentVersion = '1.0.10'
 $Table = 'GC003'
 $Fields = @('CODEA', 'DESIGNATIONF2', 'STOCKREEL')
 # Prix comme dans la liste des articles de Gescomm (colonne de GC003 = titre dans Gescomm => champ envoye a l'API).
@@ -385,6 +386,7 @@ function Invoke-PendingJobs {
         if ($null -eq $job) { continue }
         $type = [string]$job.type
         if ($type -eq 'sync') { Invoke-SyncJob $job; continue }
+        if ($type -eq 'data') { Add-DataJob $job; continue }
         # demande d'une version plus recente du serveur : on le dit au lieu de la lire comme un code
         if ($type -and $type -ne 'code') {
             Invoke-Api 'POST' '/agent/result' ([ordered]@{ job_id = $job.id; type = $type; error = 'unsupported'; read_at = Get-Now }) | Out-Null
@@ -491,6 +493,7 @@ $script:DataNext = @{}     # "jeu|palier" -> prochaine fois
 $script:DataBroken = @{}   # nom du jeu -> pas avant (apres une erreur)
 $script:HistoryRunning = $false
 $script:HistoryFull = $false   # l'historique en cours est celui de la nuit (tous les jeux), pas seulement des nouveaux
+$script:DataJobs = @{}     # demande "data" (1.0.10) -> etapes restantes, erreur
 $script:State = $null
 
 function Get-Today { (Get-Date).Date }
@@ -760,6 +763,72 @@ function Add-DueDataSteps {
     else { Write-Log ('DONNEES : tout l''historique de {0}, mois par mois' -f (@($sets | ForEach-Object { $_.name }) -join ', ')) }
 }
 
+# Demande "data" (1.0.10, bouton "re-verifier" du rapprochement entre branches) : renvoyer maintenant les jeux demandes (sets) sur la
+# periode from..to, mois par mois, avant tout le reste (prio 0) ; seuls les groupes qui different partent. Les demandes en
+# direct passent toujours entre deux pages. La reponse part quand la derniere etape est faite (Complete-DataJobStep).
+function Add-DataJob($Job) {
+    $id = [string]$Job.id
+    try {
+        $from = [datetime]::ParseExact([string]$Job.from, 'yyyy-MM-dd', $Invariant)
+        $to = [datetime]::ParseExact([string]$Job.to, 'yyyy-MM-dd', $Invariant)
+    } catch {
+        $from = $null
+        $to = $null
+    }
+    $sets = @($Datasets | Where-Object { @($Job.sets) -contains $_.name })
+    $steps = 0
+    if ($from -and $to -and $from -le $to -and $sets.Count) {
+        foreach ($ds in $sets) {
+            if (-not $ds.date) {
+                [void]$script:DataQueue.Add(@{ ds = $ds; tier = 'job'; prio = 0; job = $id; from = $null; to = $null })
+                $steps++
+                continue
+            }
+            $m = New-Object DateTime ($from.Year, $from.Month, 1)
+            while ($m -le $to) {
+                $end = $m.AddMonths(1).AddDays(-1)
+                $a = $m
+                if ($a -lt $from) { $a = $from }
+                if ($end -gt $to) { $end = $to }
+                [void]$script:DataQueue.Add(@{ ds = $ds; tier = 'job'; prio = 0; job = $id; from = (Format-Day $a); to = (Format-Day $end) })
+                $steps++
+                $m = $m.AddMonths(1)
+            }
+        }
+    }
+    if (-not $steps) {
+        Invoke-Api 'POST' '/agent/result' ([ordered]@{ job_id = $Job.id; type = 'data'; error = 'invalid_range'; read_at = Get-Now }) | Out-Null
+        Write-Log ("DEMANDE {0} : donnees -> periode ou jeux invalides" -f $id)
+        return
+    }
+    $script:DataJobs[$id] = @{ left = $steps; error = $null; t0 = Get-Date }
+    Write-Log ("DEMANDE {0} : renvoyer {1} du {2} au {3} ({4} etape(s))" -f $id, (@($sets | ForEach-Object { $_.name }) -join ', '), $Job.from, $Job.to, $steps)
+}
+
+# Une etape d'une demande "data" faite ($ErrorCode : elle a echoue, la demande s'arrete). La derniere repond au serveur.
+function Complete-DataJobStep([string]$Id, $ErrorCode) {
+    if (-not $script:DataJobs.ContainsKey($Id)) { return }
+    $job = $script:DataJobs[$Id]
+    if ($ErrorCode) {
+        $job.error = $ErrorCode
+        $job.left = 0
+        $rest = @($script:DataQueue | Where-Object { $_.job -eq $Id })
+        foreach ($s in $rest) { $script:DataQueue.Remove($s) }
+    } else {
+        $job.left = $job.left - 1
+    }
+    if ($job.left -gt 0) { return }
+    $script:DataJobs.Remove($Id)
+    try {
+        Invoke-Api 'POST' '/agent/result' ([ordered]@{ job_id = [int]$Id; type = 'data'; error = $job.error; read_at = Get-Now }) | Out-Null
+    } catch {
+        Write-Log (Get-ErrorText $_) -IsError
+    }
+    $summary = 'OK'
+    if ($job.error) { $summary = $job.error }
+    Write-Log ("DEMANDE {0} : donnees renvoyees en {1:N0} s -> {2}" -f $Id, ((Get-Date) - $job.t0).TotalSeconds, $summary)
+}
+
 # Une tache qui echoue s'arrete 5 minutes (sa table manque : 6 heures), le serveur le note, les autres continuent.
 # Une erreur de l'API n'est pas renvoyee a l'API : le serveur note lui-meme ce qu'il refuse.
 function Set-DatasetBroken($Ds, $ErrorRecord) {
@@ -790,7 +859,9 @@ function Invoke-NextDataStep {
         if ($null -eq $next -or $s.prio -lt $next.prio) { $next = $s }
     }
     if ($null -eq $next) {
-        # les etapes d'une table en erreur sont abandonnees : la nuit suivante les refera
+        # les etapes d'une table en erreur sont abandonnees : la nuit suivante les refera ; une demande "data" qui en
+        # attendait repond en echec
+        foreach ($id in @($script:DataJobs.Keys)) { Complete-DataJobStep $id 'data_failed' }
         $script:DataQueue.Clear()
         if ($script:HistoryRunning) {
             $script:HistoryRunning = $false
@@ -804,10 +875,13 @@ function Invoke-NextDataStep {
     $script:DataQueue.Remove($next)
     try {
         $done = Invoke-DataStep $next
-        # etape coupee par sa limite de temps : l'historique la refait tout de suite, les autres a leur prochain passage
-        if (-not $done -and $next.tier -eq 'history') { [void]$script:DataQueue.Add($next) }
+        # etape coupee par sa limite de temps : l'historique et une demande "data" la refont tout de suite, les autres a
+        # leur prochain passage
+        if (-not $done -and ($next.tier -eq 'history' -or $next.tier -eq 'job')) { [void]$script:DataQueue.Add($next) }
+        elseif ($next.job) { Complete-DataJobStep $next.job $null }
     } catch {
         Set-DatasetBroken $next.ds $_
+        if ($next.job) { Complete-DataJobStep $next.job 'data_failed' }
     }
 }
 

@@ -40,6 +40,8 @@ class AgentCompatibilityTest extends TestCase
             '1.0.8' => ['1.0.8', true, true, true, true],
             // memes requetes que 1.0.8 : seule la tache planifiee change (retour de veille, surveillance sans fin)
             '1.0.9' => ['1.0.9', true, true, true, true],
+            // memes requetes que 1.0.9, plus la demande "data" ("إعادة الفحص", ReconcileHistoryTest)
+            '1.0.10' => ['1.0.10', true, true, true, true],
         ];
     }
 

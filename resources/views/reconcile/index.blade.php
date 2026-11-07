@@ -99,7 +99,25 @@
     @keyframes spin { to { transform: rotate(360deg); } }
     @media (prefers-reduced-motion: reduce) { .steps li.running .ic { animation: none; } .analysis .bar > span { transition: none; } }
 
-    .ran { display: flex; gap: 10px; align-items: center; justify-content: flex-end; margin: -6px 0 12px; }
+    .ran { display: flex; gap: 10px; align-items: center; justify-content: flex-end; flex-wrap: wrap; margin: -6px 0 12px; }
+    .ran .history .drop-menu { min-width: 320px; max-height: 340px; overflow-y: auto; }
+    .ran .history .drop-menu a { display: flex; gap: 8px; align-items: baseline; padding: 7px 10px; border-radius: 8px; color: var(--text); }
+    .ran .history .drop-menu a:hover, .ran .history .drop-menu a:focus-visible { background: var(--row-hover); }
+    .ran .history .drop-menu a.on { background: var(--accent-soft); font-weight: 600; }
+    .ran .history .grow { flex: 1; }
+    .btn.primary-soft { border-color: var(--accent); color: var(--accent); font-weight: 600; }
+    .old-run { margin: 0 0 12px; padding: 8px 12px; border-radius: 8px; background: var(--accent-soft); }
+    .recent { margin-bottom: 18px; }
+    .recent h2, .since h2 { font-size: 16px; margin: 0 0 10px; }
+    .since { margin-bottom: 16px; }
+    .since-row { display: flex; flex-wrap: wrap; gap: 8px 14px; align-items: center; }
+    /* de l'ancien ecart au nouveau : la fleche suit le sens de lecture */
+    .flip { display: inline-block; }
+    [dir=rtl] .flip { transform: scaleX(-1); }
+    /* "nouveau" : la couleur de l'accent, jamais le rouge ni le jaune (couleurs du stock) */
+    .pill.new { background: var(--accent-soft); color: var(--accent); font-weight: 600; }
+    .prob-head .pill.st { margin-inline-start: 6px; font-weight: 500; }
+    details.fixed ul { margin: 6px 0 0; padding-inline-start: 18px; display: grid; gap: 4px; }
     .ai-sum { margin-bottom: 16px; }
     .ai-sum h2 { font-size: 16px; margin: 0 0 8px; display: flex; gap: 8px; align-items: center; }
     .ai-sum h2 svg { width: 18px; height: 18px; color: var(--accent); }
@@ -196,6 +214,30 @@
 </form>
 @endif
 
+{{-- les dernieres paires analysees (gardees) : on y revient en un clic --}}
+@if ($recent->isNotEmpty())
+    <section class="card recent">
+        <h2>{{ $T['recent'] }}</h2>
+        <table>
+            <thead><tr><th>{{ $T['seller'] }}</th><th>{{ $T['buyer'] }}</th><th>{{ $T['gap'] }}</th><th class="hide-sm">{{ $T['count'] }}</th><th>{{ $T['checked_on'] }}</th></tr></thead>
+            <tbody>
+                @foreach ($recent as $r)
+                    @php
+                        $open = route('reconcile.index', ['a' => $r->customer->branch_id, 'ca' => $r->customer_id, 'b' => $r->supplier->branch_id, 'sb' => $r->supplier_id]);
+                    @endphp
+                    <tr>
+                        <td><a href="{{ $open }}"><bdi>{{ $r->customer->name ?? $r->customer->code }}</bdi></a> <span class="muted small">— {{ $r->customer->branch->name }}</span></td>
+                        <td><bdi>{{ $r->supplier->name ?? $r->supplier->code }}</bdi> <span class="muted small">— {{ $r->supplier->branch->name }}</span></td>
+                        <td class="num">{{ $signed($r->gap) }}</td>
+                        <td class="num hide-sm">{{ $r->problems }}</td>
+                        <td class="small muted">{{ $r->created_at->diffForHumans() }}@if ($r->user) · {{ $r->user->name }}@endif</td>
+                    </tr>
+                @endforeach
+            </tbody>
+        </table>
+    </section>
+@endif
+
 @if ($analyze)
     <section class="card analysis" id="analysis">
         <h2>{{ $T['analysis']['title'] }}</h2>
@@ -220,11 +262,34 @@
         $side = fn (string $s) => $s === 'a' ? ['name' => $nameA, 'hue' => $hueA] : ['name' => $nameB, 'hue' => $hueB];
         $ai = $report['ai'] ?? null;
     @endphp
+    @php
+        $pairUrl = fn (array $more = []) => route('reconcile.index', ['a' => $customer->branch_id, 'ca' => $customer->id, 'b' => $supplier->branch_id, 'sb' => $supplier->id] + $more);
+    @endphp
+    @if ($run->id !== $latest)
+        <p class="old-run">{{ __('reconcile.history.old', ['time' => $run->created_at->format('d/m/Y H:i')]) }}
+            <a href="{{ $pairUrl() }}">{{ $T['history']['latest'] }}</a></p>
+    @endif
     <div class="ran small">
-        @if (! empty($report['analyzed_at']))
-            <span class="muted">{{ __('reconcile.analysis.ago', ['time' => \Illuminate\Support\Carbon::parse($report['analyzed_at'])->diffForHumans()]) }}</span>
+        <span class="muted">{{ __('reconcile.analysis.ago', ['time' => $run->created_at->diffForHumans()]) }}@if ($run->user) · {{ $run->user->name }}@endif
+            @if ($run->synced) · <span title="{{ $T['history']['synced_help'] }}">{{ $T['history']['synced'] }}</span>@endif</span>
+        {{-- les analyses gardees de la paire (les 30 dernieres) --}}
+        @if ($runs->count() > 1)
+            <details class="drop history">
+                <summary class="btn">{{ __('reconcile.history.title', ['count' => $runs->count()]) }}</summary>
+                <div class="drop-menu">
+                    @foreach ($runs as $h)
+                        <a href="{{ $pairUrl(['r' => $h->id]) }}" @class(['on' => $h->id === $run->id])>
+                            <span class="num">{{ $h->created_at->format('d/m/Y H:i') }}</span>
+                            <span class="grow"></span>
+                            <span class="num">{{ $signed($h->gap) }}</span>
+                            <span class="muted">· {{ trans_choice('reconcile.history.problems', $h->problems, ['count' => $h->problems]) }}</span>
+                            @if ($h->synced)<span class="muted" title="{{ $T['history']['synced_help'] }}">⟳</span>@endif
+                        </a>
+                    @endforeach
+                </div>
+            </details>
         @endif
-        <a class="btn" href="{{ route('reconcile.index', ['a' => $customer->branch_id, 'ca' => $customer->id, 'b' => $supplier->branch_id, 'sb' => $supplier->id, 'again' => 1]) }}">{{ $T['analysis']['again'] }}</a>
+        <a class="btn primary-soft" href="{{ $pairUrl(['again' => 1, 'sync' => 1]) }}" data-key="Alt+R" title="{{ $T['analysis']['recheck_help'] }}">⟳ {{ $T['analysis']['recheck'] }}</a>
     </div>
     <section class="summary">
         <div class="card sum">
@@ -257,6 +322,23 @@
             @if ($b['first'])<p class="muted small" style="margin:6px 0 0">{{ __('reconcile.period', ['from' => $date($b['first']), 'to' => $date($b['last'])]) }}</p>@endif
         </div>
     </section>
+
+    {{-- depuis le fichier precedent de la paire : ce qui a ete corrige, ce qui reste, ce qui est nouveau --}}
+    @if ($since = $report['since'] ?? null)
+        <section class="card since">
+            <h2>{{ __('reconcile.since.title', ['time' => \Illuminate\Support\Carbon::parse($since['previous_at'])->format('d/m/Y H:i')]) }}</h2>
+            <div class="since-row">
+                <span>{{ $T['since']['gap'] }} <span class="num">{{ $signed($since['gap']) }}</span> <span class="flip" aria-hidden="true">→</span> <b class="num">{{ $signed($report['gap']) }}</b></span>
+                <span class="pill ok">{{ trans_choice('reconcile.since.fixed', $since['fixed'], ['count' => $since['fixed']]) }}</span>
+                <span class="pill">{{ trans_choice('reconcile.since.still', $since['still'], ['count' => $since['still']]) }}</span>
+                @if ($since['changed'])<span class="pill">{{ trans_choice('reconcile.since.changed', $since['changed'], ['count' => $since['changed']]) }}</span>@endif
+                @if ($since['new'])<span class="pill new">{{ trans_choice('reconcile.since.new', $since['new'], ['count' => $since['new']]) }}</span>@endif
+                @if (! empty($since['previous_id']))
+                    <a class="small" href="{{ $pairUrl(['r' => $since['previous_id']]) }}">{{ $T['since']['open_previous'] }}</a>
+                @endif
+            </div>
+        </section>
+    @endif
 
     @if (! empty($ai['text']))
         <section class="card ai-sum">
@@ -327,10 +409,34 @@
                     </table>
                 </details>
             @endif
+            @if ($report['fixed'] ?? [])
+                <details class="more fixed">
+                    <summary>{{ __('reconcile.since.fixed_list', ['count' => count($report['fixed'])]) }}</summary>
+                    <ul class="small">
+                        @foreach ($report['fixed'] as $p)
+                            <li>
+                                <b>{{ __('reconcile.types.'.$p['type'], ['a' => $nameA, 'b' => $nameB]) }}</b>
+                                <span class="num muted">({{ $signed($p['effect']) }})</span> —
+                                @foreach (['a', 'b'] as $s)
+                                    @foreach ($p[$s] as $x)
+                                        @if (empty($x['payment']))
+                                            <a href="{{ route($s === 'a' ? 'sales.show' : 'purchases.show', $x['id']) }}">{{ $side($s)['name'] }} <bdi class="num">#{{ $x['number'] }}</bdi></a>
+                                        @else
+                                            {{ $side($s)['name'] }} {{ $T['payment'] }} <bdi class="num">#{{ $x['number'] }}</bdi>
+                                        @endif
+                                        <span class="muted">{{ $date($x['date']) }}</span>
+                                    @endforeach
+                                @endforeach
+                            </li>
+                        @endforeach
+                    </ul>
+                </details>
+            @endif
             @forelse ($report['problems'] as $p)
                 <article class="prob" data-type="{{ $p['type'] }}">
                     <div class="prob-head">
-                        <span class="ptype">{{ __('reconcile.types.'.$p['type'], ['a' => $nameA, 'b' => $nameB]) }}</span>
+                        <span class="ptype">{{ __('reconcile.types.'.$p['type'], ['a' => $nameA, 'b' => $nameB]) }}
+                            @if (isset($p['status']))<span @class(['pill', 'st', 'new' => $p['status'] === 'new'])>{{ $T['status'][$p['status']] }}</span>@endif</span>
                         <span class="eff num" title="{{ $T['effect'] }}">{{ $signed($p['effect']) }}</span>
                     </div>
                     <div class="prob-sides">
@@ -485,9 +591,11 @@
 @push('scripts')
 @php
     // @json coupe son argument aux virgules : les tableaux sont prepares ici
-    $jsTexts = ['no_hits' => $T['no_hits'], 'bons' => $T['bons_count'], 'chat' => $T['chat'], 'analysis' => $T['analysis']];
-    $jsRun = ['ca' => $customer?->id, 'sb' => $supplier?->id, 'url' => route('reconcile.analyze')];
-    $jsChat = ['ca' => $customer?->id, 'sb' => $supplier?->id, 'url' => route('reconcile.chat'),
+    $jsTexts = ['no_hits' => $T['no_hits'], 'bons' => $T['bons_count'], 'chat' => $T['chat'], 'analysis' => $T['analysis'], 'sync' => $T['sync']];
+    $slot = '00000000-0000-4000-8000-000000000000';
+    $jsRun = ['ca' => $customer?->id, 'sb' => $supplier?->id, 'url' => route('reconcile.analyze'),
+        'sync_url' => route('reconcile.sync'), 'status_url' => route('reconcile.sync-status', ['batch' => $slot]), 'batch_slot' => $slot];
+    $jsChat = ['ca' => $customer?->id, 'sb' => $supplier?->id, 'run' => $run?->id, 'url' => route('reconcile.chat'),
         'names' => ['A' => $nameA, 'B' => $nameB], 'links' => $links, 'max' => App\Support\ReconciliationChat::MAX_MESSAGES];
 @endphp
 <script>
@@ -577,7 +685,7 @@
 
     const token = document.querySelector('meta[name=csrf-token]').content;
 
-    // ---------- l'analyse, etape par etape (ReconcileController::analyze) ----------
+    // ---------- l'analyse, etape par etape (ReconcileController::analyze) ; "إعادة الفحص" : d'abord la synchro ----------
     const panel = document.getElementById('analysis');
     if (panel) {
         const RUN = @json($jsRun);
@@ -585,28 +693,79 @@
         const end = document.getElementById('analysis-end');
         const retry = document.getElementById('analysis-retry');
         const item = step => panel.querySelector('[data-step="' + step + '"]');
-        let restarted = false;
-        const reset = () => panel.querySelectorAll('[data-step]').forEach(li => {
+        let restarted = false, synced = false, runId = null;
+        const reset = () => panel.querySelectorAll('[data-step]:not([data-step=sync])').forEach(li => {
             li.className = '';
             li.querySelector('.note').textContent = '';
             li.querySelector('.t').textContent = '';
         });
+        // fetch simple : une etape refaite par erreur referait l'appel a l'IA (paye deux fois) ou une demande aux branches
+        const post = (url, body) => fetch(url, {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json', Accept: 'application/json', 'X-CSRF-TOKEN': token},
+            body: JSON.stringify(body),
+        });
+        const clock = li => {
+            const t0 = Date.now();
+            return setInterval(() => {
+                li.querySelector('.t').textContent = T.analysis.seconds.replace(':s', Math.round((Date.now() - t0) / 1000));
+            }, 500);
+        };
+        const wait = ms => new Promise(r => setTimeout(r, ms));
+
+        // les deux branches renvoient leurs bons et versements (agent 1.0.10) ; on attend leur reponse, 11 minutes au
+        // plus (le serveur dit "لم يرد" apres 10) ; un agent plus ancien ou hors ligne : la note le dit, on continue
+        const runSync = async () => {
+            const li = item('sync');
+            li.className = 'running';
+            li.querySelector('.note').textContent = T.analysis.running;
+            const tick = clock(li);
+            try {
+                const res = await post(RUN.sync_url, {ca: RUN.ca, sb: RUN.sb});
+                const data = await res.json().catch(() => ({}));
+                if (!res.ok) throw new Error(data.message || T.chat.failed);
+                const notes = data.branches.filter(b => !b.job).map(b => b.note);
+                const show = states => { li.querySelector('.note').textContent = [...states, ...notes].join(' — '); };
+                let ok = data.branches.some(b => b.job);
+                if (ok) {
+                    const deadline = Date.now() + 11 * 60 * 1000;
+                    for (;;) {
+                        await wait(2000);
+                        let jobs = [];
+                        try {
+                            const st = await fetchRetry(RUN.status_url.replace(RUN.batch_slot, data.batch), {headers: {Accept: 'application/json'}});
+                            if (st.ok) jobs = (await st.json()).jobs;
+                        } catch (e) { /* ligne faible : on redemande */ }
+                        show(jobs.map(j => j.branch + ' : ' + (T.sync[j.status] || j.status)));
+                        const over = jobs.length && jobs.every(j => ['done', 'error', 'timeout', 'not_found'].includes(j.status));
+                        if (over || Date.now() > deadline) {
+                            synced = jobs.some(j => j.status === 'done');
+                            ok = jobs.length > 0 && jobs.every(j => j.status === 'done') && !notes.length;
+                            break;
+                        }
+                    }
+                } else {
+                    show([]);
+                }
+                li.className = ok ? 'ok' : 'warn';
+            } catch (e) {
+                li.className = 'warn';
+                li.querySelector('.note').textContent = T.analysis.failed + ' ' + (e.message && e.message !== 'Failed to fetch' ? e.message : T.chat.failed);
+            } finally {
+                clearInterval(tick);
+            }
+            return run('load');
+        };
+
         const run = async step => {
+            if (step === 'sync') return runSync();
             const li = item(step);
             li.className = 'running';
             li.querySelector('.note').textContent = T.analysis.running;
             retry.hidden = true;
-            const t0 = Date.now();
-            const tick = setInterval(() => {
-                li.querySelector('.t').textContent = T.analysis.seconds.replace(':s', Math.round((Date.now() - t0) / 1000));
-            }, 500);
+            const tick = clock(li);
             try {
-                // fetch simple : une etape refaite par erreur referait l'appel a l'IA, paye deux fois
-                const res = await fetch(RUN.url, {
-                    method: 'POST',
-                    headers: {'Content-Type': 'application/json', Accept: 'application/json', 'X-CSRF-TOKEN': token},
-                    body: JSON.stringify({ca: RUN.ca, sb: RUN.sb, step}),
-                });
+                const res = await post(RUN.url, {ca: RUN.ca, sb: RUN.sb, step, synced: synced ? 1 : 0, run: runId});
                 const data = await res.json().catch(() => ({}));
                 if (res.status === 409 && data.restart && !restarted) {
                     // etat perdu (trop long entre deux etapes) : on recommence une fois depuis le debut
@@ -617,6 +776,7 @@
                 }
                 if (!res.ok) throw new Error(data.message || T.chat.failed);
                 clearInterval(tick);
+                if (data.run) runId = data.run;
                 li.className = data.failed ? 'warn' : 'ok';
                 li.querySelector('.note').textContent = data.note || '';
                 bar.firstElementChild.style.width = data.percent + '%';
@@ -624,9 +784,11 @@
                 if (data.next) return run(data.next);
                 end.textContent = T.analysis.done;
                 end.hidden = false;
+                // le rapport garde ; un instant pour lire la liste complete (elle reste dans "ما فحصه التحليل")
                 const url = new URL(location.href);
                 url.searchParams.delete('again');
-                // un instant pour lire la liste complete, puis le resultat (qui la garde dans "ما فحصه التحليل")
+                url.searchParams.delete('sync');
+                url.searchParams.set('r', runId);
                 setTimeout(() => location.replace(url.toString()), 1200);
             } catch (e) {
                 clearInterval(tick);
@@ -636,7 +798,7 @@
                 retry.querySelector('button').onclick = () => run(step);
             }
         };
-        run('load');
+        run(panel.querySelector('[data-step]').dataset.step);
     }
 
     // ---------- textes de l'IA : Markdown simple, {A} / {A:101} remis en noms et en liens ----------
@@ -685,7 +847,8 @@
     // ---------- chat ----------
     const chat = document.getElementById('ask');
     if (!chat) return;
-    const KEY = 'reconcile:' + R.ca + ':' + R.sb;
+    // une conversation par rapport garde : revenir a un ancien rapport retrouve la sienne
+    const KEY = 'reconcile:' + R.ca + ':' + R.sb + ':' + R.run;
     const msgs = document.getElementById('msgs');
     const quick = document.getElementById('quick');
     const box = document.getElementById('question');
@@ -726,7 +889,7 @@
             const res = await fetch(R.url, {
                 method: 'POST',
                 headers: {'Content-Type': 'application/json', Accept: 'application/json', 'X-CSRF-TOKEN': token},
-                body: JSON.stringify({ca: R.ca, sb: R.sb, messages: history.slice(-R.max)}),
+                body: JSON.stringify({ca: R.ca, sb: R.sb, run: R.run, messages: history.slice(-R.max)}),
             });
             const data = await res.json().catch(() => ({}));
             if (!res.ok || !data.text) throw new Error(data.error || data.message || T.chat.failed);

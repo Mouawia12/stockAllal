@@ -23,7 +23,7 @@ class Branch extends Model
      * plus ancien (avant 1.0.4, une demande "sync" est lue comme un code vide et revient en invalid_code), et une page
      * qui a besoin des ventes dit "mettre a jour l'agent de cette branche" au lieu d'afficher zero.
      */
-    public const AGENT_FEATURES = ['sync' => '1.0.4', 'documents' => '1.0.7', 'cash' => '1.0.8'];
+    public const AGENT_FEATURES = ['sync' => '1.0.4', 'documents' => '1.0.7', 'cash' => '1.0.8', 'data' => '1.0.10'];
 
     /**
      * synced : Gescomm est la source, l'agent synchronise, le web ne fait que lire.

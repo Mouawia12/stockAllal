@@ -1115,6 +1115,67 @@ final class Reconciliation
     }
 
     /**
+     * Ce qui a change depuis l'analyse precedente de la meme paire. Un probleme = son type et les bons / versements qu'il
+     * touche (problemKey). Chaque probleme d'aujourd'hui : "still" (deja la), "changed" (ses bons etaient dans un autre
+     * probleme : corrige a moitie, ou autrement) ou "new". Ceux d'avant dont aucun bon ni versement n'est plus en cause :
+     * "fixed", listes avec l'ecart d'avant.
+     *
+     * @param  array<string, mixed>|null  $previous  le rapport precedent
+     * @param  array<string, mixed>  $meta  id et date de l'analyse precedente
+     * @return array<string, mixed>
+     */
+    public static function compare(array $report, ?array $previous, array $meta = []): array
+    {
+        if ($previous === null || ! isset($previous['problems'])) {
+            return $report;
+        }
+        $ids = fn (array $p) => array_map(fn (array $x) => (empty($x['payment']) ? 'd' : 'p').$x['id'], [...$p['a'], ...$p['b']]);
+        $old = $oldIds = [];
+        foreach ($previous['problems'] as $p) {
+            $old[self::problemKey($p)] = $p;
+            foreach ($ids($p) as $id) {
+                $oldIds[$id] = true;
+            }
+        }
+        $seen = $nowIds = [];
+        $count = ['still' => 0, 'changed' => 0, 'new' => 0];
+        foreach ($report['problems'] as $k => $p) {
+            $key = self::problemKey($p);
+            $mine = $ids($p);
+            $status = isset($old[$key]) ? 'still' : (array_intersect_key($oldIds, array_flip($mine)) !== [] ? 'changed' : 'new');
+            $report['problems'][$k]['status'] = $status;
+            $count[$status]++;
+            $seen[$key] = true;
+            foreach ($mine as $id) {
+                $nowIds[$id] = true;
+            }
+        }
+        $fixed = [];
+        foreach ($old as $key => $p) {
+            if (! isset($seen[$key]) && array_intersect_key($nowIds, array_flip($ids($p))) === []) {
+                unset($p['lines']);
+                $fixed[] = $p;
+            }
+        }
+        $report['since'] = $meta + [
+            'gap' => $previous['gap'] ?? null,
+            'problems' => count($previous['problems']) + ($previous['more_problems'] ?? 0),
+            'fixed' => count($fixed),
+        ] + $count;
+        $report['fixed'] = array_slice($fixed, 0, self::MAX_LISTED);
+
+        return $report;
+    }
+
+    /** Un probleme d'un rapport a l'autre : son type, et les bons (d) et versements (p) de chaque cote. */
+    public static function problemKey(array $p): string
+    {
+        $ids = fn (array $xs) => implode(',', array_map(fn (array $x) => (empty($x['payment']) ? 'd' : 'p').$x['id'], $xs));
+
+        return $p['type'].'|'.$ids($p['a']).'|'.$ids($p['b']);
+    }
+
+    /**
      * Les deux partenaires se correspondent-ils pour ce compte ? A et B differentes, un client chez A, un fournisseur
      * chez B, et le compte voit les ventes des deux branches.
      */

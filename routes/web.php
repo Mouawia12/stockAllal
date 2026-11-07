@@ -88,6 +88,9 @@ Route::middleware('auth')->group(function () {
             Route::get('reconcile', [ReconcileController::class, 'index'])->name('reconcile.index')->middleware('throttle:search');
             Route::get('reconcile/partners', [ReconcileController::class, 'partners'])->name('reconcile.partners')->middleware('throttle:search');
             Route::post('reconcile/analyze', [ReconcileController::class, 'analyze'])->name('reconcile.analyze')->middleware('throttle:refresh');
+            // "إعادة الفحص" : les deux branches renvoient d'abord leurs bons et versements (agent 1.0.10), puis l'analyse
+            Route::post('reconcile/sync', [ReconcileController::class, 'sync'])->name('reconcile.sync')->middleware('throttle:refresh');
+            Route::get('reconcile/sync/{batch}', [ReconcileController::class, 'syncStatus'])->name('reconcile.sync-status')->whereUuid('batch')->middleware('throttle:search');
             Route::post('reconcile/chat', [ReconcileController::class, 'chat'])->name('reconcile.chat')->middleware('throttle:refresh');
         });
     });

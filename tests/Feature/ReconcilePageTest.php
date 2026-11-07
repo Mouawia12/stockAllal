@@ -88,9 +88,10 @@ class ReconcilePageTest extends TestCase
             ->assertSee(e(__('reconcile.types.pay_missing_b', ['a' => 'Blida', 'b' => 'Oran'])))
             ->assertSee(route('sales.show', Document::where('number', 101)->value('id')))
             ->assertSee(e(__('reconcile.same_bons', ['count' => 1])))
-            ->assertSee(__('reconcile.timeline'))->assertSee(__('reconcile.analysis.again'));
-        // "إعادة التحليل" : de nouveau la barre
-        $this->actingAs($admin)->get($url.'&again=1')->assertOk()->assertSee('id="analysis"', false);
+            ->assertSee(__('reconcile.timeline'))->assertSee(__('reconcile.analysis.recheck'));
+        // "إعادة الفحص" : de nouveau la barre, avec d'abord la synchro des deux branches
+        $this->actingAs($admin)->get($url.'&again=1&sync=1')->assertOk()->assertSee('id="analysis"', false)
+            ->assertSee(__('reconcile.steps.sync'));
     }
 
     public function test_a_step_out_of_order_or_a_lost_state_asks_to_start_again(): void
@@ -234,10 +235,12 @@ class ReconcilePageTest extends TestCase
     {
         $steps = [];
         $step = 'load';
+        $run = null;
         while ($step !== null) {
-            $res = $this->actingAs($user)->postJson('/reconcile/analyze', ['ca' => $this->customer->id, 'sb' => $this->supplier->id, 'step' => $step])
+            $res = $this->actingAs($user)->postJson('/reconcile/analyze', ['ca' => $this->customer->id, 'sb' => $this->supplier->id, 'step' => $step, 'run' => $run])
                 ->assertOk()->assertJson(['step' => $step]);
             $steps[] = $step;
+            $run = $res->json('run') ?? $run;
             $step = $res->json('next');
         }
         $this->assertSame(100, $res->json('percent'));
