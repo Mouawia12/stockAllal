@@ -7,6 +7,23 @@ use Illuminate\Support\HtmlString;
 /** Met en evidence (<mark>) les mots recherches dans un texte, sans jamais laisser passer de HTML du texte. */
 class Highlight
 {
+    /**
+     * Les mots d'une recherche (au plus 6) : chacun doit se trouver, dans n'importe quel ordre (bons, clients,
+     * fournisseurs, comme la recherche du stock), et chacun est mis en evidence.
+     *
+     * @return list<string>
+     */
+    public static function terms(string $q): array
+    {
+        return array_slice(preg_split('/\s+/u', trim($q), -1, PREG_SPLIT_NO_EMPTY) ?: [], 0, 6);
+    }
+
+    /** Un mot pour LIKE ... ESCAPE '!', en majuscules (les colonnes sont comparees en UPPER). */
+    public static function like(string $term): string
+    {
+        return str_replace(['!', '%', '_'], ['!!', '!%', '!_'], mb_strtoupper($term));
+    }
+
     /** @param  list<string>  $terms */
     public static function html(?string $text, array $terms): HtmlString
     {

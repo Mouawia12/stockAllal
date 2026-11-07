@@ -9,6 +9,7 @@ use App\Models\DocumentLine;
 use App\Models\Partner;
 use App\Models\Payment;
 use App\Support\BranchScope;
+use App\Support\Highlight;
 use App\Support\PartnerInsights;
 use App\Support\PrintPeriod;
 use App\Support\ProductActivity;
@@ -155,10 +156,12 @@ class PartnerController extends Controller
             ->select(['partners.*', 's.bons', 's.amount', 'l.last_date'])
             ->orderByRaw($money ? 'COALESCE(s.amount, 0) DESC' : 'COALESCE(s.bons, 0) DESC')
             ->orderBy('partners.name')->orderBy('partners.code')
-            ->simplePaginate(self::PER_PAGE)->withQueryString();
+            // sans "partial" : les liens des pages ouvrent la page entiere, meme apres une recherche pendant la frappe
+            ->simplePaginate(self::PER_PAGE)->appends($request->except(['partial', 'page']));
         $names = $ready->pluck('name', 'id');
 
-        return view('partners.index', [
+        // ?partial=1 : seulement le bloc sous la recherche (filtres, liste, pages), pour la recherche pendant la frappe
+        return view($request->boolean('partial') ? 'partners._list' : 'partners.index', [
             'kind' => $kind,
             'route' => self::ROUTES[$kind],
             'q' => $q,
@@ -758,12 +761,16 @@ class PartnerController extends Controller
             ->where('partners.kind', $kind)
             ->whereIn('partners.branch_id', $ids)
             ->leftJoinSub($stats, 's', fn ($join) => $join->on('s.s_branch', '=', 'partners.branch_id')->on('s.s_code', '=', 'partners.code'))
+            // chaque mot doit se trouver (comme la recherche du stock) : au debut du code, dans le nom ou un telephone ;
+            // la page cherche pendant la frappe (?partial=1)
             ->when($q !== '', function (Builder $b) use ($q) {
-                $like = '%'.str_replace(['!', '%', '_'], ['!!', '!%', '!_'], mb_strtoupper($q)).'%';
-                $b->where(fn (Builder $w) => $w->whereIn('partners.code', array_unique([$q, mb_strtoupper($q)]))
-                    ->orWhereRaw("UPPER(partners.name) LIKE ? ESCAPE '!'", [$like])
-                    ->orWhereRaw("partners.phone LIKE ? ESCAPE '!'", [$like])
-                    ->orWhereRaw("partners.mobile LIKE ? ESCAPE '!'", [$like]));
+                foreach (Highlight::terms($q) as $word) {
+                    $like = Highlight::like($word);
+                    $b->where(fn (Builder $w) => $w->whereRaw("UPPER(partners.code) LIKE ? ESCAPE '!'", [$like.'%'])
+                        ->orWhereRaw("UPPER(partners.name) LIKE ? ESCAPE '!'", ['%'.$like.'%'])
+                        ->orWhereRaw("partners.phone LIKE ? ESCAPE '!'", ['%'.$like.'%'])
+                        ->orWhereRaw("partners.mobile LIKE ? ESCAPE '!'", ['%'.$like.'%']));
+                }
             })
             ->when($filter === 'active', fn (Builder $b) => $b->whereNotNull('s.bons'))
             ->when($filter === 'blocked', fn (Builder $b) => $b->where('partners.blocked', true));

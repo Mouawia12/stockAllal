@@ -8,6 +8,7 @@ use App\Models\Document;
 use App\Models\DocumentLine;
 use App\Models\Partner;
 use App\Support\BranchScope;
+use App\Support\Highlight;
 use App\Support\PrintPeriod;
 use App\Support\StockState;
 use Illuminate\Database\Eloquent\Builder;
@@ -97,7 +98,8 @@ class DocumentController extends Controller
 
         $documents = $this->listing($base($filter), $kind)
             ->orderByDesc('documents.date')->orderByDesc('documents.time')->orderByDesc('documents.number')
-            ->simplePaginate(self::PER_PAGE)->withQueryString();
+            // sans "partial" : les liens des pages ouvrent la page entiere, meme apres une recherche pendant la frappe
+            ->simplePaginate(self::PER_PAGE)->appends($request->except(['partial', 'page']));
 
         // les jours de cette page, avec le nombre de bons et le montant du jour entier (une page peut couper un jour)
         $shownDays = $documents->getCollection()->map(fn (Document $d) => $d->date?->toDateString())->filter()->unique()->values();
@@ -110,7 +112,8 @@ class DocumentController extends Controller
 
         $names = $ready->pluck('name', 'id');
 
-        return view('documents.index', [
+        // ?partial=1 : seulement le bloc sous la recherche (filtres, total, bons, pages), pour la recherche pendant la frappe
+        return view($request->boolean('partial') ? 'documents._list' : 'documents.index', [
             'kind' => $kind,
             'route' => self::ROUTES[$kind],
             'q' => $q,
@@ -316,19 +319,23 @@ class DocumentController extends Controller
             ->when($since, fn (Builder $b) => $b->where('documents.date', '>=', $since))
             ->when($filter === 'returns', fn (Builder $b) => $b->whereExists(fn ($sub) => $sub->selectRaw('1')->from('document_lines')
                 ->whereColumn('document_lines.document_id', 'documents.id')->where('document_lines.qty', '<', 0)))
+            // chaque mot doit se trouver (comme la recherche du stock) : au debut du numero du bon, au debut du code du
+            // client / fournisseur, ou dans son nom ; la page cherche pendant la frappe (?partial=1)
             ->when($q !== '', function (Builder $b) use ($q, $kind) {
-                $like = '%'.str_replace(['!', '%', '_'], ['!!', '!%', '!_'], mb_strtoupper($q)).'%';
-                $b->where(function (Builder $w) use ($q, $like, $kind) {
-                    if (ctype_digit($q) && strlen($q) <= 15) {
-                        $w->orWhere('documents.number', (int) $q);
-                    }
-                    $w->orWhereIn('documents.partner_code', array_unique([$q, mb_strtoupper($q)]))
-                        ->orWhereExists(fn ($sub) => $sub->selectRaw('1')->from('partners')
-                            ->whereColumn('partners.branch_id', 'documents.branch_id')
-                            ->whereColumn('partners.code', 'documents.partner_code')
-                            ->where('partners.kind', self::PARTNER_KIND[$kind])
-                            ->whereRaw("UPPER(partners.name) LIKE ? ESCAPE '!'", [$like]));
-                });
+                foreach (Highlight::terms($q) as $word) {
+                    $like = Highlight::like($word);
+                    $b->where(function (Builder $w) use ($word, $like, $kind) {
+                        if (ctype_digit($word) && strlen($word) <= 15) {
+                            $w->orWhereRaw("CAST(documents.number AS CHAR) LIKE ? ESCAPE '!'", [$like.'%']);
+                        }
+                        $w->orWhereRaw("UPPER(documents.partner_code) LIKE ? ESCAPE '!'", [$like.'%'])
+                            ->orWhereExists(fn ($sub) => $sub->selectRaw('1')->from('partners')
+                                ->whereColumn('partners.branch_id', 'documents.branch_id')
+                                ->whereColumn('partners.code', 'documents.partner_code')
+                                ->where('partners.kind', self::PARTNER_KIND[$kind])
+                                ->whereRaw("UPPER(partners.name) LIKE ? ESCAPE '!'", ['%'.$like.'%']));
+                    });
+                }
             });
     }
 

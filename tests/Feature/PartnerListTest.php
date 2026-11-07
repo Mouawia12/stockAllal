@@ -104,10 +104,10 @@ class PartnerListTest extends TestCase
         $this->assertStringContainsString('Ets Benali', $html);
         $this->assertStringNotContainsString('Quincaillerie El Amel', $html);
 
-        // recherche : le nom, le code, le telephone
+        // recherche : le nom, le code, le telephone (le mot cherche est dans un <mark> : le texte sans balises)
         foreach (['amel' => 'Quincaillerie El Amel', 'c003' => 'Sarl Atlas', '0550' => 'Ets Benali'] as $q => $who) {
             $html = $this->actingAs($karim)->get('/customers?q='.$q)->getContent();
-            $this->assertStringContainsString($who, $html, $q);
+            $this->assertStringContainsString($who, strip_tags($html), $q);
             $this->assertSame(1, substr_count($html, 'class="who"'), $q);
         }
 

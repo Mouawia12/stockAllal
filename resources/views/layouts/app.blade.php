@@ -217,15 +217,18 @@
 
     // menus de la barre du haut (details.drop) : un seul ouvert, un clic ailleurs ou Echap ferme ;
     // ouvert (aussi par sa touche, ex. Alt+B), le clavier est sur l'element choisi, les fleches passent aux autres
+    // relus a chaque fois : un menu peut arriver avec une liste remplacee pendant la frappe (partials/live-search)
     (() => {
-        const drops = [...document.querySelectorAll('details.drop')];
+        const drops = () => [...document.querySelectorAll('details.drop')];
         const entries = d => [...d.querySelectorAll('.drop-menu a, .drop-menu button')];
-        document.addEventListener('click', e => drops.forEach(d => { if (d.open && !d.contains(e.target)) d.open = false; }));
-        drops.forEach(d => d.addEventListener('toggle', () => {
-            if (d.open) (d.querySelector('.drop-menu > .on') || entries(d)[0])?.focus();
-        }));
+        document.addEventListener('click', e => drops().forEach(d => { if (d.open && !d.contains(e.target)) d.open = false; }));
+        // "toggle" ne remonte pas : ecoute en capture, pour les menus d'aujourd'hui et ceux qui arrivent ensuite
+        document.addEventListener('toggle', e => {
+            const d = e.target;
+            if (d.matches?.('details.drop') && d.open) (d.querySelector('.drop-menu > .on') || entries(d)[0])?.focus();
+        }, true);
         document.addEventListener('keydown', e => {
-            const open = drops.find(d => d.open);
+            const open = drops().find(d => d.open);
             if (!open) return;
             if (e.key === 'Escape') { e.preventDefault(); open.open = false; open.querySelector('summary').focus(); return; }
             if ((e.key !== 'ArrowDown' && e.key !== 'ArrowUp') || !e.target.closest?.('.drop-menu')) return;
