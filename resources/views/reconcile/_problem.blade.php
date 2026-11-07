@@ -143,7 +143,12 @@
             <p class="muted small">{{ $T['modal']['marked'] }}</p>
         @endif
     </div>
-    <div @class(['rm-cols', 'one' => count(array_filter($cols, fn ($c) => $c['items'] !== [])) < 2])>
+    @php
+        // un seul cote a quelque chose : il prend la largeur, le cote vide reste etroit, a sa place (A au debut, B a la fin)
+        $filled = array_map(fn (array $c) => $c['items'] !== [], $cols);
+        $emptyAt = count(array_filter($filled)) === 1 ? ($filled[0] ? 'end' : 'start') : null;
+    @endphp
+    <div @class(['rm-cols', 'one' => $emptyAt !== null, 'empty-start' => $emptyAt === 'start'])>
         @foreach ($cols as $c)
             @php
                 $who = $side($c['side']);
@@ -169,7 +174,7 @@
                                 <dt>{{ $label($x) }}</dt><dd class="num">#{{ $x['number'] }}</dd>
                                 <dt>{{ $T['date'] }}</dt><dd class="num">{{ $date($x['date']) }}</dd>
                                 <dt>{{ $T['amount'] }}</dt><dd class="num"><b>{{ $money($x['amount']) }}</b></dd>
-                                @if (! empty($x['type']))<dt>{{ $T['payment'] }}</dt><dd>{{ $x['type'] }}</dd>@endif
+                                @if (! empty($x['type']))<dt title="TYPEVER">{{ __('partners.col_type') }}</dt><dd><bdi>{{ $x['type'] }}</bdi></dd>@endif
                                 @if (! empty($x['note']))<dt></dt><dd class="muted"><bdi>{{ $x['note'] }}</bdi></dd>@endif
                             </dl>
                         @endif

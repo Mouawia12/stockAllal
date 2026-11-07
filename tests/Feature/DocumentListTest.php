@@ -150,7 +150,7 @@ class DocumentListTest extends TestCase
         $buyer = User::factory()->inBranch($oran)->withPermissions(['sales.view', 'prices.sale', 'prices.buy'])->create();
         $this->actingAs($buyer)->get('/purchases')->assertOk()->assertSee('12 025,00');
         $html = $this->actingAs($buyer)->get(route('sales.show', $this->bon(183)))->assertOk()->assertSee(__('stock.activity.margin'))->getContent();
-        $this->assertStringContainsString('<dd class="num">200,00</dd>', $html);
+        $this->assertStringContainsString('<dd class="num mg">200,00</dd>', $html);
     }
 
     public function test_f2_previews_a_bon_with_the_same_rules_as_its_page(): void

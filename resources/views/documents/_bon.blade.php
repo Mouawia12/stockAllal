@@ -45,7 +45,7 @@
         <table class="lines">
             <thead>
             <tr>
-                <th scope="col" class="hide-sm">#</th>
+                <th scope="col" class="hide-sm col-pos">#</th>
                 <th scope="col">{{ $D['col_code'] }}</th>
                 <th scope="col">{{ $D['col_designation'] }}</th>
                 <th scope="col" class="n">{{ $D['col_qty'] }}</th>
@@ -54,13 +54,13 @@
                     <th scope="col" class="n hide-sm">{{ $D['col_discount'] }}</th>
                     <th scope="col" class="n">{{ $D['col_total'] }}</th>
                 @endif
-                @if ($seesStock)<th scope="col" class="n hide-sm" title="{{ $D['stock_help'] }}">{{ $D['col_stock'] }}</th>@endif
+                @if ($seesStock)<th scope="col" class="n hide-sm col-stock" title="{{ $D['stock_help'] }}">{{ $D['col_stock'] }}</th>@endif
             </tr>
             </thead>
             <tbody>
             @foreach ($lines as $l)
                 <tr @class(['back' => $l['back']])>
-                    <td class="hide-sm muted num">{{ $l['position'] }}</td>
+                    <td class="hide-sm muted num col-pos">{{ $l['position'] }}</td>
                     <td><a class="code ltr" href="{{ route('stock.item', ['code' => $l['code']]) }}">{{ $l['code'] }}</a></td>
                     <td><bdi>{{ $l['designation'] ?? '—' }}</bdi></td>
                     <td class="n">
@@ -73,7 +73,7 @@
                         <td class="n"><span class="num">{{ $fmt($l['total']) }}</span></td>
                     @endif
                     @if ($seesStock)
-                        <td class="n hide-sm">@if ($l['stock'] !== null)<span class="qty {{ $l['state'] }}">{{ $fmt($l['stock']) }}</span>@else<span class="muted">—</span>@endif</td>
+                        <td class="n hide-sm col-stock">@if ($l['stock'] !== null)<span class="qty {{ $l['state'] }}">{{ $fmt($l['stock']) }}</span>@else<span class="muted">—</span>@endif</td>
                     @endif
                 </tr>
             @endforeach
@@ -87,11 +87,11 @@
                 @endif
                 <dt>{{ $D['amount'] }}</dt><dd class="num grand">{{ $fmt($document->amount) }}</dd>
                 @if ($margin !== null)
-                    <dt title="{{ __('stock.activity.margin_help') }}">{{ __('stock.activity.margin') }}@if ($marginPartial) *@endif</dt><dd class="num">{{ $fmt($margin) }}</dd>
+                    <dt class="mg" title="{{ __('stock.activity.margin_help') }}">{{ __('stock.activity.margin') }}@if ($marginPartial) *@endif</dt><dd class="num mg">{{ $fmt($margin) }}</dd>
                 @endif
             </dl>
             @if ($margin !== null && $marginPartial)
-                <p class="muted small">* {{ __('stock.activity.margin_partial') }}</p>
+                <p class="muted small mg">* {{ __('stock.activity.margin_partial') }}</p>
             @endif
         @endif
     @endif

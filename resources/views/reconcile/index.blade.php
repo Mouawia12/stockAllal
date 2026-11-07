@@ -129,10 +129,13 @@
     .rm-info .tw { margin-top: 8px; border: 1px solid var(--border); border-radius: 8px; }
     .rm-info .diffs tbody tr:last-child td { border-bottom: 0; }
     .rm-cols { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 14px; align-items: start; }
-    .rm-cols.one { grid-template-columns: minmax(0, 1fr) minmax(200px, .35fr); }
+    /* un seul cote a son bon : il prend la largeur ; le cote vide reste etroit, a sa place (A au debut, B a la fin) */
+    .rm-cols.one { grid-template-columns: minmax(0, 1fr) minmax(190px, 260px); }
+    .rm-cols.one.empty-start { grid-template-columns: minmax(190px, 260px) minmax(0, 1fr); }
     .rm-cols.single { grid-template-columns: minmax(0, 1fr); }
     .rm-col { display: grid; gap: 14px; min-width: 0; }
-    .rm-item { border: 1px solid var(--border); border-radius: 10px; padding: 10px 12px; min-width: 0; overflow-x: auto; }
+    /* la largeur de son cote decide de la mise en page du bon (container), pas celle de l'ecran */
+    .rm-item { border: 1px solid var(--border); border-radius: 10px; padding: 10px 12px; min-width: 0; overflow-x: auto; container-type: inline-size; }
     .rm-bar { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
     .rm-bar .grow { flex: 1; }
     .rm-bar a.open-bon { padding: 4px 12px; font-size: 13.5px; background: var(--accent); border-color: var(--accent); color: var(--on-accent); font-weight: 600; }
@@ -142,6 +145,9 @@
     .rm-pay dd { margin: 0; }
     .rm-bon .bon-head { grid-template-columns: minmax(0, .8fr) minmax(0, 1.2fr); gap: 12px; margin-bottom: 10px; padding-bottom: 10px; border-bottom: 1px solid var(--border); }
     .rm-bon .bon-number { font-size: 32px; }
+    /* la barre au-dessus du bon nomme deja la branche ; la marge ne dit rien d'un ecart entre branches et
+       desaligne les totaux des deux bons cote a cote */
+    .rm-bon .bon-branch, .rm-bon .mg { display: none; }
     .rm-bon .lines { font-size: 13.5px; }
     .rm-bon .lines td, .rm-bon .lines th { padding: 6px 7px; }
     /* les lignes qui different entre les deux cotes */
@@ -149,7 +155,15 @@
     .rm-bon .lines tr.hit > td:first-child { box-shadow: inset 3px 0 0 var(--accent); }
     [dir=rtl] .rm-bon .lines tr.hit > td:first-child { box-shadow: inset -3px 0 0 var(--accent); }
     .rm-hint { margin: 10px 0 0; text-align: center; }
-    @media (max-width: 1000px) { .rm-cols, .rm-cols.one { grid-template-columns: minmax(0, 1fr); } }
+    /* deux bons cote a cote sur un ecran moyen : l'en-tete en une colonne (la date ne passe plus sous les details),
+       et ni le rang ni le stock actuel, qui ne disent rien du rapprochement ; le prix et la remise restent */
+    @container (max-width: 620px) {
+        .rm-bon .bon-head { grid-template-columns: minmax(0, 1fr); }
+    }
+    @container (max-width: 760px) {
+        .rm-bon .lines .col-pos, .rm-bon .lines .col-stock { display: none; }
+    }
+    @media (max-width: 1000px) { .rm-cols, .rm-cols.one, .rm-cols.one.empty-start { grid-template-columns: minmax(0, 1fr); } }
     @media (max-width: 700px), (hover: none) { .rm-hint { display: none; } }
 
     .chat { position: sticky; top: 64px; display: flex; flex-direction: column; max-height: calc(100vh - 84px); }
