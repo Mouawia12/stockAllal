@@ -184,6 +184,48 @@ final class Reconciliation
         return $this->report ?? throw new LogicException('analysis not finished');
     }
 
+    /**
+     * Les problemes du rapport regroupes par ce qu'il faut faire (reconcile/index), dans cet ordre ; dans un groupe,
+     * l'ordre du rapport (le plus gros effet d'abord). Une cle est l'index du probleme dans $report['problems'].
+     */
+    public const GROUPS = [
+        'missing_b' => ['bon_missing_b'],
+        'missing_a' => ['bon_missing_a'],
+        'elsewhere' => ['bon_elsewhere_b', 'bon_elsewhere_a', 'pay_elsewhere_b', 'pay_elsewhere_a'],
+        'duplicate' => ['bon_duplicate_a', 'bon_duplicate_b'],
+        'amount' => ['bon_amount', 'bon_split'],
+        'payments' => ['pay_missing_b', 'pay_missing_a', 'pay_amount'],
+        'opening' => ['opening'],
+        'lines' => ['bon_lines'],
+        'other' => [],
+    ];
+
+    /**
+     * @param  array<string, mixed>  $report
+     * @return list<array{key: string, problems: array<int, array<string, mixed>>, count: int, effect: float}>
+     */
+    public static function groups(array $report): array
+    {
+        $of = [];
+        foreach (self::GROUPS as $key => $types) {
+            foreach ($types as $type) {
+                $of[$type] = $key;
+            }
+        }
+        $out = [];
+        foreach ($report['problems'] as $i => $p) {
+            $key = $of[$p['type']] ?? 'other';
+            $out[$key] ??= ['key' => $key, 'problems' => [], 'count' => 0, 'effect' => 0.0];
+            $out[$key]['problems'][$i] = $p;
+            $out[$key]['count']++;
+            $out[$key]['effect'] += $p['effect'];
+        }
+
+        return array_values(array_filter(array_map(function (string $key) use ($out) {
+            return isset($out[$key]) ? ['effect' => round($out[$key]['effect'], 2)] + $out[$key] : null;
+        }, array_keys(self::GROUPS))));
+    }
+
     // ---------- etapes ----------
 
     private function load(Partner $customer, Partner $supplier): void
@@ -207,7 +249,20 @@ final class Reconciliation
         $this->learnFromNames($customer->branch_id, $supplier->branch_id);
         [$this->pairs, $this->restA, $this->restB] = self::matchBons($this->a, $this->b);
 
-        // des bons au meme montant, identiques a un article pres : cet article a deux codes
+        // des bons au meme montant, identiques a un article pres : cet article a deux codes. Seulement des codes que
+        // l'autre cote n'a dans aucun bon : un code des deux cotes est deja le meme article, une faute de saisie dans
+        // un seul bon (EN14 tape EA14) ne doit jamais renommer EN14 partout (Parck Alg / Artisana, 07/11/2026)
+        $keysA = $keysB = [];
+        foreach ($this->a as $bon) {
+            foreach (array_keys($bon['lines']) as $k) {
+                $keysA[(string) $k] = true;
+            }
+        }
+        foreach ($this->b as $bon) {
+            foreach (array_keys($bon['lines']) as $k) {
+                $keysB[(string) $k] = true;
+            }
+        }
         $votes = [];
         foreach ($this->pairs as [$i, $j]) {
             $x = $this->a[$i];
@@ -217,7 +272,7 @@ final class Reconciliation
             }
             $onlyA = array_values(array_diff(array_map('strval', array_keys($x['lines'])), array_map('strval', array_keys($y['lines']))));
             $onlyB = array_values(array_diff(array_map('strval', array_keys($y['lines'])), array_map('strval', array_keys($x['lines']))));
-            if (count($onlyA) === 1 && count($onlyB) === 1) {
+            if (count($onlyA) === 1 && count($onlyB) === 1 && ! isset($keysB[$onlyA[0]]) && ! isset($keysA[$onlyB[0]])) {
                 $la = $x['lines'][$onlyA[0]];
                 $lb = $y['lines'][$onlyB[0]];
                 if (abs($la['qty'] - $lb['qty']) < self::CENT && abs($la['total'] - $lb['total']) < self::CENT) {

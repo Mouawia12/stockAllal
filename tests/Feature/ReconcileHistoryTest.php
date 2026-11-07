@@ -82,7 +82,10 @@ class ReconcileHistoryTest extends TestCase
             ->assertSee(trans_choice('reconcile.since.fixed', 1, ['count' => 1]))
             ->assertSee(__('reconcile.status.still'))->assertSee(__('reconcile.status.new'))
             ->assertSee(__('reconcile.history.title', ['count' => 2]))->assertSee(__('reconcile.history.synced'))
-            ->assertDontSee(__('reconcile.history.latest'));
+            ->assertDontSee(__('reconcile.history.latest'))
+            // par groupes, d'ou vient l'ecart ; chaque probleme a sa fenetre rapide (template), le chat est ferme
+            ->assertSee(__('reconcile.where'))->assertSee(__('reconcile.groups.payments.title'))
+            ->assertSee('<template>', false)->assertSee('id="rm-bg"', false)->assertSee('id="chat" hidden', false);
         $this->actingAs($admin)->get($url.'&r='.$first)->assertOk()
             ->assertSee(__('reconcile.history.latest'))->assertDontSee(__('reconcile.since.fixed_list', ['count' => 1]));
         $this->actingAs($admin)->get($url.'&r=999999')->assertNotFound();

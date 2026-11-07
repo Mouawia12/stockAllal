@@ -115,6 +115,16 @@ class ReconciliationTest extends TestCase
         // le plus gros effet d'abord
         $this->assertSame('pay_missing_b', $r['problems'][0]['type']);
         $this->assertSame('BOULLON', $r['names']['820AC'] ?? null);
+
+        // le rapport par groupes (ce qu'il faut faire), dans l'ordre de GROUPS ; leur somme est l'ecart
+        $groups = Reconciliation::groups($r);
+        $this->assertSame(['missing_b', 'missing_a', 'amount', 'payments', 'opening'], array_column($groups, 'key'));
+        $this->assertSame([2200.0, -900.0, 400.0, -1300.0, 1000.0], array_column($groups, 'effect'));
+        $this->assertSame([1, 1, 3, 3, 1], array_column($groups, 'count'));
+        $this->assertSame($r['gap'], round(array_sum(array_column($groups, 'effect')), 2));
+        // une cle de groupe = l'index du probleme dans le rapport : la fenetre rapide garde l'ordre de la page
+        $amount = $groups[2]['problems'];
+        $this->assertSame(array_map(fn ($i) => $r['problems'][$i], array_keys($amount)), array_values($amount));
     }
 
     public function test_matching_books_have_no_problem(): void
@@ -191,6 +201,29 @@ class ReconciliationTest extends TestCase
         $this->assertSame(['a' => 'P100', 'how' => 'name', 'name_a' => 'ROBINET LAITON 1/2', 'name_b' => 'Robinet laiton 1/2'],
             collect($codes['RB12'])->only(['a', 'how', 'name_a', 'name_b'])->all());
         $this->assertSame(['a' => 'Q1', 'how' => 'bons', 'bons' => 1], collect($codes['QQ9'])->only(['a', 'how', 'bons'])->all());
+    }
+
+    public function test_a_code_typed_wrong_in_one_bon_never_renames_a_code_both_sides_have(): void
+    {
+        // EN14 chez les deux ; un seul bon d'Oran a EN14 la ou Blida a EA14 (Parck Alg / Artisana, 07/11/2026)
+        $this->bon($this->blida, 'sale', 'ORAN', 455, '2026-07-01', [['P2', 2, 100], ['EA14', 1, 50]]);
+        $this->bon($this->oran, 'purchase', 'BLIDA', 202, '2026-07-01', [['P2', 2, 100], ['EN14', 1, 50]]);
+        $this->bon($this->blida, 'sale', 'ORAN', 456, '2026-07-10', [['EN14', 3, 150]]);
+        $this->bon($this->oran, 'purchase', 'BLIDA', 203, '2026-07-10', [['EN14', 3, 150]]);
+        $this->bon($this->blida, 'sale', 'ORAN', 457, '2026-07-20', [['EN14', 2, 100]]);
+        $this->bon($this->oran, 'purchase', 'BLIDA', 204, '2026-07-20', [['EN14', 1, 50]]);
+
+        $r = Reconciliation::run($this->customer, $this->supplier);
+
+        $this->assertSame([], $r['codes']);
+        $this->assertSame(1, $r['counts']['same']);
+        $byNumber = collect($r['problems'])->keyBy(fn (array $p) => $p['a'][0]['number']);
+        $this->assertSame('bon_lines', $byNumber[455]['type']);
+        $this->assertSame(['only_a', 'only_b'], array_column($byNumber[455]['lines'], 'kind'));
+        // 457 / 204 : la quantite d'EN14, pas « EN14 chez Blida seulement »
+        $this->assertSame('bon_amount', $byNumber[457]['type']);
+        $this->assertSame([['code' => 'EN14', 'kind' => 'qty']],
+            array_map(fn (array $l) => ['code' => $l['code'], 'kind' => $l['kind']], $byNumber[457]['lines']));
     }
 
     public function test_a_pair_marked_not_the_same_item_is_never_learned(): void
