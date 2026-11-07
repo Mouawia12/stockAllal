@@ -132,9 +132,17 @@ class PartnerListTest extends TestCase
 
         $html = $this->actingAs($karim)->get(route('customers.show', $benali))->assertOk()->getContent();
         foreach (['Ets Benali', '0550 12 34 56', '000216001234567', '50 000,00', '1 200,00', '1 750,00', '550,00', '800,00', 'Espéce', 'Autre', '-200,00',
-            'BOULON 8*20', __('partners.balance_soon'), 'data-open="bons"', 'data-open="payments"', 'data-open="items"'] as $text) {
+            'BOULON 8*20', 'data-open="bons"', 'data-open="payments"', 'data-open="items"'] as $text) {
             $this->assertStringContainsString($text, $html, $text);
         }
+        // le solde comme Gescomm : tous les bons (1200 + 550) moins tous les versements (1000 et -200 "Autre"), quelle
+        // que soit la periode de la fiche ; aussi sur le releve imprime
+        $balance = '<span class="wb-value">950,00</span>';
+        $this->assertStringContainsString($balance, $html);
+        $this->assertStringContainsString(__('partners.balance_side.customer.pos'), $html);
+        $this->assertStringContainsString($balance, $this->actingAs($karim)->get(route('customers.show', $benali).'?period=7')->getContent());
+        $this->actingAs($karim)->get(route('customers.print-card', ['partner' => $benali, 'period' => '7']))->assertOk()
+            ->assertSee(__('partners.balance_now'))->assertSee('950,00');
         // le detail n'est plus dans la page : la fenetre le demande
         $this->assertStringNotContainsString('<tr data-row', $html);
 
@@ -179,9 +187,10 @@ class PartnerListTest extends TestCase
         $this->assertStringContainsString('Ets Benali', $html);
         $this->assertStringNotContainsString('1 750,00', $html);
         $html = $this->actingAs($noPrices)->get(route('customers.show', $benali))->assertOk()->getContent();
-        foreach (['1 750,00', '50 000,00', '1 200,00', '800,00', '-200,00', '2 300,00'] as $money) {
+        foreach (['1 750,00', '50 000,00', '1 200,00', '800,00', '-200,00', '2 300,00', '950,00'] as $money) {
             $this->assertStringNotContainsString($money, $html, $money);
         }
+        $this->assertStringNotContainsString('class="who-balance"', $html, 'no balance without prices');
         $this->assertStringContainsString('BOULON 8*20', $html);
 
         // un fournisseur : ses montants demandent prices.buy
@@ -189,6 +198,9 @@ class PartnerListTest extends TestCase
         $seller = User::factory()->inBranch($oran)->withPermissions(['sales.view', 'prices.sale'])->create();
         $this->assertStringNotContainsString('12 025,00', $this->actingAs($seller)->get(route('suppliers.show', $fournil))->getContent());
         $buyer = User::factory()->inBranch($oran)->withPermissions(['sales.view', 'prices.buy'])->create();
-        $this->actingAs($buyer)->get(route('suppliers.show', $fournil))->assertOk()->assertSee('12 025,00')->assertSee('5 000,00');
+        // le solde d'un fournisseur : ce qu'on lui doit (12025 - 5000)
+        $this->actingAs($buyer)->get(route('suppliers.show', $fournil))->assertOk()->assertSee('12 025,00')->assertSee('5 000,00')
+            ->assertSee('<span class="wb-value">7 025,00</span>', false)->assertSee(__('partners.balance_side.supplier.pos'));
+        $this->assertStringNotContainsString('7 025,00', $this->actingAs($seller)->get(route('suppliers.show', $fournil))->getContent());
     }
 }

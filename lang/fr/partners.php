@@ -53,7 +53,16 @@ return [
     'fig_returns' => 'Retours',
     'no_returns' => 'Aucun retour',
     'fig_paid' => ['customer' => 'Versé par le client', 'supplier' => 'Versé au fournisseur'],
-    'balance_soon' => 'Le solde et l’état du compte arrivent une fois leur calcul vérifié dans Gescomm.',
+    // le solde comme Gescomm le montre (PartnerController::balance)
+    'balance' => 'Solde',
+    'balance_now' => 'Solde actuel',
+    'balance_side' => [
+        'customer' => ['pos' => 'nous doit', 'neg' => 'nous lui devons', 'zero' => 'soldé'],
+        'supplier' => ['pos' => 'nous lui devons', 'neg' => 'nous doit', 'zero' => 'soldé'],
+    ],
+    'balance_how' => 'tous les bons :billed − tous les versements :paid',
+    'balance_as_of' => 'à la dernière synchro :time',
+    'balance_help' => 'Comme l’état du compte de Gescomm : tous les bons moins tous les versements depuis le début, solde initial compris. Ne dépend pas de la période.',
     'tabs' => ['bons' => 'Bons', 'payments' => 'Versements', 'items' => 'Articles'],
     'col_date' => 'Date',
     'none_bons' => 'Aucun bon sur cette période.',

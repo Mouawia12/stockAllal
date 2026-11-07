@@ -53,7 +53,16 @@ return [
     'fig_returns' => 'Returns',
     'no_returns' => 'No return',
     'fig_paid' => ['customer' => 'Paid by the customer', 'supplier' => 'Paid to the supplier'],
-    'balance_soon' => 'The balance and the account statement come once their calculation is checked in Gescomm.',
+    // le solde comme Gescomm le montre (PartnerController::balance)
+    'balance' => 'Balance',
+    'balance_now' => 'Current balance',
+    'balance_side' => [
+        'customer' => ['pos' => 'owes us', 'neg' => 'we owe them', 'zero' => 'settled'],
+        'supplier' => ['pos' => 'we owe them', 'neg' => 'owes us', 'zero' => 'settled'],
+    ],
+    'balance_how' => 'all bons :billed − all payments :paid',
+    'balance_as_of' => 'as of the last sync :time',
+    'balance_help' => 'As Gescomm’s account statement: all bons minus all payments since the start, opening balance included. Does not depend on the period.',
     'tabs' => ['bons' => 'Slips', 'payments' => 'Payments', 'items' => 'Items'],
     'col_date' => 'Date',
     'none_bons' => 'No slip in this period.',

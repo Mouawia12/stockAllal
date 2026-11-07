@@ -53,7 +53,16 @@ return [
     'fig_returns' => 'المرتجع',
     'no_returns' => 'لا مرتجع',
     'fig_paid' => ['customer' => 'ما دفعه', 'supplier' => 'ما دفعناه له'],
-    'balance_soon' => 'الرصيد وكشف الحساب يُضافان بعد التحقق من طريقة حسابهما في Gescomm.',
+    // le solde comme Gescomm le montre (PartnerController::balance)
+    'balance' => 'الرصيد',
+    'balance_now' => 'الرصيد الحالي',
+    'balance_side' => [
+        'customer' => ['pos' => 'عليه لنا', 'neg' => 'له عندنا', 'zero' => 'خالص'],
+        'supplier' => ['pos' => 'له علينا', 'neg' => 'عليه لنا', 'zero' => 'خالص'],
+    ],
+    'balance_how' => 'كل البونات :billed − كل الدفعات :paid',
+    'balance_as_of' => 'حتى آخر مزامنة :time',
+    'balance_help' => 'كما يحسبه Gescomm في كشف الحساب: كل البونات ناقص كل الدفعات منذ البداية، والرصيد الأولي معها. لا يتغيّر مع الفترة.',
     'tabs' => ['bons' => 'البونات', 'payments' => 'الدفعات', 'items' => 'الأصناف'],
     'col_date' => 'التاريخ',
     'none_bons' => 'لا يوجد بون في هذه الفترة.',

@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Models\Branch;
 use App\Models\BranchStock;
+use App\Models\BranchTask;
 use App\Models\Document;
 use App\Models\DocumentLine;
 use App\Models\Partner;
@@ -26,8 +27,7 @@ use Illuminate\View\View;
  * par pages (records, partners/_records).
  * sales.view, et seulement les branches dont le compte voit les ventes (BranchScope::salesIds) : une fiche d'une
  * autre branche n'existe pas (404). Montants : prices.sale pour les clients, prices.buy pour les fournisseurs.
- * Pas encore de solde : la facon dont Gescomm le calcule ("Autre" dans les versements) se verifie d'abord avec
- * agent/tools/check-balances.ps1.
+ * La fiche montre le solde comme Gescomm (balance()).
  */
 class PartnerController extends Controller
 {
@@ -258,8 +258,8 @@ class PartnerController extends Controller
 
     /**
      * Impression de la fiche : le releve d'un client ou d'un fournisseur sur une periode (bons et versements par date),
-     * ou seulement ses bons, ses versements (?show=payments) ou les articles qu'il prend. Sans solde : la facon dont
-     * Gescomm le calcule se verifie d'abord (agent/tools/check-balances.ps1).
+     * ou seulement ses bons, ses versements (?show=payments) ou les articles qu'il prend, avec le solde actuel
+     * (balance(), tout l'historique quelle que soit la periode).
      */
     private function printCard(Request $request, string $kind, Partner $partner): View
     {
@@ -345,6 +345,7 @@ class PartnerController extends Controller
                 'payments' => $paidCount,
                 'paid' => $money ? round((float) $paidByType->sum('amount'), 2) : null,
             ],
+            'balance' => $money ? $this->balance($partner, $kind, $branch) : null,
             'capped' => $show !== 'items' && ((int) $sum->bons > self::PRINT_LIMIT || $paidCount > self::PRINT_LIMIT),
             'paidByType' => $money ? $paidByType->map(fn ($t) => ['type' => $t->type, 'n' => (int) $t->n, 'amount' => round((float) $t->amount, 2)]) : collect(),
         ]);
@@ -453,6 +454,7 @@ class PartnerController extends Controller
                 'top_item' => $top ? ($topName ?? $top->code) : null,
             ],
             'paidByType' => $money ? $paidByType->map(fn ($t) => ['type' => $t->type, 'n' => (int) $t->n, 'amount' => round((float) $t->amount, 2)]) : collect(),
+            'balance' => $money ? $this->balance($partner, $kind, $branch) : null,
             'insights' => PartnerInsights::for($partner, $money, $money && $kind === 'customer' && $request->user()->can('prices.buy')),
             'docRoute' => DocumentController::ROUTES[$docKind],
         ]);
@@ -713,6 +715,32 @@ class PartnerController extends Controller
         $days = ProductActivity::PERIODS[$period];
 
         return $days === null ? null : now()->subDays($days - 1)->toDateString();
+    }
+
+    /**
+     * Le solde comme Gescomm le montre (son "Etat d'un Client" / d'un fournisseur, ETAT_CLI / ETAT_FOU) : tous ses bons
+     * moins tous ses versements, de tout type, depuis le debut ; le "Solde Initial" de l'exercice est un versement
+     * "Autre" negatif, il y est donc. Gescomm ne le garde nulle part (GC002.RESTE vaut 0) : il le calcule a l'ecran.
+     * Verifie le 07/11/2026 (agent/tools/check-balances.ps1, stock Artisana) : 120 clients sur 120, 15 fournisseurs sur
+     * 15. Toujours tout l'historique (l'agent l'envoie en entier chaque nuit), quelle que soit la periode de la fiche ;
+     * a jour de la derniere synchro des bons et des versements de la branche.
+     *
+     * @return array{value: float, billed: float, paid: float, as_of: ?Carbon}
+     */
+    private function balance(Partner $partner, string $kind, Branch $branch): array
+    {
+        $billed = round((float) $this->partnerDocuments($partner, $kind, null)->sum('documents.amount'), 2);
+        $paid = round((float) $this->partnerPayments($partner, $kind, null)->sum('amount'), 2);
+        $tasks = $kind === 'customer' ? ['sales', 'customer_payments'] : ['purchases', 'supplier_payments'];
+        $synced = BranchTask::where('branch_id', $branch->id)->whereIn('task', $tasks)->pluck('last_ok_at')->filter();
+
+        return [
+            'value' => round($billed - $paid, 2),
+            'billed' => $billed,
+            'paid' => $paid,
+            // le plus ancien des deux : les bons et les versements sont tous arrives jusque-la
+            'as_of' => $synced->count() === count($tasks) ? $synced->min() : $branch->last_sync_at,
+        ];
     }
 
     private function partnerDocuments(Partner $partner, string $kind, ?string $since): Builder

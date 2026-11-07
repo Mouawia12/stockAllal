@@ -4,7 +4,7 @@
     Fiche d'un client ou d'un fournisseur (PartnerController) : qui il est, ce qu'il a achete sur la periode
     (bons, montant, retours, versements), trois boutons qui ouvrent le detail dans une fenetre par pages
     (partners/_records-modal), puis la nature de la relation sur 12 mois (partners/_insights).
-    Pas de solde ici tant que le calcul de Gescomm n'est pas verifie (agent/tools/check-balances.ps1).
+    Le solde, comme Gescomm le montre (PartnerController::balance) : sous le nom, avec les montants (prices.*).
 --}}
 @php
     $P = __('partners');
@@ -31,6 +31,8 @@
         'payments' => ['n' => $stats['payments'], 'key' => '6', 'sub' => $stats['last_payment'] ? __('partners.open.last_payment', ['date' => $stats['last_payment']]) : $P['open']['empty']],
         'items' => ['n' => $stats['items'], 'key' => '7', 'sub' => $stats['top_item'] ? __('partners.open.top_item', ['name' => $stats['top_item']]) : $P['open']['empty']],
     ];
+    // le sens du solde : un client doit (positif) ou a paye d'avance ; on doit a un fournisseur (positif) ou il nous doit
+    $balanceSide = $balance === null ? null : ($balance['value'] > 0.005 ? 'pos' : ($balance['value'] < -0.005 ? 'neg' : 'zero'));
 @endphp
 @section('title', ($partner->name ?? $partner->code).' — '.__('common.app_name'))
 
@@ -68,7 +70,11 @@
     .figures dt { color: var(--muted); font-size: 13px; }
     .figures dd { margin: 2px 0 0; font-size: 19px; font-weight: 700; font-variant-numeric: tabular-nums; }
     .figures dd small { display: block; font-size: 12.5px; font-weight: 500; color: var(--muted); }
-    .balance-note { margin: 12px 0 0; }
+    /* le solde, comme dans Gescomm : en bas de la carte du nom */
+    .who-balance { margin-top: auto; padding-top: 12px; border-top: 1px solid var(--border); display: grid; gap: 3px; }
+    .who-balance .wb-label { display: flex; align-items: center; gap: 8px; color: var(--muted); font-weight: 600; }
+    .who-balance .wb-value { font: 800 clamp(28px, 3.6vw, 36px)/1.15 var(--font-code); font-variant-numeric: tabular-nums; direction: ltr; unicode-bidi: isolate; align-self: flex-start; }
+    .who-balance small { color: var(--muted); font-size: 12.5px; }
 
     /* les boutons d'une fiche Odoo : ce qu'il y a derriere, combien, et le dernier en date */
     .open-btns { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; margin-top: 16px; }
@@ -122,6 +128,14 @@
         <p class="who-branch"><span class="bdot" style="--bh: {{ $branch->hue() }}"></span> {{ $branch->name }}
             @if ($partner->blocked)<span class="pill" title="{{ $P['blocked_help'] }}">{{ $P['blocked'] }}</span>@endif
         </p>
+        @if ($balance !== null)
+            <div class="who-balance" title="{{ $P['balance_help'] }}">
+                <span class="wb-label">{{ $P['balance'] }} <span class="pill">{{ $P['balance_side'][$kind][$balanceSide] }}</span></span>
+                <span class="wb-value">{{ $fmt($balance['value']) }}</span>
+                <small>{{ __('partners.balance_how', ['billed' => $fmt($balance['billed']), 'paid' => $fmt($balance['paid'])]) }}</small>
+                @if ($balance['as_of'])<small>{{ __('partners.balance_as_of', ['time' => $balance['as_of']->diffForHumans()]) }}</small>@endif
+            </div>
+        @endif
     </section>
     <section class="card" aria-label="{{ $P['details'] }}">
         @if ($facts === [])
@@ -163,7 +177,6 @@
             </div>
         @endif
     </dl>
-    <p class="balance-note muted small">{{ $P['balance_soon'] }}</p>
 
     <div class="open-btns">
         @foreach ($opens as $tab => $open)

@@ -2,8 +2,8 @@
 
 {{--
     Le releve d'un client ou d'un fournisseur sur papier (PartnerController::printCard) : ses bons et ses versements par
-    date, ou seulement ses bons, ses versements ou ses articles (?show=). Pas de solde tant que le calcul de Gescomm
-    n'est pas verifie (agent/tools/check-balances.ps1) : le rappel est dans la barre, pas sur le papier.
+    date, ou seulement ses bons, ses versements ou ses articles (?show=). Le solde actuel (tout l'historique, comme
+    Gescomm : PartnerController::balance) avec les chiffres, quelle que soit la periode imprimee.
 --}}
 @php
     $P = __('partners');
@@ -42,7 +42,6 @@
         'all' => $S['show_all'], 'bons' => $S['show_bons'], 'payments' => $S['show_payments'], 'items' => $S['show_items'],
     ]])
 @endsection
-@section('tools-note', $P['balance_soon'])
 
 @section('content')
 @include('print._head', ['letter' => $branch, 'title' => $title, 'sub' => [$period, $branch->print_header ? $branch->name : null]])
@@ -97,6 +96,9 @@
                 @foreach ($paidByType as $t)
                     <div><dt><bdi>{{ $t['type'] ?? '—' }}</bdi> ({{ $t['n'] }})</dt><dd class="num">{{ $fmt($t['amount']) }}</dd></div>
                 @endforeach
+            @endif
+            @if ($balance)
+                <div><dt>{{ $P['balance_now'] }} ({{ $P['balance_side'][$kind][$balance['value'] > 0.005 ? 'pos' : ($balance['value'] < -0.005 ? 'neg' : 'zero')] }})</dt><dd class="num">{{ $fmt($balance['value']) }}</dd></div>
             @endif
         </dl>
     @endif

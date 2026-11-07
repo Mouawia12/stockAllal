@@ -10,6 +10,9 @@
   Gescomm calcule donc le solde a l'ecran. La reference est son Etat d'un Client (ETAT_CLI, ETAT_FOU) : le solde
   apres sa derniere operation, et de combien chaque sorte d'operation fait bouger le solde.
   InterBase 7.5 n'a pas ABS (c'est une UDF) : les ecarts se comparent avec BETWEEN.
+  Deuxieme passage (07/11/2026, stock Artisana) : bons - versements de tout type = dernier solde de ETAT_CLI pour
+  120 clients sur 120, de ETAT_FOU pour 15 fournisseurs sur 15. La fiche d'un client ou d'un fournisseur montre ce
+  solde (PartnerController::balance).
 
   LECTURE SEULE : des SELECT et des procedures de consultation de Gescomm, dans une transaction READ ONLY :
   InterBase y refuse toute ecriture (une procedure qui voudrait ecrire echoue, le rapport le dit).
