@@ -150,6 +150,25 @@ class ReconciliationTest extends TestCase
         $this->assertSame($r['gap'], $r['explained']);
     }
 
+    /**
+     * Un code tout en chiffres devient un entier comme cle de tableau PHP ; sur MySQL, comparer code_key a 1640 trouvait
+     * aussi "1640A", et la page tombait en erreur 500 (Parck Alg / stockArtisana, 07/11/2026). SQLite ne compare pas
+     * ainsi : ce test garde au moins les designations justes pour "1640" et "1640A" ensemble.
+     */
+    public function test_numeric_item_codes_keep_their_own_designation(): void
+    {
+        $this->bon($this->blida, 'sale', 'ORAN', 400, '2026-08-01', [['1640', 2, 100], ['1640A', 1, 50], ['0820', 1, 10]]);
+        $this->bon($this->oran, 'purchase', 'BLIDA', 70, '2026-08-01', [['1640', 2, 100]]);
+
+        $r = Reconciliation::run($this->customer, $this->supplier);
+
+        $this->assertSame('ART 1640', $r['names']['1640']);
+        $this->assertSame('ART 1640A', $r['names']['1640A']);
+        $this->assertSame('ART 0820', $r['names']['0820']);
+        $this->assertSame(['1640A', '0820'], array_column($r['problems'][0]['lines'], 'code'));
+        $this->assertSame($r['gap'], $r['explained']);
+    }
+
     public function test_only_a_customer_and_a_supplier_of_two_branches_the_account_sees(): void
     {
         $this->assertTrue(Reconciliation::allowed($this->customer, $this->supplier, null));

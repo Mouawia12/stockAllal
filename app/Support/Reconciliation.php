@@ -437,11 +437,16 @@ final class Reconciliation
             return [];
         }
         $names = [];
-        foreach (array_chunk(array_keys($codes), 500) as $chunk) {
+        // un code tout en chiffres ("1640") devient un entier comme cle de tableau : remis en texte, sinon MySQL compare
+        // code_key a un nombre et "1640A" vaut 1640 (stockArtisana / Parck Alg, 07/11/2026). Une cle inconnue est ignoree.
+        foreach (array_chunk(array_map('strval', array_keys($codes)), 500) as $chunk) {
             BranchStock::whereIn('branch_id', $branchIds)->whereIn('code_key', $chunk)->whereNotNull('designation')
                 ->get(['code_key', 'designation'])
                 ->each(function (BranchStock $s) use (&$names, $codes) {
-                    $names[$codes[$s->code_key]] ??= trim((string) $s->designation);
+                    $code = $codes[(string) $s->code_key] ?? null;
+                    if ($code !== null) {
+                        $names[$code] ??= trim((string) $s->designation);
+                    }
                 });
         }
         ksort($names);
