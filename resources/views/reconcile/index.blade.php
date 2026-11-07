@@ -80,6 +80,35 @@
     .ask-row { display: flex; justify-content: space-between; align-items: center; margin-top: 6px; }
     .ask-row button:disabled { opacity: .5; cursor: wait; }
 
+    /* l'analyse, etape par etape : chaque ligne dit ce que l'etape a trouve */
+    .analysis h2 { font-size: 17px; margin: 0 0 4px; }
+    .analysis .bar { height: 10px; border-radius: 99px; background: var(--row-hover); overflow: hidden; margin: 14px 0; }
+    .analysis .bar > span { display: block; height: 100%; width: 0; background: var(--accent); border-radius: 99px; transition: width .5s; }
+    .steps { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
+    .steps li { display: grid; grid-template-columns: 22px 1fr auto; gap: 2px 10px; align-items: start; padding: 8px 10px; border-radius: 8px; }
+    .steps .ic { width: 18px; height: 18px; border-radius: 50%; border: 2px solid var(--border); margin-top: 3px; }
+    .steps li.running { background: var(--accent-soft); }
+    .steps li.running .ic { border-color: var(--accent); border-top-color: transparent; animation: spin .8s linear infinite; }
+    .steps li.ok .ic { background: var(--accent); border-color: var(--accent); }
+    .steps li.err .ic, .steps li.warn .ic { border-color: var(--bad); }
+    .steps .lbl { font-weight: 600; }
+    .steps .note { grid-column: 2 / 4; color: var(--muted); font-size: 13.5px; }
+    .steps li.err .note { color: var(--bad); }
+    .steps .t { color: var(--muted); font-size: 12.5px; }
+    .analysis .end { margin: 12px 0 0; }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    @media (prefers-reduced-motion: reduce) { .steps li.running .ic { animation: none; } .analysis .bar > span { transition: none; } }
+
+    .ran { display: flex; gap: 10px; align-items: center; justify-content: flex-end; margin: -6px 0 12px; }
+    .ai-sum { margin-bottom: 16px; }
+    .ai-sum h2 { font-size: 16px; margin: 0 0 8px; display: flex; gap: 8px; align-items: center; }
+    .ai-sum h2 svg { width: 18px; height: 18px; color: var(--accent); }
+    .ai-sum .body p { margin: 0 0 8px; }
+    .ai-sum .body ul, .ai-sum .body ol { margin: 0 0 8px; padding-inline-start: 22px; }
+    .extra { margin: 6px 0 0; font-size: 13.5px; }
+    .tl td.barc { width: 40%; }
+    .tl .tb { height: 8px; border-radius: 99px; background: var(--accent); opacity: .55; min-width: 2px; }
+
     @media (max-width: 900px) {
         .work { grid-template-columns: 1fr; }
         .chat { position: static; max-height: none; }
@@ -120,6 +149,9 @@
         foreach ($report['problems'] as $p) {
             foreach ($p['a'] as $x) { $add($x, 'A'); }
             foreach ($p['b'] as $x) { $add($x, 'B'); }
+            // le bon trouve sous un autre partenaire est de l'autre cote ; le jumeau d'un doublon, du meme cote
+            if (isset($p['other'])) { $add($p['other'], $p['type'] === 'bon_elsewhere_b' ? 'B' : 'A'); }
+            if (isset($p['twin'])) { $add($p['twin'], $p['type'] === 'bon_duplicate_a' ? 'A' : 'B'); }
         }
         foreach ($report['same'] as $s) { $add($s['a'], 'A'); $add($s['b'], 'B'); }
     }
@@ -164,6 +196,21 @@
 </form>
 @endif
 
+@if ($analyze)
+    <section class="card analysis" id="analysis">
+        <h2>{{ $T['analysis']['title'] }}</h2>
+        <p class="muted small" style="margin:0">{{ $T['analysis']['lead'] }}</p>
+        <div class="bar" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0"><span></span></div>
+        <ol class="steps">
+            @foreach ($steps as $s)
+                <li data-step="{{ $s }}"><span class="ic" aria-hidden="true"></span><span class="lbl">{{ $T['steps'][$s] }}</span><span class="t num"></span><span class="note"></span></li>
+            @endforeach
+        </ol>
+        <p class="end muted" id="analysis-end" hidden></p>
+        <p class="end" id="analysis-retry" hidden><button type="button" class="primary">{{ $T['analysis']['retry'] }}</button></p>
+    </section>
+@endif
+
 @if ($report)
     @php
         $a = $report['a'];
@@ -171,7 +218,14 @@
         $hueA = $customer->branch->hue();
         $hueB = $supplier->branch->hue();
         $side = fn (string $s) => $s === 'a' ? ['name' => $nameA, 'hue' => $hueA] : ['name' => $nameB, 'hue' => $hueB];
+        $ai = $report['ai'] ?? null;
     @endphp
+    <div class="ran small">
+        @if (! empty($report['analyzed_at']))
+            <span class="muted">{{ __('reconcile.analysis.ago', ['time' => \Illuminate\Support\Carbon::parse($report['analyzed_at'])->diffForHumans()]) }}</span>
+        @endif
+        <a class="btn" href="{{ route('reconcile.index', ['a' => $customer->branch_id, 'ca' => $customer->id, 'b' => $supplier->branch_id, 'sb' => $supplier->id, 'again' => 1]) }}">{{ $T['analysis']['again'] }}</a>
+    </div>
     <section class="summary">
         <div class="card sum">
             <h2><span class="bdot" style="--bh: {{ $hueA }}"></span>{{ __('reconcile.side_a', ['partner' => $a['partner'], 'branch' => $nameA]) }}</h2>
@@ -204,9 +258,75 @@
         </div>
     </section>
 
+    @if (! empty($ai['text']))
+        <section class="card ai-sum">
+            <h2>@include('partials.app-icon', ['name' => 'spark']){{ $T['summary'] }}
+                <span class="muted small">{{ App\Support\AiProviders::name($ai['provider']) }}</span></h2>
+            {{-- le texte de l'IA : mis en forme par le script (Markdown simple, {A} et {A:101} en noms et liens) --}}
+            <div class="body" id="ai-summary" data-text="{{ $ai['text'] }}">{{ $ai['text'] }}</div>
+            @if (! empty($ai['truncated']))<p class="muted small">{{ $T['chat']['truncated'] }}</p>@endif
+        </section>
+    @elseif (! empty($ai['error']))
+        <p class="note muted">{{ __('reconcile.summary_failed', ['error' => $ai['error']]) }}</p>
+    @endif
+
     <div class="work">
         <section class="card probs">
             <h2>{{ $T['problems'] }}</h2>
+            @if ($report['steps'] ?? [])
+                <details class="more">
+                    <summary>{{ $T['checked'] }}</summary>
+                    <ul class="small">
+                        @foreach ($report['steps'] as $step => $found)
+                            <li><b>{{ $T['steps'][$step] ?? $step }}</b> — <span class="muted">{{ __("reconcile.found.{$step}", $found) }}</span></li>
+                        @endforeach
+                        @if (! empty($ai['text']))
+                            <li><b>{{ $T['steps']['ai'] }}</b> — <span class="muted">{{ __('reconcile.found.ai', ['name' => App\Support\AiProviders::name($ai['provider'])]) }}</span></li>
+                        @endif
+                    </ul>
+                </details>
+            @endif
+            @if ($report['timeline'] ?? [])
+                @php
+                    $peak = max(array_map(fn ($m) => abs($m['effect']), $report['timeline'])) ?: 1;
+                @endphp
+                <details class="more tl" open>
+                    <summary>{{ $T['timeline'] }}</summary>
+                    <table>
+                        <thead><tr><th>{{ $T['month'] }}</th><th>{{ $T['count'] }}</th><th>{{ $T['month_effect'] }}</th><th class="hide-sm"></th><th>{{ $T['running'] }}</th></tr></thead>
+                        <tbody>
+                            @foreach ($report['timeline'] as $m)
+                                <tr>
+                                    <td class="num">{{ $m['month'] === '?' ? '—' : \Illuminate\Support\Carbon::parse($m['month'].'-01')->format('m/Y') }}</td>
+                                    <td class="num">{{ $m['count'] }}</td>
+                                    <td class="num">{{ $signed($m['effect']) }}</td>
+                                    <td class="barc hide-sm"><div class="tb" style="width: {{ round(100 * abs($m['effect']) / $peak) }}%"></div></td>
+                                    <td class="num">{{ $signed($m['running']) }}</td>
+                                </tr>
+                            @endforeach
+                        </tbody>
+                    </table>
+                </details>
+            @endif
+            @if ($report['codes'] ?? [])
+                <details class="more">
+                    <summary>{{ __('reconcile.codes', ['count' => count($report['codes'])]) }}</summary>
+                    <p class="muted small">{{ $T['codes_help'] }}
+                        @can('merge.manage')<a href="{{ route('merge.index') }}">{{ __('common.nav.merge') }}</a>@endcan</p>
+                    <table>
+                        <thead><tr><th>{{ $nameA }}</th><th>{{ $nameB }}</th><th></th></tr></thead>
+                        <tbody>
+                            @foreach ($report['codes'] as $c)
+                                <tr>
+                                    <td><span class="code ltr">{{ $c['a'] }}</span> <span class="muted small">{{ $c['name_a'] }}</span></td>
+                                    <td><span class="code ltr">{{ $c['b'] }}</span> <span class="muted small">{{ $c['name_b'] }}</span></td>
+                                    <td class="small muted">{{ $T['how'][$c['how']] ?? $c['how'] }} · {{ __('reconcile.used_in', ['count' => $c['bons']]) }}</td>
+                                </tr>
+                            @endforeach
+                        </tbody>
+                    </table>
+                </details>
+            @endif
             @forelse ($report['problems'] as $p)
                 <article class="prob" data-type="{{ $p['type'] }}">
                     <div class="prob-head">
@@ -236,6 +356,28 @@
                             </div>
                         @endforeach
                     </div>
+                    @if (isset($p['other']))
+                        @php
+                            $o = $p['other'];
+                            $oSide = in_array($p['type'], ['bon_elsewhere_b', 'pay_elsewhere_b'], true) ? 'b' : 'a';
+                        @endphp
+                        <p class="extra">{{ __('reconcile.other', ['branch' => $side($oSide)['name'], 'partner' => trim(($o['partner'] ?? '').' ('.$o['partner_code'].')')]) }} :
+                            @if (empty($o['payment']))
+                                <a href="{{ route($oSide === 'b' ? 'purchases.show' : 'sales.show', $o['id']) }}">{{ $T['bon'] }} <bdi class="num">#{{ $o['number'] }}</bdi></a>
+                            @else
+                                {{ $T['payment'] }} <bdi class="num">#{{ $o['number'] }}</bdi>
+                            @endif
+                            · {{ $date($o['date']) }} · <span class="num">{{ $money($o['amount']) }}</span>
+                            <span class="muted small">({{ $o['sure'] ? $T['other_sure'] : $T['other_maybe'] }})</span></p>
+                    @endif
+                    @if (isset($p['twin']))
+                        @php
+                            $tSide = $p['type'] === 'bon_duplicate_a' ? 'a' : 'b';
+                        @endphp
+                        <p class="extra muted">{{ $T['twin'] }}
+                            <a href="{{ route($tSide === 'a' ? 'sales.show' : 'purchases.show', $p['twin']['id']) }}">{{ $T['bon'] }} <bdi class="num">#{{ $p['twin']['number'] }}</bdi></a>
+                            · {{ $date($p['twin']['date']) }}</p>
+                    @endif
                     @if (! empty($p['lines']))
                         <table class="diffs">
                             <thead><tr><th>{{ $T['item'] }}</th><th></th><th>{{ $nameA }}</th><th>{{ $nameB }}</th></tr></thead>
@@ -256,7 +398,9 @@
                             </tbody>
                         </table>
                     @endif
-                    @if (! empty($p['days']))
+                    @if (! empty($p['late']))
+                        <p class="when muted small">{{ __('reconcile.late_pair', ['days' => abs($p['days'])]) }}</p>
+                    @elseif (! empty($p['days']))
                         <p class="when muted small">{{ __($p['days'] > 0 ? 'reconcile.later' : 'reconcile.earlier', ['b' => $nameB, 'days' => abs($p['days'])]) }}</p>
                     @endif
                 </article>
@@ -270,6 +414,9 @@
             @if ($report['same'] !== [])
                 <details class="more">
                     <summary>{{ __('reconcile.same_bons', ['count' => $report['counts']['same']]) }}</summary>
+                    @if ($report['counts']['late'] ?? 0)
+                        <p class="muted small">{{ __('reconcile.late_count', ['count' => $report['counts']['late']]) }}</p>
+                    @endif
                     <table>
                         <thead><tr><th>{{ $T['date'] }}</th><th>{{ $nameA }}</th><th>{{ $nameB }}</th><th>{{ $T['amount'] }}</th><th>{{ $T['days'] }}</th></tr></thead>
                         <tbody>
@@ -338,7 +485,8 @@
 @push('scripts')
 @php
     // @json coupe son argument aux virgules : les tableaux sont prepares ici
-    $jsTexts = ['no_hits' => $T['no_hits'], 'bons' => $T['bons_count'], 'chat' => $T['chat']];
+    $jsTexts = ['no_hits' => $T['no_hits'], 'bons' => $T['bons_count'], 'chat' => $T['chat'], 'analysis' => $T['analysis']];
+    $jsRun = ['ca' => $customer?->id, 'sb' => $supplier?->id, 'url' => route('reconcile.analyze')];
     $jsChat = ['ca' => $customer?->id, 'sb' => $supplier?->id, 'url' => route('reconcile.chat'),
         'names' => ['A' => $nameA, 'B' => $nameB], 'links' => $links, 'max' => App\Support\ReconciliationChat::MAX_MESSAGES];
 @endphp
@@ -427,19 +575,72 @@
         if (empty) e.preventDefault();
     });
 
-    // ---------- chat ----------
-    const chat = document.getElementById('ask');
-    if (!chat) return;
-    const R = @json($jsChat);
-    const KEY = 'reconcile:' + R.ca + ':' + R.sb;
-    const msgs = document.getElementById('msgs');
-    const quick = document.getElementById('quick');
-    const box = document.getElementById('question');
-    const send = document.getElementById('send');
     const token = document.querySelector('meta[name=csrf-token]').content;
-    let history = [];
-    try { history = JSON.parse(sessionStorage.getItem(KEY) || '[]'); } catch (e) { history = []; }
-    const save = () => { try { sessionStorage.setItem(KEY, JSON.stringify(history)); } catch (e) {} };
+
+    // ---------- l'analyse, etape par etape (ReconcileController::analyze) ----------
+    const panel = document.getElementById('analysis');
+    if (panel) {
+        const RUN = @json($jsRun);
+        const bar = panel.querySelector('.bar');
+        const end = document.getElementById('analysis-end');
+        const retry = document.getElementById('analysis-retry');
+        const item = step => panel.querySelector('[data-step="' + step + '"]');
+        let restarted = false;
+        const reset = () => panel.querySelectorAll('[data-step]').forEach(li => {
+            li.className = '';
+            li.querySelector('.note').textContent = '';
+            li.querySelector('.t').textContent = '';
+        });
+        const run = async step => {
+            const li = item(step);
+            li.className = 'running';
+            li.querySelector('.note').textContent = T.analysis.running;
+            retry.hidden = true;
+            const t0 = Date.now();
+            const tick = setInterval(() => {
+                li.querySelector('.t').textContent = T.analysis.seconds.replace(':s', Math.round((Date.now() - t0) / 1000));
+            }, 500);
+            try {
+                // fetch simple : une etape refaite par erreur referait l'appel a l'IA, paye deux fois
+                const res = await fetch(RUN.url, {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json', Accept: 'application/json', 'X-CSRF-TOKEN': token},
+                    body: JSON.stringify({ca: RUN.ca, sb: RUN.sb, step}),
+                });
+                const data = await res.json().catch(() => ({}));
+                if (res.status === 409 && data.restart && !restarted) {
+                    // etat perdu (trop long entre deux etapes) : on recommence une fois depuis le debut
+                    restarted = true;
+                    clearInterval(tick);
+                    reset();
+                    return run('load');
+                }
+                if (!res.ok) throw new Error(data.message || T.chat.failed);
+                clearInterval(tick);
+                li.className = data.failed ? 'warn' : 'ok';
+                li.querySelector('.note').textContent = data.note || '';
+                bar.firstElementChild.style.width = data.percent + '%';
+                bar.setAttribute('aria-valuenow', data.percent);
+                if (data.next) return run(data.next);
+                end.textContent = T.analysis.done;
+                end.hidden = false;
+                const url = new URL(location.href);
+                url.searchParams.delete('again');
+                // un instant pour lire la liste complete, puis le resultat (qui la garde dans "ما فحصه التحليل")
+                setTimeout(() => location.replace(url.toString()), 1200);
+            } catch (e) {
+                clearInterval(tick);
+                li.className = 'err';
+                li.querySelector('.note').textContent = T.analysis.failed + ' ' + (e.message && e.message !== 'Failed to fetch' ? e.message : T.chat.failed);
+                retry.hidden = false;
+                retry.querySelector('button').onclick = () => run(step);
+            }
+        };
+        run('load');
+    }
+
+    // ---------- textes de l'IA : Markdown simple, {A} / {A:101} remis en noms et en liens ----------
+    const R = @json($jsChat);
 
     // le Markdown simple que l'IA ecrit (paragraphes, listes, gras), et ses {A} / {A:101} remis en noms et en liens
     const bon = (side, n) => {
@@ -478,6 +679,21 @@
         close();
         return html;
     };
+    const summary = document.getElementById('ai-summary');
+    if (summary) summary.innerHTML = md(summary.dataset.text || '');
+
+    // ---------- chat ----------
+    const chat = document.getElementById('ask');
+    if (!chat) return;
+    const KEY = 'reconcile:' + R.ca + ':' + R.sb;
+    const msgs = document.getElementById('msgs');
+    const quick = document.getElementById('quick');
+    const box = document.getElementById('question');
+    const send = document.getElementById('send');
+    let history = [];
+    try { history = JSON.parse(sessionStorage.getItem(KEY) || '[]'); } catch (e) { history = []; }
+    const save = () => { try { sessionStorage.setItem(KEY, JSON.stringify(history)); } catch (e) {} };
+
     const bubble = (role, text, extra) => {
         const d = document.createElement('div');
         d.className = 'msg ' + role + (extra ? ' ' + extra : '');

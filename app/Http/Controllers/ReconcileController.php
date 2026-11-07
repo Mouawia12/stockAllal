@@ -23,8 +23,11 @@ use Illuminate\View\View;
  */
 class ReconcileController extends Controller
 {
-    /** Le rapport d'une paire reste 2 minutes : les questions du chat portent sur le meme (cache de Claude compris). */
-    private const REPORT_SECONDS = 120;
+    /** Le resultat d'une analyse reste 30 minutes (les questions du chat portent sur lui, cache de Claude compris). */
+    private const REPORT_SECONDS = 1800;
+
+    /** Une analyse commencee garde son etat 15 minutes entre deux etapes. */
+    private const RUN_SECONDS = 900;
 
     public function index(Request $request): View
     {
@@ -32,16 +35,97 @@ class ReconcileController extends Controller
         abort_unless($user->can('prices.sale') && $user->can('prices.buy'), 403);
         [$customer, $supplier] = $this->pair($request);
         $branches = Branch::where('active', true)->among($user->salesBranchIds())->orderBy('name')->get();
+        // pas de resultat recent (ou "إعادة التحليل") : la page lance l'analyse, etape par etape, avec sa barre
+        $report = $customer && $supplier && ! $request->boolean('again') ? Cache::get(self::reportKey($customer, $supplier)) : null;
+        $provider = MergeScanner::provider();
 
         return view('reconcile.index', [
             'branches' => $branches,
             'customer' => $customer,
             'supplier' => $supplier,
-            'report' => $customer && $supplier ? self::report($customer, $supplier) : null,
-            'provider' => MergeScanner::provider(),
+            'report' => $report,
+            'analyze' => $customer && $supplier && $report === null,
+            'steps' => [...Reconciliation::STEPS, ...($provider ? ['ai'] : [])],
+            'provider' => $provider,
             // sans l'agent 1.0.7, une branche n'envoie ni bons ni versements : rien a comparer
             'outdated' => $branches->reject(fn (Branch $b) => $b->agentSupports('documents'))->pluck('name')->values(),
         ]);
+    }
+
+    /**
+     * Une etape de l'analyse (Reconciliation::STEPS, puis "ai" si une IA est connectee). La page les demande une a
+     * une : chaque reponse dit ce que l'etape a trouve, la suivante et l'avancement. "load" recommence l'analyse.
+     * 409 restart : l'etat est perdu (15 minutes sans etape, ou une autre analyse) : la page recommence.
+     */
+    public function analyze(Request $request): JsonResponse
+    {
+        $user = $request->user();
+        abort_unless($user->can('prices.sale') && $user->can('prices.buy'), 403);
+        $data = $request->validate([
+            'ca' => ['required', 'integer'],
+            'sb' => ['required', 'integer'],
+            'step' => ['required', 'in:'.implode(',', [...Reconciliation::STEPS, 'ai'])],
+        ]);
+        [$customer, $supplier] = $this->pair($request);
+        abort_unless($customer && $supplier, 404);
+        $step = $data['step'];
+        $runKey = "reconcile:run:{$user->id}:{$customer->id}:{$supplier->id}";
+        $total = count(Reconciliation::STEPS) + (MergeScanner::provider() ? 1 : 0);
+
+        if ($step === 'ai') {
+            return $this->analyzeWithAi($customer, $supplier, $total);
+        }
+        // l'etat entre deux etapes est un tableau : le cache ne relit aucun objet (cache.serializable_classes)
+        $run = $step === 'load' ? Reconciliation::start($customer, $supplier) : Reconciliation::resume(Cache::get($runKey));
+        if ($run === null || $run->next() !== $step) {
+            return response()->json(['restart' => true], 409);
+        }
+        @set_time_limit(120);
+        $found = $run->step($step);
+        $next = $run->next();
+        if ($next === null) {
+            Cache::put(self::reportKey($customer, $supplier), $run->report(), self::REPORT_SECONDS);
+            Cache::forget($runKey);
+            $next = $total > count(Reconciliation::STEPS) ? 'ai' : null;
+        } else {
+            Cache::put($runKey, $run->state(), self::RUN_SECONDS);
+        }
+        $done = array_search($step, Reconciliation::STEPS, true) + 1;
+
+        return response()->json([
+            'step' => $step,
+            'note' => __("reconcile.found.{$step}", $found),
+            'next' => $next,
+            'percent' => (int) round(100 * $done / $total),
+        ]);
+    }
+
+    /** La derniere etape : l'IA lit le resultat et ecrit sa conclusion, gardee avec lui. Un echec n'empeche pas le resultat. */
+    private function analyzeWithAi(Partner $customer, Partner $supplier, int $total): JsonResponse
+    {
+        $key = self::reportKey($customer, $supplier);
+        $report = Cache::get($key);
+        if ($report === null) {
+            return response()->json(['restart' => true], 409);
+        }
+        $ai = MergeScanner::provider();
+        if (! $ai) {
+            return response()->json(['step' => 'ai', 'note' => __('reconcile.chat.no_provider'), 'next' => null, 'percent' => 100]);
+        }
+        @set_time_limit(AiProviders::ASK_TIMEOUT + 30);
+        $system = ReconciliationChat::system($report, app()->getLocale());
+        try {
+            $answer = AiProviders::chat($ai->provider, $ai->api_key, $ai->model, $system, [['role' => 'user', 'content' => ReconciliationChat::ANALYZE]], 8000);
+            $report['ai'] = ['text' => $answer['text'], 'truncated' => $answer['truncated'], 'provider' => $ai->provider, 'model' => $ai->model, 'at' => now()->toIso8601String()];
+            $note = __('reconcile.found.ai', ['name' => AiProviders::name($ai->provider)]);
+        } catch (AiProviderError $e) {
+            $reason = array_key_exists($e->reason, trans('ai.errors')) ? $e->reason : 'other';
+            $note = __("ai.errors.{$reason}", ['name' => AiProviders::name($ai->provider)]);
+            $report['ai'] = ['error' => $note];
+        }
+        Cache::put($key, $report, self::REPORT_SECONDS);
+
+        return response()->json(['step' => 'ai', 'note' => $note, 'next' => null, 'percent' => 100, 'failed' => isset($report['ai']['error'])]);
     }
 
     /**
@@ -104,9 +188,10 @@ class ReconcileController extends Controller
         }
 
         @set_time_limit(AiProviders::ASK_TIMEOUT + 30);
-        $system = ReconciliationChat::system(self::report($customer, $supplier), app()->getLocale());
+        $report = self::report($customer, $supplier);
+        $system = ReconciliationChat::system($report, app()->getLocale());
         try {
-            $answer = AiProviders::chat($ai->provider, $ai->api_key, $ai->model, $system, $messages);
+            $answer = AiProviders::chat($ai->provider, $ai->api_key, $ai->model, $system, ReconciliationChat::withAnalysis($report, $messages));
         } catch (AiProviderError $e) {
             $reason = array_key_exists($e->reason, trans('ai.errors')) ? $e->reason : 'other';
 
@@ -137,10 +222,16 @@ class ReconcileController extends Controller
         return [$customer, $supplier];
     }
 
+    /** Le resultat de la derniere analyse de la paire ; sans analyse recente (chat ouvert longtemps), refait sans l'IA. */
     private static function report(Partner $customer, Partner $supplier): array
     {
-        return Cache::remember("reconcile:{$customer->id}:{$supplier->id}", self::REPORT_SECONDS,
+        return Cache::remember(self::reportKey($customer, $supplier), self::REPORT_SECONDS,
             fn () => Reconciliation::run($customer, $supplier));
+    }
+
+    private static function reportKey(Partner $customer, Partner $supplier): string
+    {
+        return "reconcile:report:{$customer->id}:{$supplier->id}";
     }
 
     /** @return array<string, int> code => nombre de bons (ventes d'un client, achats d'un fournisseur) */

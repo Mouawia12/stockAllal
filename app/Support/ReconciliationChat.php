@@ -52,8 +52,14 @@ Reading the report:
   - pay_missing_a: a payment {B} recorded that {A} did not receive.
   - pay_amount: the same payment with different amounts.
   - opening: the opening balances ("Solde Initial", a negative "Autre" payment) differ, or exist on one side only.
-- "days" on a pair: how many days after {A} the other side entered it.
+  - bon_elsewhere_b: a sale bon in {A} with no purchase bon for this supplier in {B}, but a purchase bon with the same items and amount exists in {B} under ANOTHER supplier ("other"): most likely entered for the wrong supplier ("sure": items and amount identical).
+  - bon_elsewhere_a: a purchase bon in {B} with no sale bon for this customer in {A}, but a matching sale bon exists in {A} under ANOTHER customer ("other").
+  - bon_duplicate_a / bon_duplicate_b: a bon with no counterpart that is identical to another bon of the same branch a few days apart ("twin"): most likely entered twice.
+  - pay_elsewhere_b / pay_elsewhere_a: a payment with no counterpart, while a payment of the same amount within 3 days exists on the other side under another partner ("other"). Only a possibility: round amounts repeat.
+- "days" on a pair: how many days after {A} the other side entered it; "late": found more than a month apart (identical bon entered late).
 - "items" gives the designation of each item code that appears in a problem.
+- "item_codes": the same item under a different code in each branch, learned from the code written differently, the same designation, or bons identical but for that code ("how": code, name, bons). The matching already counts them as one item; they should be merged in the page "دمج الأصناف".
+- "timeline": month by month, the problems' total effect and the running total: when the gap appeared and grew.
 
 How to answer:
 - Answer in {$language}. Be short and practical: what is wrong, in which branch, and what to enter or correct there. Start with the biggest effects.
@@ -79,6 +85,20 @@ TXT;
             $out = ['type' => $p['type'], 'effect' => $p['effect'], 'date' => $p['date']];
             if (isset($p['days'])) {
                 $out['days'] = $p['days'];
+            }
+            if (! empty($p['late'])) {
+                $out['late'] = true;
+            }
+            if (isset($p['twin'])) {
+                $out['twin'] = '{'.(str_ends_with($p['type'], '_a') ? 'A' : 'B').':'.$p['twin']['number'].'}';
+            }
+            if (isset($p['other'])) {
+                // le bon ou le versement trouve sous un autre partenaire : de l'autre cote, sans son nom
+                $label = in_array($p['type'], ['bon_elsewhere_b', 'pay_elsewhere_b'], true) ? 'B' : 'A';
+                $o = $p['other'];
+                $out['other'] = (empty($o['payment']) ? ['bon' => '{'.$label.':'.$o['number'].'}'] : ['payment' => $o['number']])
+                    + ['date' => $o['date'], 'amount' => $o['amount'], 'days' => $o['days'], 'sure' => $o['sure'],
+                        'partner' => $label === 'B' ? 'another supplier of {B}' : 'another customer of {A}'];
             }
             foreach (['a' => 'A', 'b' => 'B'] as $side => $label) {
                 $out[$label] = array_map(fn (array $x) => self::item($x, $label, $codes), $p[$side]);
@@ -113,7 +133,37 @@ TXT;
                 'date' => $s['a']['date'], 'amount' => $s['a']['amount'], 'days' => $s['days'],
             ], array_slice($r['pay_same'], 0, self::MAX_SAME)),
             'items' => array_intersect_key($r['names'], $codes),
+            'item_codes' => array_map(fn (array $c) => [
+                'code_in_A' => $c['a'], 'name_in_A' => $c['name_a'], 'code_in_B' => $c['b'], 'name_in_B' => $c['name_b'], 'how' => $c['how'], 'bons' => $c['bons'],
+            ], $r['codes'] ?? []),
+            'timeline' => $r['timeline'] ?? [],
         ];
+    }
+
+    /**
+     * La derniere etape de l'analyse : l'IA lit tout le rapport et ecrit sa conclusion (affichee en tete du resultat,
+     * puis gardee en debut de chaque conversation pour que les questions suivantes partent de la).
+     */
+    public const ANALYZE = 'Analyse this report in depth before you answer, then write your conclusion. '
+        .'Work out what really explains the gap: group the problems by cause (bons never entered, entered for another partner, '
+        .'entered twice, different quantities or prices, items under two codes, payments, opening balance) with the total effect '
+        .'of each cause, biggest first, and check that they add up to the gap. Say in which branch each fix must be made and '
+        .'exactly what to enter or correct, citing the bons. Point out anything suspicious, and from the timeline the month the '
+        .'gap appeared or grew. End with a short checklist for {A} and one for {B}.';
+
+    /** Le debut de chaque conversation quand l'analyse a une conclusion de l'IA. */
+    public static function withAnalysis(array $report, array $messages): array
+    {
+        $text = $report['ai']['text'] ?? null;
+        if (! is_string($text) || $text === '') {
+            return $messages;
+        }
+        // la conclusion compte pour deux messages : la conversation garde sa taille
+        while (count($messages) > self::MAX_MESSAGES - 2) {
+            array_splice($messages, 0, 2);
+        }
+
+        return [['role' => 'user', 'content' => self::ANALYZE], ['role' => 'assistant', 'content' => $text], ...$messages];
     }
 
     /** Un bon ({A:101}, ses lignes) ou un versement du rapport. */

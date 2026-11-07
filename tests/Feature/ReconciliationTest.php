@@ -6,6 +6,7 @@ use App\Models\Branch;
 use App\Models\BranchStock;
 use App\Models\Document;
 use App\Models\DocumentLine;
+use App\Models\MergeDismissal;
 use App\Models\Partner;
 use App\Models\Payment;
 use App\Models\ProductGroup;
@@ -169,6 +170,109 @@ class ReconciliationTest extends TestCase
         $this->assertSame($r['gap'], $r['explained']);
     }
 
+    public function test_items_with_two_codes_are_learned_from_the_code_the_name_and_identical_bons(): void
+    {
+        // la meme designation chez les deux, ecrite autrement
+        $this->stock($this->blida, 'P100', 'ROBINET LAITON 1/2');
+        $this->stock($this->oran, 'RB12', 'Robinet laiton 1/2');
+        // 77-X chez Blida = 77X chez Oran (le code ecrit autrement) ; P100 = RB12 (la designation)
+        $this->bon($this->blida, 'sale', 'ORAN', 500, '2026-07-01', [['77-X', 1, 300], ['P100', 2, 80]]);
+        $this->bon($this->oran, 'purchase', 'BLIDA', 80, '2026-07-01', [['77X', 1, 300], ['RB12', 2, 80]]);
+        // deux bons identiques a un code pres, meme montant : Q1 = QQ9
+        $this->bon($this->blida, 'sale', 'ORAN', 501, '2026-07-05', [['P2', 2, 100], ['Q1', 1, 50]]);
+        $this->bon($this->oran, 'purchase', 'BLIDA', 81, '2026-07-05', [['P2', 2, 100], ['QQ9', 1, 50]]);
+
+        $r = Reconciliation::run($this->customer, $this->supplier);
+
+        $this->assertSame(2, $r['counts']['same']);
+        $this->assertSame([], $r['problems']);
+        $codes = collect($r['codes'])->keyBy('b');
+        $this->assertSame(['a' => '77-X', 'how' => 'code'], collect($codes['77X'])->only(['a', 'how'])->all());
+        $this->assertSame(['a' => 'P100', 'how' => 'name', 'name_a' => 'ROBINET LAITON 1/2', 'name_b' => 'Robinet laiton 1/2'],
+            collect($codes['RB12'])->only(['a', 'how', 'name_a', 'name_b'])->all());
+        $this->assertSame(['a' => 'Q1', 'how' => 'bons', 'bons' => 1], collect($codes['QQ9'])->only(['a', 'how', 'bons'])->all());
+    }
+
+    public function test_a_pair_marked_not_the_same_item_is_never_learned(): void
+    {
+        $this->stock($this->blida, 'P100', 'ROBINET LAITON 1/2');
+        $this->stock($this->oran, 'RB12', 'Robinet laiton 1/2');
+        MergeDismissal::remember(['P100', 'RB12'], null);
+        $this->bon($this->blida, 'sale', 'ORAN', 510, '2026-07-01', [['P100', 2, 80]]);
+        $this->bon($this->oran, 'purchase', 'BLIDA', 85, '2026-07-01', [['RB12', 2, 80]]);
+
+        $r = Reconciliation::run($this->customer, $this->supplier);
+
+        $this->assertSame([], $r['codes']);
+        $this->assertSame('bon_lines', $r['problems'][0]['type']);
+    }
+
+    public function test_the_deep_checks_find_split_late_twice_and_other_partner_bons(): void
+    {
+        $other = $this->partner($this->oran, 'supplier', 'AUTRE', 'Fournisseur Autre');
+        $this->partner($this->blida, 'customer', 'C9', 'Benali');
+        // un bon de 900 saisi en trois bons de 300
+        $this->bon($this->blida, 'sale', 'ORAN', 600, '2026-05-10', [['S', 9, 100]]);
+        $this->bon($this->oran, 'purchase', 'BLIDA', 90, '2026-05-10', [['S', 3, 100]]);
+        $this->bon($this->oran, 'purchase', 'BLIDA', 91, '2026-05-11', [['S', 3, 100]]);
+        $this->bon($this->oran, 'purchase', 'BLIDA', 92, '2026-05-12', [['S', 3, 100]]);
+        // le meme bon, saisi 100 jours plus tard
+        $this->bon($this->blida, 'sale', 'ORAN', 601, '2026-01-10', [['L1', 1, 100], ['L2', 2, 50]]);
+        $this->bon($this->oran, 'purchase', 'BLIDA', 93, '2026-04-20', [['L1', 1, 100], ['L2', 2, 50]]);
+        // saisi deux fois chez Blida
+        $this->bon($this->blida, 'sale', 'ORAN', 602, '2026-06-01', [['D', 1, 500]]);
+        $this->bon($this->blida, 'sale', 'ORAN', 603, '2026-06-02', [['D', 1, 500]]);
+        $this->bon($this->oran, 'purchase', 'BLIDA', 94, '2026-06-01', [['D', 1, 500]]);
+        // une vente de Blida achetee chez Oran sous un autre fournisseur, un achat d'Oran vendu par Blida a un autre client
+        $this->bon($this->blida, 'sale', 'ORAN', 604, '2026-08-01', [['E1', 3, 100]]);
+        $this->bon($this->oran, 'purchase', 'AUTRE', 95, '2026-08-02', [['E1', 3, 100]]);
+        $this->bon($this->oran, 'purchase', 'BLIDA', 96, '2026-08-10', [['F1', 1, 700]]);
+        $this->bon($this->blida, 'sale', 'C9', 605, '2026-08-10', [['F1', 1, 700]]);
+        // un versement recu par Blida, paye par Oran a un autre fournisseur le lendemain
+        $this->pay($this->blida, 'customer', 'ORAN', 30, '2026-08-15', 4000);
+        $this->pay($this->oran, 'supplier', 'AUTRE', 31, '2026-08-16', 4000);
+
+        $r = Reconciliation::run($this->customer, $this->supplier);
+        $byType = collect($r['problems'])->keyBy('type');
+
+        $this->assertSame([[600], [90, 91, 92]], [array_column($byType['bon_split']['a'], 'number'), array_column($byType['bon_split']['b'], 'number')]);
+        $this->assertSame(1, $r['counts']['late']);
+        $this->assertTrue(collect($r['same'])->firstWhere('a.number', 601)['late']);
+        $this->assertSame(603, $byType['bon_duplicate_a']['a'][0]['number']);
+        $this->assertSame(602, $byType['bon_duplicate_a']['twin']['number']);
+        $this->assertSame(['number' => 95, 'partner_code' => 'AUTRE', 'partner' => 'Fournisseur Autre', 'sure' => true],
+            collect($byType['bon_elsewhere_b']['other'])->only(['number', 'partner_code', 'partner', 'sure'])->all());
+        $this->assertSame(604, $byType['bon_elsewhere_b']['a'][0]['number']);
+        $this->assertSame(['number' => 605, 'partner_code' => 'C9'], collect($byType['bon_elsewhere_a']['other'])->only(['number', 'partner_code'])->all());
+        $this->assertSame(['partner_code' => 'AUTRE', 'sure' => false], collect($byType['pay_elsewhere_b']['other'])->only(['partner_code', 'sure'])->all());
+        $this->assertSame(-4000.0, $byType['pay_elsewhere_b']['effect']);
+        $this->assertSame($r['gap'], $r['explained']);
+        $this->assertSame(round(array_sum(array_column($r['timeline'], 'effect')), 2), $r['gap']);
+        $this->assertSame($r['gap'], end($r['timeline'])['running']);
+        $this->assertNotSame($other->id, null);
+    }
+
+    public function test_the_steps_run_one_by_one_from_a_saved_state_give_the_same_result(): void
+    {
+        $this->bon($this->blida, 'sale', 'ORAN', 700, '2026-03-01', [['A1', 3, 100]]);
+        $this->bon($this->oran, 'purchase', 'BLIDA', 99, '2026-03-02', [['A1', 2, 100]]);
+
+        $run = Reconciliation::start($this->customer, $this->supplier);
+        foreach (Reconciliation::STEPS as $step) {
+            // chaque etape repart d'un tableau, comme entre deux requetes (le cache ne relit aucun objet)
+            $run = Reconciliation::resume(unserialize(serialize($run->state()), ['allowed_classes' => false]));
+            $this->assertSame($step, $run->next());
+            $run->step($step);
+        }
+        $this->assertNull($run->next());
+        $byStep = $run->report();
+        $direct = Reconciliation::run($this->customer, $this->supplier);
+        unset($byStep['analyzed_at'], $direct['analyzed_at']);
+        $this->assertSame($direct, $byStep);
+        $this->assertSame(['sales' => 1, 'sale_lines' => 1, 'purchases' => 1, 'purchase_lines' => 1, 'payments_a' => 0, 'payments_b' => 0], $byStep['steps']['load']);
+        $this->assertNull(Reconciliation::resume('garbage'));
+    }
+
     public function test_only_a_customer_and_a_supplier_of_two_branches_the_account_sees(): void
     {
         $this->assertTrue(Reconciliation::allowed($this->customer, $this->supplier, null));
@@ -203,6 +307,12 @@ class ReconciliationTest extends TestCase
         }
 
         return $doc;
+    }
+
+    private function stock(Branch $branch, string $code, string $designation): void
+    {
+        BranchStock::forceCreate(['branch_id' => $branch->id, 'code_key' => BranchStock::keyFor($code), 'code_raw' => $code,
+            'designation' => $designation, 'stock' => 1, 'seen_at' => now(), 'updated_at' => now()]);
     }
 
     private function pay(Branch $branch, string $kind, string $partner, int $number, string $date, float $amount, string $type = 'Espéce', ?string $note = null): void
