@@ -11,6 +11,7 @@ return [
         'purchases' => 'Purchases',
         'suppliers' => 'Suppliers',
         'customers' => 'Customers',
+        'reconcile' => 'Reconciliation',
         'settings' => 'Settings',
     ],
     'soon' => 'Soon',

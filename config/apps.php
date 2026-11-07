@@ -15,6 +15,8 @@ return [
     'purchases' => ['route' => 'purchases.index', 'can' => 'sales.view'],
     'suppliers' => ['route' => 'suppliers.index', 'can' => 'sales.view'],
     'customers' => ['route' => 'customers.index', 'can' => 'sales.view'],
+    // "المطابقة" : les comptes entre deux branches, avec l'IA (App\Http\Controllers\ReconcileController)
+    'reconcile' => ['route' => 'reconcile.index', 'can' => 'reconcile.use'],
     // pour tous : la route "settings" mene aux comptes qui en gere (App\Support\Roles), les autres a leur propre compte
     'settings' => ['route' => 'settings'],
 ];

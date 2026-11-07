@@ -189,7 +189,8 @@
         const boxes = [...document.querySelectorAll('input[name="permissions[]"]')].filter(b => !b.disabled);
         const box = p => boxes.find(b => b.value === p);
         const DEFAULTS = @json(Permissions::DEFAULTS);
-        @php($needs = ['branches.view' => Permissions::NEED_BRANCHES_VIEW, 'sales.view' => Permissions::NEED_SALES_VIEW])
+        @php($needs = ['branches.view' => Permissions::NEED_BRANCHES_VIEW, 'sales.view' => Permissions::NEED_SALES_VIEW,
+            'prices.sale' => Permissions::NEED_PRICES, 'prices.buy' => Permissions::NEED_PRICES])
         const NEEDS = @json($needs);
 
         // memes dependances que Permissions::normalize() : sans "رؤية الفروع", pas de page des succursales ;

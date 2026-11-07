@@ -114,18 +114,7 @@ final class AiProviders
             ]],
         };
 
-        try {
-            // on ne refait que les connexions ratees : une reponse trop lente refaite trois fois depasserait le verrou du lot
-            $res = Http::withHeaders(self::headers($provider, $key))->acceptJson()
-                ->connectTimeout(10)->timeout(self::ASK_TIMEOUT)
-                ->retry(2, 1000, fn ($e) => $e instanceof ConnectionException && ! str_contains($e->getMessage(), 'Operation timed out'), throw: false)
-                ->post($url, $body);
-        } catch (ConnectionException $e) {
-            throw new AiProviderError('unreachable', self::scrub($e->getMessage(), $key));
-        }
-        if (! $res->successful()) {
-            throw new AiProviderError(self::reason($provider, $res), self::scrub('HTTP '.$res->status().': '.self::message($res), $key));
-        }
+        $res = self::post($provider, $key, $url, $body);
 
         $answer = match ($provider) {
             'claude' => collect($res->json('content') ?? [])->firstWhere('type', 'tool_use')['input']
@@ -140,6 +129,77 @@ final class AiProviders
         }
 
         return $answer;
+    }
+
+    /**
+     * Une conversation en texte ("المطابقة", ReconciliationChat) : $messages alterne user / assistant et finit par user.
+     * $system porte le rapport de la page, le meme d'une question a l'autre : chez Claude il est mis en cache
+     * (cache_control), les questions suivantes le relisent pour moins cher. Ni "thinking" ni "temperature" : le modele
+     * choisi sur la page "الذكاء الاصطناعي" garde ses reglages par defaut, et la limite est doublee pour sa reflexion.
+     *
+     * @param  list<array{role: string, content: string}>  $messages
+     * @return array{text: string, truncated: bool}
+     *
+     * @throws AiProviderError
+     */
+    public static function chat(string $provider, string $key, string $model, string $system, array $messages, int $maxTokens = 6000): array
+    {
+        [$url, $body] = match ($provider) {
+            'claude' => ['https://api.anthropic.com/v1/messages', [
+                'model' => $model,
+                'max_tokens' => $maxTokens * 2,
+                'system' => [['type' => 'text', 'text' => $system, 'cache_control' => ['type' => 'ephemeral']]],
+                'messages' => $messages,
+            ]],
+            'openai' => ['https://api.openai.com/v1/chat/completions', [
+                'model' => $model,
+                'messages' => [['role' => 'system', 'content' => $system], ...$messages],
+                'max_completion_tokens' => $maxTokens * 2,
+            ]],
+            'gemini' => ['https://generativelanguage.googleapis.com/v1beta/models/'.rawurlencode($model).':generateContent', [
+                'systemInstruction' => ['parts' => [['text' => $system]]],
+                'contents' => array_map(fn (array $m) => ['role' => $m['role'] === 'assistant' ? 'model' : 'user', 'parts' => [['text' => $m['content']]]], $messages),
+                'generationConfig' => ['maxOutputTokens' => $maxTokens * 2],
+            ]],
+        };
+        $res = self::post($provider, $key, $url, $body);
+
+        [$text, $stop] = match ($provider) {
+            'claude' => [collect($res->json('content') ?? [])->where('type', 'text')->pluck('text')->implode(''), $res->json('stop_reason')],
+            'openai' => [(string) $res->json('choices.0.message.content'), $res->json('choices.0.finish_reason')],
+            'gemini' => [collect($res->json('candidates.0.content.parts') ?? [])->pluck('text')->implode(''), $res->json('candidates.0.finishReason')],
+        };
+        // refus de securite : Claude (stop_reason "refusal"), OpenAI (content_filter), Gemini (SAFETY...)
+        if (in_array($stop, ['refusal', 'content_filter', 'SAFETY', 'PROHIBITED_CONTENT', 'BLOCKLIST', 'SPII'], true)) {
+            throw new AiProviderError('refused', self::scrub((string) $stop, $key));
+        }
+        if (trim($text) === '') {
+            throw new AiProviderError('bad_answer', self::scrub((is_string($stop) ? $stop.': ' : '').mb_substr($res->body(), 0, 200), $key));
+        }
+
+        return ['text' => trim($text), 'truncated' => in_array($stop, ['max_tokens', 'length', 'MAX_TOKENS'], true)];
+    }
+
+    /**
+     * Un appel au fournisseur ; une erreur devient AiProviderError (reason = cle "ai.errors.*").
+     * On ne refait que les connexions ratees : une reponse trop lente refaite trois fois depasserait le verrou d'un lot,
+     * et une question refaite serait payee deux fois.
+     */
+    private static function post(string $provider, string $key, string $url, array $body): Response
+    {
+        try {
+            $res = Http::withHeaders(self::headers($provider, $key))->acceptJson()
+                ->connectTimeout(10)->timeout(self::ASK_TIMEOUT)
+                ->retry(2, 1000, fn ($e) => $e instanceof ConnectionException && ! str_contains($e->getMessage(), 'Operation timed out'), throw: false)
+                ->post($url, $body);
+        } catch (ConnectionException $e) {
+            throw new AiProviderError('unreachable', self::scrub($e->getMessage(), $key));
+        }
+        if (! $res->successful()) {
+            throw new AiProviderError(self::reason($provider, $res), self::scrub('HTTP '.$res->status().': '.self::message($res), $key));
+        }
+
+        return $res;
     }
 
     /** Le JSON d'une reponse, meme entoure de ```json ... ``` ou d'une phrase. */

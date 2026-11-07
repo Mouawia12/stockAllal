@@ -115,6 +115,7 @@
         request()->routeIs('purchases.*') => 'purchases',
         request()->routeIs('customers.*') => 'customers',
         request()->routeIs('suppliers.*') => 'suppliers',
+        request()->routeIs('reconcile.*') => 'reconcile',
         request()->routeIs('users.*', 'account.*', 'activity.*', 'ai.*') => 'settings',
         default => null,
     };

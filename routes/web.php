@@ -15,6 +15,7 @@ use App\Http\Controllers\LocaleController;
 use App\Http\Controllers\MergeAiController;
 use App\Http\Controllers\PartnerController;
 use App\Http\Controllers\ProductGroupController;
+use App\Http\Controllers\ReconcileController;
 use App\Http\Controllers\StockController;
 use App\Http\Controllers\UserController;
 use App\Http\Middleware\PrintPreferences;
@@ -80,6 +81,13 @@ Route::middleware('auth')->group(function () {
             Route::get('suppliers/payments/print', [PartnerController::class, 'supplierPaymentsPrint'])->name('suppliers.print-payments');
             Route::get('suppliers/{partner}/print', [PartnerController::class, 'supplierPrint'])->name('suppliers.print-card')->whereNumber('partner');
             Route::get('cash/print', [CashController::class, 'print'])->name('cash.print')->middleware('can:cash.view');
+        });
+
+        // "المطابقة" : les comptes de deux branches qui commercent (Reconciliation), et l'IA qui les explique
+        Route::middleware('can:reconcile.use')->group(function () {
+            Route::get('reconcile', [ReconcileController::class, 'index'])->name('reconcile.index')->middleware('throttle:search');
+            Route::get('reconcile/partners', [ReconcileController::class, 'partners'])->name('reconcile.partners')->middleware('throttle:search');
+            Route::post('reconcile/chat', [ReconcileController::class, 'chat'])->name('reconcile.chat')->middleware('throttle:refresh');
         });
     });
 

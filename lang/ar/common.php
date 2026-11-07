@@ -13,6 +13,7 @@ return [
         'purchases' => 'المشتريات',
         'suppliers' => 'الموردون',
         'customers' => 'الزبائن',
+        'reconcile' => 'المطابقة',
         'settings' => 'الإعدادات',
     ],
     'soon' => 'قريباً',

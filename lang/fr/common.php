@@ -11,6 +11,7 @@ return [
         'purchases' => 'Achats',
         'suppliers' => 'Fournisseurs',
         'customers' => 'Clients',
+        'reconcile' => 'Rapprochement',
         'settings' => 'Paramètres',
     ],
     'soon' => 'Bientôt',

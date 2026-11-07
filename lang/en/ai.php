@@ -40,5 +40,6 @@ return [
         'other' => ':name answered with an error.',
         'bad_answer' => ':name answered something unreadable.',
         'no_key' => 'No :name key saved.',
+        'refused' => ':name declined to answer this question.',
     ],
 ];

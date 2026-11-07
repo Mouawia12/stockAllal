@@ -40,5 +40,6 @@ return [
         'other' => ':name a répondu par une erreur.',
         'bad_answer' => ':name a répondu quelque chose d\'illisible.',
         'no_key' => 'Aucune clé :name enregistrée.',
+        'refused' => ':name a refusé de répondre à cette question.',
     ],
 ];

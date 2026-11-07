@@ -16,7 +16,8 @@ final class Permissions
         'stock' => ['stock.refresh', 'prices.sale', 'prices.buy'],
         // ventes et achats d'un article, de sa branche seulement (User::salesBranchIds) ; pas coche par defaut.
         // cash.view : l'argent dans la caisse, sur "لوحة القيادة" (memes branches que les ventes)
-        'sales' => ['sales.view', 'cash.view'],
+        // reconcile.use : "المطابقة", les comptes de deux branches qui commercent, et son chat avec l'IA
+        'sales' => ['sales.view', 'cash.view', 'reconcile.use'],
         'branches' => ['branches.view', 'branches.sync', 'branches.manage', 'agent.download'],
         'products' => ['merge.manage'],
     ];
@@ -27,8 +28,11 @@ final class Permissions
     /** Ces permissions passent par la page des succursales : elles entrainent "branches.view". */
     public const NEED_BRANCHES_VIEW = ['branches.sync', 'branches.manage', 'agent.download'];
 
-    /** La caisse se voit sur "لوحة القيادة", qui demande "sales.view". */
-    public const NEED_SALES_VIEW = ['cash.view'];
+    /** La caisse se voit sur "لوحة القيادة", qui demande "sales.view" ; "المطابقة" compare des bons de vente et d'achat. */
+    public const NEED_SALES_VIEW = ['cash.view', 'reconcile.use'];
+
+    /** "المطابقة" montre les montants des ventes (prix de vente) et des achats (prix d'achat) : les deux prix. */
+    public const NEED_PRICES = ['reconcile.use'];
 
     /** @return list<string> */
     public static function all(): array
@@ -50,6 +54,9 @@ final class Permissions
         }
         if (array_intersect($given, self::NEED_SALES_VIEW) !== []) {
             $given[] = 'sales.view';
+        }
+        if (array_intersect($given, self::NEED_PRICES) !== []) {
+            array_push($given, 'prices.sale', 'prices.buy');
         }
 
         return array_values(array_filter(self::all(), fn (string $p) => in_array($p, $given, true)));

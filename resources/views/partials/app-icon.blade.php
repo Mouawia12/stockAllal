@@ -62,6 +62,19 @@
             <path d="M4 43c0-8.5 6.2-15 14-15s14 6.5 14 15z" fill="#a855f7"/>
         </svg>
         @break
+    {{-- المطابقة : deux bons cote a cote, relies, et l'etincelle de l'IA --}}
+    @case('reconcile')
+        <svg viewBox="0 0 48 48" aria-hidden="true">
+            <rect x="4" y="9" width="17" height="24" rx="3" fill="#7dd3fc"/>
+            <rect x="27" y="15" width="17" height="24" rx="3" fill="#0ea5e9"/>
+            <rect x="8" y="15" width="9" height="2.6" rx="1.3" fill="#e0f2fe"/>
+            <rect x="8" y="20.5" width="7" height="2.6" rx="1.3" fill="#e0f2fe"/>
+            <rect x="31" y="21" width="9" height="2.6" rx="1.3" fill="#e0f2fe"/>
+            <rect x="31" y="26.5" width="7" height="2.6" rx="1.3" fill="#e0f2fe"/>
+            <path d="M18 37c3 3.5 9 3.5 12 0" fill="none" stroke="#0369a1" stroke-width="3" stroke-linecap="round"/>
+            <path d="M24 3.5l1.6 4.4 4.4 1.6-4.4 1.6L24 15.5l-1.6-4.4-4.4-1.6 4.4-1.6z" fill="#f59e0b"/>
+        </svg>
+        @break
     @case('settings')
         <svg viewBox="0 0 48 48" aria-hidden="true">
             <circle cx="24" cy="24" r="15" fill="none" stroke="#a5b4fc" stroke-width="7" stroke-dasharray="5.9 5.9"/>
