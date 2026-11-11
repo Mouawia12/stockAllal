@@ -28,6 +28,7 @@
     $otherName = isset($p['other']) ? trim(($p['other']['partner'] ?? '').' ('.$p['other']['partner_code'].')') : null;
     $nItems = fn (array $x) => isset($x['lines']) ? trans_choice('reconcile.n_items', count($x['lines']), ['count' => count($x['lines'])]) : '';
     $what = match (true) {
+        isset($p['outside']) => __('reconcile.outside', ['branch' => $side($p['outside'])['name']]),
         ! empty($p['lines']) => trans_choice('reconcile.n_diffs', count($p['lines']), ['count' => count($p['lines'])]),
         $otherName !== null => __('reconcile.elsewhere_at', ['partner' => $otherName]),
         $tSide !== null => $T['twin'].' #'.$p['twin']['number'],
@@ -108,6 +109,9 @@
             <p class="muted small">{{ __('reconcile.late_pair', ['days' => abs($p['days'])]) }}</p>
         @elseif (! empty($p['days']))
             <p class="muted small">{{ __($p['days'] > 0 ? 'reconcile.later' : 'reconcile.earlier', ['b' => $nameB, 'days' => abs($p['days'])]) }}</p>
+        @endif
+        @if (isset($p['outside']))
+            <p class="small">{{ __('reconcile.outside', ['branch' => $side($p['outside'])['name']]) }}</p>
         @endif
         @if (isset($p['other']))
             <p class="small">{{ __('reconcile.other', ['branch' => $side($oSide)['name'], 'partner' => $otherName]) }}

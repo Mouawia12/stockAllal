@@ -50,12 +50,18 @@ class ReconcileController extends Controller
 
         $runs = collect();
         $run = null;
+        $period = $this->period($request);
         if ($customer && $supplier) {
-            // l'historique de la paire, sans les rapports (lourds) ; le rapport ouvert : ?r= ou le dernier
+            // l'historique de la paire, sans les rapports (lourds) ; le rapport ouvert : ?r=, sinon le dernier de la periode
+            // demandee (?from= &to= dans le formulaire), sinon le dernier
             $runs = ReconciliationRun::with('user:id,name')->where('customer_id', $customer->id)->where('supplier_id', $supplier->id)
-                ->orderByDesc('id')->limit(ReconciliationRun::KEEP)->get(['id', 'user_id', 'gap', 'problems', 'synced', 'created_at']);
+                ->orderByDesc('id')->limit(ReconciliationRun::KEEP)->get(['id', 'user_id', 'gap', 'problems', 'synced', 'created_at', 'from_day', 'to_day']);
             if (! $request->boolean('again')) {
-                $id = $request->integer('r') ?: $runs->first()?->id;
+                // le formulaire envoie toujours from et to (vides = automatique) ; un lien sans eux : le dernier rapport
+                $asked = $request->has('from') || $request->has('to');
+                $id = $request->integer('r') ?: ($asked
+                    ? $runs->first(fn (ReconciliationRun $r) => $r->period() === $period)?->id
+                    : $runs->first()?->id);
                 abort_if($request->integer('r') && ! $runs->contains('id', $id), 404);
                 $run = $id ? ReconciliationRun::find($id) : null;
             }
@@ -70,6 +76,8 @@ class ReconcileController extends Controller
             'report' => $run?->report,
             'runs' => $runs,
             'latest' => $runs->first()?->id,
+            // la periode : celle du rapport ouvert, sinon celle demandee (le formulaire, l'analyse a lancer)
+            'period' => $run ? $run->period() : $period,
             // pas d'analyse gardee (ou "إعادة الفحص") : la page lance l'analyse, etape par etape, avec sa barre
             'analyze' => $customer && $supplier && $run === null,
             'steps' => [...($sync ? ['sync'] : []), ...Reconciliation::STEPS, ...($provider ? ['ai'] : [])],
@@ -99,7 +107,8 @@ class ReconcileController extends Controller
         [$customer, $supplier] = $this->pair($request);
         abort_unless($customer && $supplier, 404);
         $step = $data['step'];
-        $runKey = "reconcile:run:{$user->id}:{$customer->id}:{$supplier->id}";
+        $period = $this->period($request);
+        $runKey = "reconcile:run:{$user->id}:{$customer->id}:{$supplier->id}:".($period['from'] ?? '-').':'.($period['to'] ?? '-');
         $total = count(Reconciliation::STEPS) + (MergeScanner::provider() ? 1 : 0);
 
         if ($step === 'ai') {
@@ -109,7 +118,7 @@ class ReconcileController extends Controller
             return $saved ? $this->analyzeWithAi($saved) : response()->json(['restart' => true], 409);
         }
         // l'etat entre deux etapes est un tableau : le cache ne relit aucun objet (cache.serializable_classes)
-        $run = $step === 'load' ? Reconciliation::start($customer, $supplier) : Reconciliation::resume(Cache::get($runKey));
+        $run = $step === 'load' ? Reconciliation::start($customer, $supplier, $period['from'], $period['to']) : Reconciliation::resume(Cache::get($runKey));
         if ($run === null || $run->next() !== $step) {
             return response()->json(['restart' => true], 409);
         }
@@ -118,7 +127,7 @@ class ReconcileController extends Controller
         $next = $run->next();
         $saved = null;
         if ($next === null) {
-            $saved = $this->save($run->report(), $customer, $supplier, $user->id, $request->boolean('synced'));
+            $saved = $this->save($run->report(), $customer, $supplier, $user->id, $request->boolean('synced'), $period);
             Cache::forget($runKey);
             $next = $total > count(Reconciliation::STEPS) ? 'ai' : null;
         } else {
@@ -146,8 +155,10 @@ class ReconcileController extends Controller
         $request->validate(['ca' => ['required', 'integer'], 'sb' => ['required', 'integer']]);
         [$customer, $supplier] = $this->pair($request);
         abort_unless($customer && $supplier, 404);
+        // une periode choisie : depuis 4 mois avant son debut (les marges de l'analyse) ; sinon depuis le premier bon
+        $period = $this->period($request);
 
-        $first = collect([
+        $first = $period['from'] ? Carbon::parse($period['from'])->subDays(Reconciliation::LATE_DAYS - Reconciliation::WINDOW_DAYS)->toDateString() : collect([
             Document::where('branch_id', $customer->branch_id)->where('kind', 'sale')->where('partner_code', $customer->code)->min('date'),
             Document::where('branch_id', $supplier->branch_id)->where('kind', 'purchase')->where('partner_code', $supplier->code)->min('date'),
             Payment::where('branch_id', $customer->branch_id)->where('partner_kind', 'customer')->where('partner_code', $customer->code)->min('date'),
@@ -218,16 +229,21 @@ class ReconcileController extends Controller
         return response()->json(['step' => 'ai', 'note' => $note, 'next' => null, 'percent' => 100, 'run' => $saved->id, 'failed' => isset($report['ai']['error'])]);
     }
 
-    /** Garde une analyse, avec ce qui a change depuis la precedente de la paire ; seules les KEEP dernieres restent. */
-    private function save(array $report, Partner $customer, Partner $supplier, int $userId, bool $synced): ReconciliationRun
+    /**
+     * Garde une analyse, avec ce qui a change depuis la precedente de la paire sur la meme periode demandee ; seules les
+     * KEEP dernieres de la paire restent.
+     */
+    private function save(array $report, Partner $customer, Partner $supplier, int $userId, bool $synced, array $period): ReconciliationRun
     {
-        $previous = ReconciliationRun::where('customer_id', $customer->id)->where('supplier_id', $supplier->id)->orderByDesc('id')->first();
+        $previous = ReconciliationRun::samePeriod(ReconciliationRun::where('customer_id', $customer->id)->where('supplier_id', $supplier->id), $period)
+            ->orderByDesc('id')->first();
         $report = Reconciliation::compare($report, $previous?->report, $previous ? ['previous_id' => $previous->id, 'previous_at' => $previous->created_at->toIso8601String()] : []);
         $run = ReconciliationRun::forceCreate([
             'customer_id' => $customer->id, 'supplier_id' => $supplier->id,
             'branch_a_id' => $customer->branch_id, 'branch_b_id' => $supplier->branch_id,
             'user_id' => $userId, 'gap' => $report['gap'], 'synced' => $synced,
             'problems' => count($report['problems']) + $report['more_problems'], 'report' => $report,
+            'from_day' => $period['from'], 'to_day' => $period['to'],
         ]);
         ReconciliationRun::prune($customer->id, $supplier->id);
 
@@ -325,6 +341,33 @@ class ReconcileController extends Controller
         }
 
         return response()->json(['text' => $answer['text'], 'truncated' => $answer['truncated']]);
+    }
+
+    /**
+     * La periode demandee (?from= &to=, Y-m-d), la meme pour les deux branches ; un jour illisible ou une fin avant le
+     * debut : ignores. null = automatique (depuis le debut de l'exercice en cours le plus recent ; jusqu'a aujourd'hui).
+     *
+     * @return array{from: ?string, to: ?string}
+     */
+    private function period(Request $request): array
+    {
+        $day = function (mixed $v): ?string {
+            if (! is_string($v) || ! preg_match('/^\d{4}-\d{2}-\d{2}$/', $v)) {
+                return null;
+            }
+            try {
+                return Carbon::createFromFormat('Y-m-d', $v)->format('Y-m-d') === $v ? $v : null;
+            } catch (\Throwable) {
+                return null;
+            }
+        };
+        $from = $day($request->input('from'));
+        $to = $day($request->input('to'));
+        if ($from !== null && $to !== null && $to < $from) {
+            $to = null;
+        }
+
+        return ['from' => $from, 'to' => $to];
     }
 
     /**

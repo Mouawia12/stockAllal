@@ -6,12 +6,14 @@ use App\Models\Branch;
 use App\Models\BranchStock;
 use App\Models\Document;
 use App\Models\DocumentLine;
+use App\Models\Exercise;
 use App\Models\MergeDismissal;
 use App\Models\Partner;
 use App\Models\Payment;
 use App\Models\ProductGroup;
 use App\Support\Reconciliation;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\DB;
 use Tests\TestCase;
 
 /**
@@ -316,6 +318,60 @@ class ReconciliationTest extends TestCase
         $this->assertFalse(Reconciliation::allowed($this->customer, $sameBranch, null));
         $this->oran->update(['active' => false]);
         $this->assertFalse(Reconciliation::allowed($this->customer, $this->supplier, null));
+    }
+
+    public function test_two_branches_closing_on_different_days_are_compared_over_the_same_period(): void
+    {
+        // Blida cloture le 01/06 (son exercice 2026A reporte 1000), Oran le 01/07 (son 2026B reporte 2700)
+        $this->bon($this->blida, 'sale', 'ORAN', 10, '2026-05-10', [['P1', 1, 1000]]);
+        $this->bon($this->oran, 'purchase', 'BLIDA', 50, '2026-05-10', [['P1', 1, 1000]]);
+        $this->bon($this->blida, 'sale', 'ORAN', 11, '2026-06-15', [['P2', 1, 2000]]);
+        $this->bon($this->oran, 'purchase', 'BLIDA', 51, '2026-06-15', [['P2', 1, 2000]]);
+        $this->pay($this->blida, 'customer', 'ORAN', 1, '2026-06-20', 300);
+        $this->pay($this->oran, 'supplier', 'BLIDA', 1, '2026-06-20', 300);
+        // jamais saisi chez Oran
+        $this->bon($this->blida, 'sale', 'ORAN', 12, '2026-07-10', [['P3', 1, 500]]);
+        $this->closeAt($this->blida, 'customer', 'ORAN', '2026A', '2026-06-01', 1000);
+        $this->closeAt($this->oran, 'supplier', 'BLIDA', '2026B', '2026-07-01', 2700);
+
+        // par defaut : depuis le 01/07, debut du plus recent des deux exercices en cours ; le meme solde ce jour-la
+        $r = Reconciliation::run($this->customer, $this->supplier);
+        $this->assertSame(['from' => '2026-07-01', 'to' => null, 'auto' => true], $r['period']);
+        $this->assertSame([2700.0, 2700.0, 0.0], [$r['a']['start'], $r['b']['start'], $r['gap_start']]);
+        $this->assertSame(['bon_missing_b'], array_column($r['problems'], 'type'), 'not the bons of June, not the openings');
+        $this->assertSame([500.0, 500.0], [$r['gap'], $r['explained']]);
+
+        // depuis le 01/05 : les deux exercices de chacun ; les "Solde Initial" qui reportent un exercice ne comptent pas
+        $r = Reconciliation::run($this->customer, $this->supplier, '2026-05-01');
+        $this->assertSame([0.0, 0.0], [$r['a']['start'], $r['b']['start']]);
+        $this->assertSame(['bon_missing_b'], array_column($r['problems'], 'type'));
+        $this->assertSame([2, 1], [$r['counts']['same'], $r['counts']['pay_same']]);
+        $this->assertSame([500.0, 500.0], [$r['gap'], $r['explained']]);
+    }
+
+    public function test_a_bon_entered_before_the_period_on_one_side_and_after_on_the_other_is_at_the_boundary(): void
+    {
+        $this->bon($this->blida, 'sale', 'ORAN', 11, '2026-06-14', [['P2', 1, 2000]]);
+        $this->bon($this->oran, 'purchase', 'BLIDA', 51, '2026-06-16', [['P2', 1, 2000]]);
+
+        $r = Reconciliation::run($this->customer, $this->supplier, '2026-06-15');
+
+        // dans le solde du debut chez Blida, dans la periode chez Oran : le meme bon, pas un bon manquant
+        $this->assertSame([2000.0, 0.0, 2000.0], [$r['a']['start'], $r['b']['start'], $r['gap_start']]);
+        $this->assertSame([['bon_boundary', -2000.0, 'a']], array_map(fn ($p) => [$p['type'], $p['effect'], $p['outside']], $r['problems']));
+        $this->assertSame([0.0, 0.0], [$r['gap'], $r['explained']]);
+    }
+
+    /** La cloture de Gescomm : avant ce jour, un exercice clos ; un "Solde Initial" du jour reporte le solde. */
+    private function closeAt(Branch $branch, string $kind, string $partner, string $name, string $day, float $carry): void
+    {
+        $closed = Exercise::create(['branch_id' => $branch->id, 'current' => false, 'name' => $name, 'first_day' => '2026-01-01',
+            'last_day' => date('Y-m-d', strtotime("$day -1 day")), 'closed_at' => now()]);
+        foreach (Exercise::TABLES as $table) {
+            DB::table($table)->where('branch_id', $branch->id)->where('exercise_id', 0)->where('date', '<', $day)->update(['exercise_id' => $closed->id]);
+        }
+        Exercise::create(['branch_id' => $branch->id, 'current' => true, 'opened_on' => $day, 'opening_label' => $name, 'first_day' => $day]);
+        $this->pay($branch, $kind, $partner, 900, $day, -$carry, 'Autre', 'Solde Initial '.($kind === 'customer' ? 'Client' : 'Fournisseur')." de l'exercice $name");
     }
 
     private function partner(Branch $branch, string $kind, string $code, string $name): Partner

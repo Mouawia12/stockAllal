@@ -68,6 +68,13 @@
     .wt td.eff, .pt td.eff { text-align: end; font-weight: 700; white-space: nowrap; }
     .wt tfoot th, .wt tfoot td { border-bottom: 0; }
     .wt tr.tot th, .wt tr.tot td { border-top: 2px solid var(--border); font-weight: 800; font-size: 16px; color: var(--text); }
+    .wt tr.start th, .wt tr.start td { background: var(--row-hover); }
+    .wt tr.start th .small { display: block; font-weight: 400; }
+    /* la periode : la meme pour les deux branches */
+    .pick-row .day { display: inline-flex; align-items: center; gap: 6px; }
+    .pick-row .day input { font: inherit; color: var(--text); background: var(--card); border: 1px solid var(--border); border-radius: 8px; padding: 5px 8px; }
+    .period-help { flex: 1 1 260px; }
+    .period-line { margin: 0 0 10px; display: flex; gap: 8px; align-items: baseline; flex-wrap: wrap; }
 
     /* la recherche dans le rapport, qui reste en haut */
     .pf { position: sticky; top: 64px; z-index: 3; display: flex; gap: 10px; align-items: center; flex-wrap: wrap; padding: 10px 12px;
@@ -327,6 +334,12 @@
             </fieldset>
         @endforeach
     </div>
+    {{-- la periode, la meme pour les deux branches : elles ne cloturent pas le meme jour --}}
+    <div class="pick-row">
+        <label class="day">{{ $T['from'] }} <input type="date" name="from" value="{{ $period['from'] }}"></label>
+        <label class="day">{{ $T['to'] }} <input type="date" name="to" value="{{ $period['to'] }}"></label>
+        <span class="muted small period-help">{{ $T['period_help'] }}</span>
+    </div>
     <div class="pick-row">
         <button class="primary" type="submit" data-key="Alt+C">{{ $T['compare'] }}</button>
         <span class="pick-msg small" id="pick-msg" hidden>{{ $T['pick_both'] }}</span>
@@ -384,6 +397,11 @@
     @endphp
     @php
         $pairUrl = fn (array $more = []) => route('reconcile.index', ['a' => $customer->branch_id, 'ca' => $customer->id, 'b' => $supplier->branch_id, 'sb' => $supplier->id] + $more);
+        // la periode analysee (resolue : la date automatique est dans le rapport) ; un ancien rapport n'en a pas : tout
+        $span = $report['period'] ?? ['from' => null, 'to' => null, 'auto' => true];
+        $periodLabel = fn ($h) => $h->from_day || $h->to_day
+            ? __('reconcile.period_line', ['from' => $h->from_day?->format('d/m/Y') ?? '…', 'to' => $h->to_day?->format('d/m/Y') ?? $T['today']]) : null;
+        $startName = fn (array $s) => ($s['start_current'] ?? false) ? __('exercises.current') : (($s['start_exercise'] ?? null) ? __('exercises.pill', ['name' => $s['start_exercise']]) : null);
     @endphp
     @if ($run->id !== $latest)
         <p class="old-run">{{ __('reconcile.history.old', ['time' => $run->created_at->format('d/m/Y H:i')]) }}
@@ -403,6 +421,7 @@
                             <span class="grow"></span>
                             <span class="num">{{ $signed($h->gap) }}</span>
                             <span class="muted">· {{ trans_choice('reconcile.history.problems', $h->problems, ['count' => $h->problems]) }}</span>
+                            @if ($periodLabel($h))<span class="muted small">· {{ $periodLabel($h) }}</span>@endif
                             @if ($h->synced)<span class="muted" title="{{ $T['history']['synced_help'] }}">⟳</span>@endif
                         </a>
                     @endforeach
@@ -410,12 +429,23 @@
             </details>
         @endif
         <button type="button" class="btn chat-btn" id="chat-toggle" aria-controls="chat" aria-expanded="false" data-key="Alt+Q" data-key-fallback>@include('partials.app-icon', ['name' => 'spark']){{ $T['chat_open'] }}</button>
-        <a class="btn primary-soft" href="{{ $pairUrl(['again' => 1, 'sync' => 1]) }}" data-key="Alt+R" title="{{ $T['analysis']['recheck_help'] }}">⟳ {{ $T['analysis']['recheck'] }}</a>
+        <a class="btn primary-soft" href="{{ $pairUrl(['again' => 1, 'sync' => 1] + array_filter($period)) }}" data-key="Alt+R" title="{{ $T['analysis']['recheck_help'] }}">⟳ {{ $T['analysis']['recheck'] }}</a>
     </div>
+    <p class="period-line">
+        @if ($span['from'] || $span['to'])
+            <b>{{ __('reconcile.period_line', ['from' => $span['from'] ? $date($span['from']) : '…', 'to' => $span['to'] ? $date($span['to']) : $T['today']]) }}</b>
+            @if ($span['auto'] ?? false)<span class="muted small">{{ $T['period_auto'] }}</span>@endif
+        @else
+            <b>{{ $T['whole'] }}</b>
+        @endif
+    </p>
     <section class="summary">
         <div class="card sum">
             <h2><span class="bdot" style="--bh: {{ $hueA }}"></span>{{ __('reconcile.side_a', ['partner' => $a['partner'], 'branch' => $nameA]) }}</h2>
             <dl>
+                @if ($span['from'])
+                    <dt>{{ $T['start_balance'] }} @if ($startName($a))<span class="muted small">({{ $startName($a) }})</span>@endif</dt><dd class="num">{{ $money($a['start'] ?? 0) }}</dd>
+                @endif
                 <dt>{{ $T['sales'] }} ({{ __('reconcile.bons_count', ['count' => $a['bons']]) }})</dt><dd class="num">{{ $money($a['amount']) }}</dd>
                 <dt>{{ $T['payments_in'] }}</dt><dd class="num">{{ $money($a['payments']) }}</dd>
                 @if ($a['opening'] != 0)<dt class="small">{{ $T['opening'] }}</dt><dd class="num small">{{ $money($a['opening']) }}</dd>@endif
@@ -435,6 +465,9 @@
         <div class="card sum">
             <h2><span class="bdot" style="--bh: {{ $hueB }}"></span>{{ __('reconcile.side_b', ['partner' => $b['partner'], 'branch' => $nameB]) }}</h2>
             <dl>
+                @if ($span['from'])
+                    <dt>{{ $T['start_balance'] }} @if ($startName($b))<span class="muted small">({{ $startName($b) }})</span>@endif</dt><dd class="num">{{ $money($b['start'] ?? 0) }}</dd>
+                @endif
                 <dt>{{ $T['purchases'] }} ({{ __('reconcile.bons_count', ['count' => $b['bons']]) }})</dt><dd class="num">{{ $money($b['amount']) }}</dd>
                 <dt>{{ $T['payments_out'] }}</dt><dd class="num">{{ $money($b['payments']) }}</dd>
                 @if ($b['opening'] != 0)<dt class="small">{{ $T['opening'] }}</dt><dd class="num small">{{ $money($b['opening']) }}</dd>@endif
@@ -474,16 +507,28 @@
         $statusCount = array_count_values(array_filter(array_column($report['problems'], 'status')));
         $hasStatus = $statusCount !== [];
         $nProblems = count($report['problems']) + $report['more_problems'];
+        // l'ecart au debut de la periode (0 sans periode, ou un ancien rapport) : la premiere ligne de "d'ou vient l'ecart"
+        $gapStart = (float) ($report['gap_start'] ?? 0);
+        $peakG = max($peakG, abs($gapStart));
     @endphp
 
     <div class="work" id="work">
     <div class="main">
-    {{-- d'ou vient l'ecart : chaque groupe, son nombre et son effet ; le total est l'ecart --}}
-    @if ($groups !== [])
+    {{-- d'ou vient l'ecart : l'ecart au debut de la periode, puis chaque groupe, son nombre et son effet ; le total est l'ecart --}}
+    @if ($groups !== [] || abs($gapStart) >= 0.005)
         <section class="card where">
             <h2>{{ $T['where'] }}</h2>
             <table class="wt">
                 <tbody>
+                    @if (abs($gapStart) >= 0.005)
+                        <tr class="start">
+                            <th scope="row">{{ __('reconcile.where_start', ['date' => $span['from'] ? $date($span['from']) : '…']) }}
+                                <span class="muted small">{{ $T['where_start_help'] }}</span></th>
+                            <td></td>
+                            <td class="barc hide-sm"><div class="wb" style="width: {{ round(100 * abs($gapStart) / $peakG) }}%"></div></td>
+                            <td class="num eff">{{ $signed($gapStart) }}</td>
+                        </tr>
+                    @endif
                     @foreach ($groups as $g)
                         <tr>
                             <th scope="row"><a href="#g-{{ $g['key'] }}" class="jump">{{ __("reconcile.groups.{$g['key']}.title", ['a' => $nameA, 'b' => $nameB]) }}</a></th>
@@ -494,8 +539,8 @@
                     @endforeach
                 </tbody>
                 <tfoot>
-                    @if (abs($report['explained'] - $listed) >= 0.005)
-                        <tr><th scope="row">{{ $T['where_more'] }}</th><td class="num cnt">{{ $report['more_problems'] }}</td><td class="hide-sm"></td><td class="num eff">{{ $signed($report['explained'] - $listed) }}</td></tr>
+                    @if (abs($report['explained'] - $gapStart - $listed) >= 0.005)
+                        <tr><th scope="row">{{ $T['where_more'] }}</th><td class="num cnt">{{ $report['more_problems'] }}</td><td class="hide-sm"></td><td class="num eff">{{ $signed($report['explained'] - $gapStart - $listed) }}</td></tr>
                     @endif
                     @if (abs($report['gap'] - $report['explained']) >= 0.005)
                         <tr><th scope="row">{{ $T['where_left'] }}</th><td></td><td class="hide-sm"></td><td class="num eff">{{ $signed($report['gap'] - $report['explained']) }}</td></tr>
@@ -749,7 +794,7 @@
     // @json coupe son argument aux virgules : les tableaux sont prepares ici
     $jsTexts = ['no_hits' => $T['no_hits'], 'bons' => $T['bons_count'], 'chat' => $T['chat'], 'analysis' => $T['analysis'], 'sync' => $T['sync'], 'modal' => $T['modal']];
     $slot = '00000000-0000-4000-8000-000000000000';
-    $jsRun = ['ca' => $customer?->id, 'sb' => $supplier?->id, 'url' => route('reconcile.analyze'),
+    $jsRun = ['ca' => $customer?->id, 'sb' => $supplier?->id, 'from' => $period['from'], 'to' => $period['to'], 'url' => route('reconcile.analyze'),
         'sync_url' => route('reconcile.sync'), 'status_url' => route('reconcile.sync-status', ['batch' => $slot]), 'batch_slot' => $slot];
     $jsChat = ['ca' => $customer?->id, 'sb' => $supplier?->id, 'run' => $run?->id, 'url' => route('reconcile.chat'),
         'names' => ['A' => $nameA, 'B' => $nameB], 'links' => $links, 'max' => App\Support\ReconciliationChat::MAX_MESSAGES];
@@ -877,7 +922,7 @@
             li.querySelector('.note').textContent = T.analysis.running;
             const tick = clock(li);
             try {
-                const res = await post(RUN.sync_url, {ca: RUN.ca, sb: RUN.sb});
+                const res = await post(RUN.sync_url, {ca: RUN.ca, sb: RUN.sb, from: RUN.from, to: RUN.to});
                 const data = await res.json().catch(() => ({}));
                 if (!res.ok) throw new Error(data.message || T.chat.failed);
                 const notes = data.branches.filter(b => !b.job).map(b => b.note);
@@ -921,7 +966,7 @@
             retry.hidden = true;
             const tick = clock(li);
             try {
-                const res = await post(RUN.url, {ca: RUN.ca, sb: RUN.sb, step, synced: synced ? 1 : 0, run: runId});
+                const res = await post(RUN.url, {ca: RUN.ca, sb: RUN.sb, from: RUN.from, to: RUN.to, step, synced: synced ? 1 : 0, run: runId});
                 const data = await res.json().catch(() => ({}));
                 if (res.status === 409 && data.restart && !restarted) {
                     // etat perdu (trop long entre deux etapes) : on recommence une fois depuis le debut

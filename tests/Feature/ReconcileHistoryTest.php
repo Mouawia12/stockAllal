@@ -168,12 +168,34 @@ class ReconcileHistoryTest extends TestCase
     }
 
     /** Toutes les etapes, comme la page ; renvoie le numero du rapport garde. */
-    private function analyze(User $user, bool $synced = false): int
+    public function test_a_period_chosen_for_both_branches_is_kept_with_its_report(): void
+    {
+        $admin = User::factory()->admin()->create();
+        $all = $this->analyze($admin);
+        // depuis le 06/10 : le bon 101 du 05/10 n'est plus dans la periode, il est dans le solde du debut chez Blida
+        $since = $this->analyze($admin, period: ['from' => '2026-10-06', 'to' => null]);
+        $run = ReconciliationRun::find($since);
+        $this->assertSame(['from' => '2026-10-06', 'to' => null], $run->period());
+        $this->assertSame(['from' => '2026-10-06', 'to' => null, 'auto' => false], $run->report['period']);
+        $this->assertSame([2200.0, 2200.0], [(float) $run->report['a']['start'], (float) $run->report['gap_start']]);
+        $this->assertEquals($run->report['gap'], $run->report['explained']);
+        $this->assertArrayNotHasKey('since', $run->report, 'compared only with an earlier check of the same period');
+
+        // le formulaire avec cette periode rouvre ce rapport ; sans periode, le dernier ; la periode est dans l'historique
+        $url = "/reconcile?ca={$this->customer->id}&sb={$this->supplier->id}";
+        $this->actingAs($admin)->get($url.'&from=2026-10-06&to=')->assertOk()
+            ->assertSee(__('reconcile.period_line', ['from' => '06/10/2026', 'to' => __('reconcile.today')]))
+            ->assertSee(__('reconcile.where_start', ['date' => '06/10/2026']));
+        $this->actingAs($admin)->get($url.'&from=&to=')->assertOk()->assertSee('r='.$all, false);
+        $this->assertNotSame($all, $since);
+    }
+
+    private function analyze(User $user, bool $synced = false, array $period = ['from' => null, 'to' => null]): int
     {
         $step = 'load';
         $run = null;
         while ($step !== null) {
-            $res = $this->actingAs($user)->postJson('/reconcile/analyze', ['ca' => $this->customer->id, 'sb' => $this->supplier->id, 'step' => $step, 'run' => $run, 'synced' => $synced ? 1 : 0])->assertOk();
+            $res = $this->actingAs($user)->postJson('/reconcile/analyze', ['ca' => $this->customer->id, 'sb' => $this->supplier->id, 'step' => $step, 'run' => $run, 'synced' => $synced ? 1 : 0] + $period)->assertOk();
             $run = $res->json('run') ?? $run;
             $step = $res->json('next');
         }

@@ -41,7 +41,9 @@ Branch {A} sells goods to branch {B}. In {A}'s books, {B} is a customer; in {B}'
 A program already compared both sides, by items, amounts and dates, never by bon numbers. Its report is the JSON below and it is your only source of truth. Never invent a bon, a payment, an amount or a date that is not in it; if the user asks about something the report does not contain, say so.
 
 Reading the report:
-- "gap" = {A}'s balance minus {B}'s balance. Each problem has an "effect": how much it moves the gap. The effects add up to the gap.
+- "period": the same dates for both branches. Gescomm closes its financial year ("clôture") on its own date in each branch: it archives the year, empties the bons and payments, and carries each balance over as an "Autre" payment "Solde Initial". The comparison reads every year by date, so a different closing date is never a problem by itself; carry-over "Solde Initial" payments inside the period are left out.
+- "start_balance" of each side: its balance at the start of the period, as Gescomm would show it that day. "gap_at_start" = {A}'s minus {B}'s. If it is not 0, its causes are before the period: say so, and suggest an earlier start date.
+- "gap" = {A}'s balance minus {B}'s balance at the end. Each problem has an "effect": how much it moves the gap during the period. gap_at_start + the effects = the gap.
 - Problem types:
   - bon_missing_b: a sale bon in {A} with no purchase bon in {B} (never entered in {B}, or entered for another supplier).
   - bon_missing_a: a purchase bon in {B} with no sale bon in {A}.
@@ -56,6 +58,7 @@ Reading the report:
   - bon_elsewhere_a: a purchase bon in {B} with no sale bon for this customer in {A}, but a matching sale bon exists in {A} under ANOTHER customer ("other").
   - bon_duplicate_a / bon_duplicate_b: a bon with no counterpart that is identical to another bon of the same branch a few days apart ("twin"): most likely entered twice.
   - pay_elsewhere_b / pay_elsewhere_a: a payment with no counterpart, while a payment of the same amount within 3 days exists on the other side under another partner ("other"). Only a possibility: round amounts repeat.
+  - bon_boundary / pay_boundary: the same bon or payment, inside the period on one side and dated before (or after) it on the other ("outside": the side where it is outside). Not a mistake: it is already in that side's start balance, and its effect offsets that part of gap_at_start.
 - "days" on a pair: how many days after {A} the other side entered it; "late": found more than a month apart (identical bon entered late).
 - "items" gives the designation of each item code that appears in a problem.
 - "item_codes": the same item under a different code in each branch, learned from the code written differently, the same designation, or bons identical but for that code ("how": code, name, bons). The matching already counts them as one item; they should be merged in the page "دمج الأصناف".
@@ -90,6 +93,9 @@ TXT;
             if (! empty($p['late'])) {
                 $out['late'] = true;
             }
+            if (isset($p['outside'])) {
+                $out['outside'] = strtoupper($p['outside']) === 'A' ? '{A}' : '{B}';
+            }
             if (isset($p['status'])) {
                 $out['since_previous_check'] = $p['status'];
             }
@@ -118,14 +124,19 @@ TXT;
         }, $r['problems']);
 
         return [
+            // la periode (un ancien rapport n'en a pas : toute l'histoire)
+            'period' => ['from' => $r['period']['from'] ?? null, 'to' => $r['period']['to'] ?? 'today'],
             'A' => [
+                'start_balance' => $r['a']['start'] ?? 0,
                 'sale_bons' => $r['a']['bons'], 'sales_total' => $r['a']['amount'], 'payments_received_total' => $r['a']['payments'],
                 'opening_balance' => $r['a']['opening'], 'balance' => $r['a']['balance'], 'first_bon' => $r['a']['first'], 'last_bon' => $r['a']['last'],
             ],
             'B' => [
+                'start_balance' => $r['b']['start'] ?? 0,
                 'purchase_bons' => $r['b']['bons'], 'purchases_total' => $r['b']['amount'], 'payments_made_total' => $r['b']['payments'],
                 'opening_balance' => $r['b']['opening'], 'balance' => $r['b']['balance'], 'first_bon' => $r['b']['first'], 'last_bon' => $r['b']['last'],
             ],
+            'gap_at_start' => $r['gap_start'] ?? 0,
             'gap' => $r['gap'],
             'counts' => $r['counts'],
             'problems' => $problems,
@@ -160,9 +171,10 @@ TXT;
      */
     public const ANALYZE = 'Analyse this report in depth before you answer, then write your conclusion. '
         .'If there is a "previous_check", start with what changed since then: what was fixed, the gap then and now, and what is still open or new. '
-        .'Work out what really explains the gap: group the problems by cause (bons never entered, entered for another partner, '
-        .'entered twice, different quantities or prices, items under two codes, payments, opening balance) with the total effect '
-        .'of each cause, biggest first, and check that they add up to the gap. Say in which branch each fix must be made and '
+        .'Work out what really explains the gap: the gap at the start of the period if it is not 0 (its causes are earlier), then '
+        .'group the problems by cause (bons never entered, entered for another partner, entered twice, different quantities or '
+        .'prices, items under two codes, payments, opening balance, bons at the edge of the period) with the total effect of each '
+        .'cause, biggest first, and check that the start gap and the effects add up to the gap. Say in which branch each fix must be made and '
         .'exactly what to enter or correct, citing the bons. Point out anything suspicious, and from the timeline the month the '
         .'gap appeared or grew. End with a short checklist for {A} and one for {B}.';
 

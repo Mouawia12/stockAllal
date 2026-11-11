@@ -6,10 +6,13 @@ use App\Models\Branch;
 use App\Models\BranchStock;
 use App\Models\Document;
 use App\Models\DocumentLine;
+use App\Models\Exercise;
 use App\Models\MergeDismissal;
 use App\Models\Partner;
 use App\Models\Payment;
 use App\Models\ProductGroup;
+use App\Models\Scopes\ExerciseScope;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Collection;
 use LogicException;
@@ -34,6 +37,14 @@ use LogicException;
  * Chaque probleme a son effet sur (solde A - solde B) : la somme des effets redonne exactement l'ecart. Solde =
  * bons - versements, tous types, "Autre" avec son signe ; le solde initial est un versement "Autre" negatif
  * "Solde Initial ..." (agent/tools/check-balances.ps1, 04/11/2026). L'IA (ReconciliationChat) explique ce rapport.
+ *
+ * Une periode, la meme pour les deux branches (from / to ; par defaut depuis le debut de l'exercice en cours le plus
+ * recent des deux) : les deux branches ne cloturent pas le meme jour (App\Models\Exercise). Tous les exercices sont lus,
+ * par date. Le solde de chacune au debut de la periode est celui que Gescomm montrerait ce jour-la (l'exercice qui le
+ * couvre : ses "Solde Initial" + ce qui precede) ; dans la periode, un "Solde Initial" qui reporte un exercice clos ne
+ * compte pas (son histoire est la). L'ecart = l'ecart au debut + les effets des problemes de la periode. Autour de la
+ * periode, des marges (ctx) servent seulement a trouver un pendant : un bon saisi avant le debut d'un cote et apres de
+ * l'autre est "على حدود الفترة", pas manquant.
  */
 final class Reconciliation
 {
@@ -53,9 +64,24 @@ final class Reconciliation
     /** Score minimal d'une paire de bons (0 a 1). */
     private const MIN_SCORE = 0.45;
 
+    /** Autour de la periode : des bons lus pour trouver un pendant, jamais comptes (un bon saisi 4 mois plus tard). */
+    private const MARGIN_DAYS = self::LATE_DAYS;
+
     private int $customerId;
 
     private int $supplierId;
+
+    /** La periode demandee (null : automatique / sans fin) et celle analysee (from resolu). */
+    private ?string $from = null;
+
+    private ?string $to = null;
+
+    private array $period = [];
+
+    /** @var array<string, mixed> le solde de chaque cote au debut de la periode (startBalance) */
+    private array $startA = [];
+
+    private array $startB = [];
 
     /** @var list<array<string, mixed>> bons de vente de A, puis d'achat de B (lignes par cle d'article) */
     private array $a = [];
@@ -101,9 +127,9 @@ final class Reconciliation
     public array $notes = [];
 
     /** @return array<string, mixed> */
-    public static function run(Partner $customer, Partner $supplier): array
+    public static function run(Partner $customer, Partner $supplier, ?string $from = null, ?string $to = null): array
     {
-        $r = self::start($customer, $supplier);
+        $r = self::start($customer, $supplier, $from, $to);
         while (($step = $r->next()) !== null) {
             $r->step($step);
         }
@@ -111,11 +137,14 @@ final class Reconciliation
         return $r->report();
     }
 
-    public static function start(Partner $customer, Partner $supplier): self
+    /** $from / $to : la periode, la meme pour les deux branches (Y-m-d) ; from null = debut de l'exercice en cours le plus recent. */
+    public static function start(Partner $customer, Partner $supplier, ?string $from = null, ?string $to = null): self
     {
         $r = new self;
         $r->customerId = $customer->id;
         $r->supplierId = $supplier->id;
+        $r->from = $from;
+        $r->to = $to;
 
         return $r;
     }
@@ -196,6 +225,7 @@ final class Reconciliation
         'amount' => ['bon_amount', 'bon_split'],
         'payments' => ['pay_missing_b', 'pay_missing_a', 'pay_amount'],
         'opening' => ['opening'],
+        'boundary' => ['bon_boundary', 'pay_boundary'],
         'lines' => ['bon_lines'],
         'other' => [],
     ];
@@ -230,17 +260,25 @@ final class Reconciliation
 
     private function load(Partner $customer, Partner $supplier): void
     {
-        $this->a = self::bons($customer, 'sale');
-        $this->b = self::bons($supplier, 'purchase');
+        $exA = self::exercises($customer->branch_id);
+        $exB = self::exercises($supplier->branch_id);
+        $from = $this->from ?? self::autoFrom($exA, $exB);
+        $this->period = ['from' => $from, 'to' => $this->to, 'auto' => $this->from === null];
+
+        $this->a = self::bons($customer, 'sale', $from, $this->to);
+        $this->b = self::bons($supplier, 'purchase', $from, $this->to);
         $this->canon = $this->canonicalKeys(array_merge($this->a, $this->b));
         $this->a = array_map(fn (array $bon) => self::rekey($bon, $this->canon), $this->a);
         $this->b = array_map(fn (array $bon) => self::rekey($bon, $this->canon), $this->b);
-        $this->payA = self::payments($customer);
-        $this->payB = self::payments($supplier);
+        $this->payA = self::payments($customer, $from, $this->to, $exA);
+        $this->payB = self::payments($supplier, $from, $this->to, $exB);
+        $this->startA = self::startBalance($customer, 'sale', $from, $exA);
+        $this->startB = self::startBalance($supplier, 'purchase', $from, $exB);
+        $in = fn (array $rows) => array_values(array_filter($rows, fn ($x) => ! $x['ctx']));
         $this->notes['load'] = [
-            'sales' => count($this->a), 'sale_lines' => array_sum(array_column($this->a, 'n_lines')),
-            'purchases' => count($this->b), 'purchase_lines' => array_sum(array_column($this->b, 'n_lines')),
-            'payments_a' => count($this->payA), 'payments_b' => count($this->payB),
+            'sales' => count($in($this->a)), 'sale_lines' => array_sum(array_column($in($this->a), 'n_lines')),
+            'purchases' => count($in($this->b)), 'purchase_lines' => array_sum(array_column($in($this->b), 'n_lines')),
+            'payments_a' => count($in($this->payA)), 'payments_b' => count($in($this->payB)),
         ];
     }
 
@@ -294,12 +332,26 @@ final class Reconciliation
 
     private function deep(): void
     {
-        [$this->splits, $this->restA, $this->restB] = self::splits($this->a, $this->b, $this->pairs, $this->restA, $this->restB);
+        // les bons des marges (hors periode) ne servent qu'a trouver un pendant : ni bons scindes, ni doublons, ni recherche
+        // ailleurs ; une paire de deux bons des marges ne compte pas
+        $ctxA = array_values(array_filter($this->restA, fn ($i) => $this->a[$i]['ctx']));
+        $ctxB = array_values(array_filter($this->restB, fn ($j) => $this->b[$j]['ctx']));
+        $inA = array_values(array_diff($this->restA, $ctxA));
+        $inB = array_values(array_diff($this->restB, $ctxB));
+        $inPairs = array_values(array_filter($this->pairs, fn ($p) => ! $this->a[$p[0]]['ctx'] && ! $this->b[$p[1]]['ctx']));
+        $ctxPairs = array_values(array_filter($this->pairs, fn ($p) => $this->a[$p[0]]['ctx'] || $this->b[$p[1]]['ctx']));
+        [$this->splits, $inA, $inB] = self::splits($this->a, $this->b, $inPairs, $inA, $inB);
+        $this->pairs = [...$inPairs, ...$ctxPairs];
+        $this->restA = [...$inA, ...$ctxA];
+        $this->restB = [...$inB, ...$ctxB];
 
         // un bon identique (au moins deux articles, meme montant) bien plus tard : saisi en retard
         $candidates = [];
         foreach ($this->restA as $i) {
             foreach ($this->restB as $j) {
+                if ($this->a[$i]['ctx'] && $this->b[$j]['ctx']) {
+                    continue;
+                }
                 $days = abs($this->b[$j]['day'] - $this->a[$i]['day']);
                 if ($days <= self::LATE_DAYS && count($this->a[$i]['lines']) >= 2
                     && abs($this->a[$i]['amount'] - $this->b[$j]['amount']) < self::CENT
@@ -317,8 +369,9 @@ final class Reconciliation
                 $this->late["$i:$j"] = true;
             }
         }
-        $this->restA = array_values(array_filter($this->restA, fn ($i) => ! isset($usedA[$i])));
-        $this->restB = array_values(array_filter($this->restB, fn ($j) => ! isset($usedB[$j])));
+        // un bon des marges sans pendant n'est pas un probleme de la periode
+        $this->restA = array_values(array_filter($this->restA, fn ($i) => ! isset($usedA[$i]) && ! $this->a[$i]['ctx']));
+        $this->restB = array_values(array_filter($this->restB, fn ($j) => ! isset($usedB[$j]) && ! $this->b[$j]['ctx']));
 
         $this->dups['a'] = self::duplicates($this->a, $this->restA);
         $this->dups['b'] = self::duplicates($this->b, $this->restB);
@@ -343,6 +396,17 @@ final class Reconciliation
             $delta = round($x['amount'] - $y['amount'], 2);
             $days = $y['day'] - $x['day'];
             $late = isset($this->late["$i:$j"]);
+            if ($x['ctx'] || $y['ctx']) {
+                // les deux hors periode : rien ; un seul : le meme bon, avant (ou apres) la periode d'un cote, dedans de
+                // l'autre. Il est dans le solde du debut d'un cote : son effet dans la periode le compense.
+                if (! $x['ctx'] || ! $y['ctx']) {
+                    $problems[] = ['type' => 'bon_boundary', 'effect' => $x['ctx'] ? round(-$y['amount'], 2) : round($x['amount'], 2),
+                        'date' => $x['ctx'] ? $y['date'] : $x['date'], 'days' => $days, 'late' => $late, 'outside' => $x['ctx'] ? 'a' : 'b',
+                        'a' => [self::bonOut($x)], 'b' => [self::bonOut($y)], 'lines' => $diffs];
+                }
+
+                continue;
+            }
             if (abs($delta) < self::CENT && $diffs === []) {
                 $same[] = ['a' => self::ref($x), 'b' => self::ref($y), 'amount' => $x['amount'], 'days' => $days, 'late' => $late];
 
@@ -388,6 +452,15 @@ final class Reconciliation
             $x = $this->payA[$i];
             $y = $this->payB[$j];
             $delta = round($x['amount'] - $y['amount'], 2);
+            if ($x['ctx'] || $y['ctx']) {
+                if (! $x['ctx'] || ! $y['ctx']) {
+                    $problems[] = ['type' => 'pay_boundary', 'effect' => $x['ctx'] ? round($y['amount'], 2) : round(-$x['amount'], 2),
+                        'date' => $x['ctx'] ? $y['date'] : $x['date'], 'days' => $y['day'] - $x['day'], 'outside' => $x['ctx'] ? 'a' : 'b',
+                        'a' => [self::payOut($x)], 'b' => [self::payOut($y)]];
+                }
+
+                continue;
+            }
             if (abs($delta) < self::CENT) {
                 $paySame[] = ['a' => self::payOut($x), 'b' => self::payOut($y), 'days' => $y['day'] - $x['day']];
 
@@ -397,6 +470,9 @@ final class Reconciliation
             $problems[] = ['type' => $x['opening'] ? 'opening' : 'pay_amount', 'effect' => -$delta, 'date' => $x['date'],
                 'days' => $y['day'] - $x['day'], 'a' => [self::payOut($x)], 'b' => [self::payOut($y)]];
         }
+        // un versement des marges sans pendant n'est pas un probleme de la periode
+        $restPA = array_values(array_filter($restPA, fn ($i) => ! $this->payA[$i]['ctx']));
+        $restPB = array_values(array_filter($restPB, fn ($j) => ! $this->payB[$j]['ctx']));
         $otherA = $this->payElsewhere($this->payA, $restPA, $supplier->branch_id, 'supplier', $supplier->code);
         $otherB = $this->payElsewhere($this->payB, $restPB, $customer->branch_id, 'customer', $customer->code);
         foreach ($restPA as $i) {
@@ -417,17 +493,22 @@ final class Reconciliation
         usort($same, fn ($x, $y) => [$x['a']['date'], $x['a']['number']] <=> [$y['a']['date'], $y['a']['number']]);
         usort($paySame, fn ($x, $y) => $x['a']['date'] <=> $y['a']['date']);
 
-        $sideA = self::side($customer, $this->a, $this->payA);
-        $sideB = self::side($supplier, $this->b, $this->payB);
+        $sideA = self::side($customer, $this->a, $this->payA, $this->startA);
+        $sideB = self::side($supplier, $this->b, $this->payB, $this->startB);
+        $gapStart = round($sideA['start'] - $sideB['start'], 2);
         $count = fn (string $type) => count(array_filter($problems, fn ($p) => $p['type'] === $type));
         $types = ['bon_amount', 'bon_lines', 'bon_split', 'bon_missing_b', 'bon_missing_a', 'bon_elsewhere_b', 'bon_elsewhere_a',
-            'bon_duplicate_a', 'bon_duplicate_b', 'pay_amount', 'pay_missing_b', 'pay_missing_a', 'pay_elsewhere_b', 'pay_elsewhere_a', 'opening'];
+            'bon_duplicate_a', 'bon_duplicate_b', 'bon_boundary', 'pay_amount', 'pay_missing_b', 'pay_missing_a', 'pay_elsewhere_b',
+            'pay_elsewhere_a', 'pay_boundary', 'opening'];
 
         $this->report = [
+            'period' => $this->period,
             'a' => $sideA,
             'b' => $sideB,
             'gap' => round($sideA['balance'] - $sideB['balance'], 2),
-            'explained' => round(array_sum(array_column($problems, 'effect')), 2),
+            // l'ecart au debut de la periode, plus l'effet de chaque probleme de la periode
+            'gap_start' => $gapStart,
+            'explained' => round($gapStart + array_sum(array_column($problems, 'effect')), 2),
             'counts' => ['same' => count($same), 'late' => count($this->late), 'codes' => count($this->learned), 'pay_same' => count($paySame)]
                 + array_combine($types, array_map($count, $types)),
             'problems' => array_slice($problems, 0, self::MAX_LISTED),
@@ -436,7 +517,7 @@ final class Reconciliation
             'same' => array_slice(array_reverse($same), 0, self::MAX_LISTED),
             'pay_same' => array_slice(array_reverse($paySame), 0, self::MAX_LISTED),
             'codes' => $this->codesOut($customer->branch_id, $supplier->branch_id),
-            'timeline' => self::timeline($problems),
+            'timeline' => self::timeline($problems, $gapStart),
             'names' => self::names(array_merge($this->a, $this->b), [$customer->branch_id, $supplier->branch_id]),
             'steps' => $this->notes,
             'analyzed_at' => now()->toIso8601String(),
@@ -448,17 +529,129 @@ final class Reconciliation
     // ---------- bons ----------
 
     /**
-     * Les bons d'un partenaire, du plus ancien au plus recent, avec leurs lignes par code.
+     * Les bons d'un partenaire de la periode, tous exercices, du plus ancien au plus recent, avec leurs lignes par code ;
+     * plus ceux des marges (MARGIN_DAYS avant et apres), marques ctx : pour trouver un pendant, jamais comptes.
      *
      * @return list<array<string, mixed>>
      */
-    private static function bons(Partner $partner, string $kind): array
+    private static function bons(Partner $partner, string $kind, ?string $from, ?string $to): array
     {
-        $docs = Document::where('branch_id', $partner->branch_id)->where('kind', $kind)->where('partner_code', $partner->code)
+        $docs = self::documents()->where('branch_id', $partner->branch_id)->where('kind', $kind)->where('partner_code', $partner->code)
+            ->when($from, fn (Builder $q) => $q->where('date', '>=', Carbon::parse($from)->subDays(self::MARGIN_DAYS)->toDateString()))
+            ->when($to, fn (Builder $q) => $q->where('date', '<=', Carbon::parse($to)->addDays(self::MARGIN_DAYS)->toDateString()))
             ->orderBy('date')->orderBy('time')->orderBy('number')->orderBy('id')
             ->get(['id', 'number', 'date', 'amount']);
 
-        return self::withLines($docs);
+        return array_map(fn (array $bon) => $bon + ['ctx' => self::outside($bon['date'], $from, $to)], self::withLines($docs));
+    }
+
+    /** Un jour hors de la periode (une marge). */
+    private static function outside(?string $day, ?string $from, ?string $to): bool
+    {
+        return $day !== null && (($from !== null && $day < $from) || ($to !== null && $day > $to));
+    }
+
+    /** Bons et versements de tous les exercices (le rapprochement lit par date, ExerciseScope ne s'applique pas). */
+    private static function documents(): Builder
+    {
+        return Document::withoutGlobalScope(ExerciseScope::class);
+    }
+
+    private static function paymentRows(): Builder
+    {
+        return Payment::withoutGlobalScope(ExerciseScope::class);
+    }
+
+    /**
+     * Les exercices d'une branche, du plus ancien au plus recent : key = exercise_id de leurs lignes (0 pour celui en
+     * cours), start = le jour de ses "Solde Initial", sinon son premier bon ou versement. Sans marque encore (agent
+     * d'avant 1.0.11) : un seul, celui en cours.
+     *
+     * @return list<array{key: int, name: ?string, start: string, current: bool, marked: bool}>
+     */
+    private static function exercises(int $branchId): array
+    {
+        $list = [];
+        foreach (Exercise::where('branch_id', $branchId)->get() as $e) {
+            $key = $e->current ? 0 : $e->id;
+            $list[$key] = ['key' => $key, 'name' => $e->name, 'start' => $e->opened_on?->toDateString() ?? $e->first_day?->toDateString(),
+                'current' => $e->current, 'marked' => $e->opened_on !== null];
+        }
+        $list[0] ??= ['key' => 0, 'name' => null, 'start' => null, 'current' => true, 'marked' => false];
+        foreach ($list as $key => $e) {
+            $list[$key]['start'] ??= self::firstDay($branchId, $key);
+        }
+        $list = array_values(array_filter($list, fn ($e) => $e['start'] !== null));
+        usort($list, fn ($x, $y) => [$x['start'], $x['key']] <=> [$y['start'], $y['key']]);
+
+        return $list;
+    }
+
+    private static function firstDay(int $branchId, int $exercise): ?string
+    {
+        $days = [
+            self::documents()->where('branch_id', $branchId)->where('exercise_id', $exercise)->min('date'),
+            self::paymentRows()->where('branch_id', $branchId)->where('exercise_id', $exercise)->min('date'),
+        ];
+        $days = array_filter(array_map(fn ($d) => $d ? substr((string) $d, 0, 10) : null, $days));
+
+        return $days === [] ? null : min($days);
+    }
+
+    /** L'exercice qui couvre ce jour : le dernier commence au plus tard ce jour-la (null : avant toute l'histoire). */
+    private static function containing(array $exercises, string $day): ?array
+    {
+        $found = null;
+        foreach ($exercises as $e) {
+            if ($e['start'] <= $day) {
+                $found = $e;
+            }
+        }
+
+        return $found;
+    }
+
+    /**
+     * Par defaut : le debut de l'exercice en cours le plus recent des deux branches (chacune a ses dates de cloture),
+     * d'apres leurs "Solde Initial". Aucune des deux n'en a (agent d'avant 1.0.11, ou jamais cloture) : toute l'histoire.
+     */
+    private static function autoFrom(array $exA, array $exB): ?string
+    {
+        $starts = [];
+        foreach ([$exA, $exB] as $list) {
+            foreach ($list as $e) {
+                if ($e['current'] && $e['marked']) {
+                    $starts[] = $e['start'];
+                }
+            }
+        }
+
+        return $starts === [] ? null : max($starts);
+    }
+
+    /**
+     * Le solde d'un partenaire au debut du jour $from, comme Gescomm le montrerait ce jour-la : dans l'exercice qui le
+     * couvre, ses "Solde Initial" (le report de l'exercice d'avant, a la date du jour de cloture) + ses bons - ses
+     * versements d'avant ce jour. Avant toute l'histoire (ou sans periode) : 0.
+     *
+     * @return array{balance: float, bons: float, payments: float, opening: float, exercise: ?string, current: bool}
+     */
+    private static function startBalance(Partner $partner, string $docKind, ?string $from, array $exercises): array
+    {
+        $none = ['balance' => 0.0, 'bons' => 0.0, 'payments' => 0.0, 'opening' => 0.0, 'exercise' => null, 'current' => false];
+        $e = $from === null ? null : self::containing($exercises, $from);
+        if ($e === null) {
+            return $none;
+        }
+        $pays = fn () => self::paymentRows()->where('branch_id', $partner->branch_id)->where('partner_kind', $partner->kind)
+            ->where('partner_code', $partner->code)->where('exercise_id', $e['key']);
+        $opening = (float) $pays()->where('note', 'like', '%Solde Initial%')->sum('amount');
+        $paid = (float) $pays()->where('date', '<', $from)->where(fn ($q) => $q->whereNull('note')->orWhere('note', 'not like', '%Solde Initial%'))->sum('amount');
+        $bons = (float) self::documents()->where('branch_id', $partner->branch_id)->where('kind', $docKind)->where('partner_code', $partner->code)
+            ->where('exercise_id', $e['key'])->where('date', '<', $from)->sum('amount');
+
+        return ['balance' => round($bons - $paid - $opening, 2), 'bons' => round($bons, 2), 'payments' => round($paid, 2),
+            'opening' => round($opening, 2), 'exercise' => $e['name'], 'current' => $e['current']];
     }
 
     /**
@@ -470,7 +663,7 @@ final class Reconciliation
     {
         $lines = [];
         foreach ($docs->pluck('id')->chunk(500) as $ids) {
-            DocumentLine::query()->toBase()->whereIn('document_id', $ids->all())
+            DocumentLine::withoutGlobalScope(ExerciseScope::class)->toBase()->whereIn('document_id', $ids->all())
                 ->orderBy('document_id')->orderBy('position')
                 ->get(['document_id', 'code_raw', 'code_key', 'qty', 'total'])
                 ->each(function ($l) use (&$lines) {
@@ -854,7 +1047,7 @@ final class Reconciliation
         $days = array_map(fn ($i) => $bons[$i]['day'], $rest);
         $from = Carbon::createFromTimestamp((min($days) - self::WINDOW_DAYS) * 86400)->toDateString();
         $to = Carbon::createFromTimestamp((max($days) + self::WINDOW_DAYS + 1) * 86400)->toDateString();
-        $docs = Document::where('branch_id', $branchId)->where('kind', $kind)
+        $docs = self::documents()->where('branch_id', $branchId)->where('kind', $kind)
             ->where(fn ($q) => $q->whereNull('partner_code')->orWhere('partner_code', '!=', $exclude))
             ->whereBetween('date', [$from, $to])
             ->get(['id', 'number', 'date', 'amount', 'partner_code']);
@@ -960,19 +1153,28 @@ final class Reconciliation
         ];
     }
 
-    private static function side(Partner $p, array $bons, array $pays): array
+    /** Un cote : son solde au debut de la periode, ses bons et versements de la periode, son solde a la fin. */
+    private static function side(Partner $p, array $bons, array $pays, array $start): array
     {
+        $bons = array_values(array_filter($bons, fn ($x) => ! $x['ctx']));
+        $pays = array_values(array_filter($pays, fn ($x) => ! $x['ctx']));
+        $amount = array_sum(array_column($bons, 'amount'));
+        $paid = array_sum(array_column($pays, 'amount'));
+
         return [
             'branch_id' => $p->branch_id,
             'branch' => $p->branch?->name,
             'partner_id' => $p->id,
             'partner' => $p->name ?? trim((string) $p->code),
             'code' => trim((string) $p->code),
+            'start' => $start['balance'] ?? 0.0,
+            'start_exercise' => $start['exercise'] ?? null,
+            'start_current' => $start['current'] ?? false,
             'bons' => count($bons),
-            'amount' => round(array_sum(array_column($bons, 'amount')), 2),
-            'payments' => round(array_sum(array_column($pays, 'amount')), 2),
+            'amount' => round($amount, 2),
+            'payments' => round($paid, 2),
             'opening' => round(array_sum(array_column(array_filter($pays, fn ($x) => $x['opening']), 'amount')), 2),
-            'balance' => round(array_sum(array_column($bons, 'amount')) - array_sum(array_column($pays, 'amount')), 2),
+            'balance' => round(($start['balance'] ?? 0.0) + $amount - $paid, 2),
             'first' => $bons[0]['date'] ?? null,
             'last' => $bons === [] ? null : $bons[count($bons) - 1]['date'],
         ];
@@ -1004,7 +1206,7 @@ final class Reconciliation
      *
      * @return list<array{month: string, count: int, effect: float, running: float}>
      */
-    private static function timeline(array $problems): array
+    private static function timeline(array $problems, float $start = 0.0): array
     {
         $months = [];
         foreach ($problems as $p) {
@@ -1017,7 +1219,8 @@ final class Reconciliation
             $months[$m]['effect'] += $p['effect'];
         }
         ksort($months);
-        $running = 0.0;
+        // le cumul part de l'ecart au debut de la periode : sa derniere valeur est l'ecart
+        $running = $start;
         $out = [];
         foreach ($months as $m) {
             $running += $m['effect'];
@@ -1064,12 +1267,26 @@ final class Reconciliation
 
     // ---------- versements ----------
 
-    /** @return list<array<string, mixed>> */
-    private static function payments(Partner $partner): array
+    /**
+     * Les versements de la periode, tous exercices, plus ceux des marges (WINDOW_DAYS, ctx). Un "Solde Initial" ne compte
+     * que s'il ouvre la toute premiere histoire de la branche apres le debut de la periode ; sinon il est dans le solde
+     * du debut (l'exercice qui couvre from) ou il reporte un exercice clos dont les bons et versements sont la.
+     *
+     * @return list<array<string, mixed>>
+     */
+    private static function payments(Partner $partner, ?string $from, ?string $to, array $exercises): array
     {
-        return Payment::where('branch_id', $partner->branch_id)->where('partner_kind', $partner->kind)->where('partner_code', $partner->code)
+        // aucun exercice ne couvre from (la periode commence avant toute l'histoire) : les "Solde Initial" du premier sont
+        // de vrais soldes de depart ; sinon ils sont dans le solde du debut, ou reportent un exercice dont l'histoire est la
+        $first = $exercises[0] ?? null;
+        $startsInside = $from !== null && self::containing($exercises, $from) !== null;
+        $realOpening = fn (int $exercise) => $first !== null && $exercise === $first['key'] && ! $startsInside;
+
+        return self::paymentRows()->where('branch_id', $partner->branch_id)->where('partner_kind', $partner->kind)->where('partner_code', $partner->code)
+            ->when($from, fn (Builder $q) => $q->where('date', '>=', Carbon::parse($from)->subDays(self::WINDOW_DAYS)->toDateString()))
+            ->when($to, fn (Builder $q) => $q->where('date', '<=', Carbon::parse($to)->addDays(self::WINDOW_DAYS)->toDateString()))
             ->orderBy('date')->orderBy('time')->orderBy('number')->orderBy('id')
-            ->get(['id', 'number', 'date', 'type', 'amount', 'note'])
+            ->get(['id', 'number', 'date', 'type', 'amount', 'note', 'exercise_id'])
             ->map(fn (Payment $p) => [
                 'id' => $p->id,
                 'number' => $p->number,
@@ -1079,7 +1296,11 @@ final class Reconciliation
                 'amount' => (float) $p->amount,
                 'note' => $p->note,
                 'opening' => (bool) preg_match('/solde\s*initial/i', (string) $p->note),
-            ])->values()->all();
+                'exercise' => (int) $p->exercise_id,
+                'ctx' => self::outside($p->date?->format('Y-m-d'), $from, $to),
+            ])
+            ->reject(fn (array $p) => $p['opening'] && ! $realOpening($p['exercise']))
+            ->values()->all();
     }
 
     /**
@@ -1139,7 +1360,7 @@ final class Reconciliation
             return [];
         }
         $days = array_map(fn ($i) => $pays[$i]['day'], $rest);
-        $rows = Payment::where('branch_id', $branchId)->where('partner_kind', $partnerKind)->where('partner_code', '!=', $exclude)
+        $rows = self::paymentRows()->where('branch_id', $branchId)->where('partner_kind', $partnerKind)->where('partner_code', '!=', $exclude)
             ->whereBetween('date', [Carbon::createFromTimestamp((min($days) - 3) * 86400)->toDateString(), Carbon::createFromTimestamp((max($days) + 4) * 86400)->toDateString()])
             ->whereIn('amount', array_values(array_unique(array_map(fn ($i) => round($pays[$i]['amount'], 2), $rest))))
             ->get(['id', 'number', 'date', 'amount', 'partner_code']);

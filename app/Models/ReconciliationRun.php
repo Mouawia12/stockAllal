@@ -23,7 +23,15 @@ class ReconciliationRun extends Model
             'gap' => 'float',
             'problems' => 'integer',
             'synced' => 'boolean',
+            'from_day' => 'date',
+            'to_day' => 'date',
         ];
+    }
+
+    /** La periode demandee, telle que la page la passe (?from= &to=) : null = automatique. */
+    public function period(): array
+    {
+        return ['from' => $this->from_day?->toDateString(), 'to' => $this->to_day?->toDateString()];
     }
 
     public function customer(): BelongsTo
@@ -41,11 +49,21 @@ class ReconciliationRun extends Model
         return $this->belongsTo(User::class);
     }
 
-    /** L'analyse d'avant, pour la meme paire. */
+    /** L'analyse d'avant, pour la meme paire et la meme periode. */
     public function previous(): ?self
     {
-        return self::where('customer_id', $this->customer_id)->where('supplier_id', $this->supplier_id)
+        return self::samePeriod(self::where('customer_id', $this->customer_id)->where('supplier_id', $this->supplier_id), $this->period())
             ->where('id', '<', $this->id)->orderByDesc('id')->first();
+    }
+
+    /** Les analyses de cette periode demandee (null = automatique). */
+    public static function samePeriod($query, array $period)
+    {
+        foreach (['from' => 'from_day', 'to' => 'to_day'] as $key => $column) {
+            $period[$key] === null ? $query->whereNull($column) : $query->whereDate($column, $period[$key]);
+        }
+
+        return $query;
     }
 
     /** Garde les KEEP dernieres analyses de la paire. */
