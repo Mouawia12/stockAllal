@@ -28,7 +28,8 @@ $ErrorActionPreference = 'Stop'
 Add-Type -AssemblyName System.Net.Http
 # 1.0.9 : meme boucle que 1.0.8 ; l'installation et la mise a jour reecrivent la tache planifiee (retour de veille)
 # 1.0.10 : la demande "data" (renvoyer maintenant les bons et versements d'une periode : bouton "re-verifier" du rapprochement)
-$AgentVersion = '1.0.10'
+# 1.0.11 : les clotures de Gescomm : la marque de la base avec chaque envoi, et les bases archivees (LaBaseN<nom>.ib)
+$AgentVersion = '1.0.11'
 $Table = 'GC003'
 $Fields = @('CODEA', 'DESIGNATIONF2', 'STOCKREEL')
 # Prix comme dans la liste des articles de Gescomm (colonne de GC003 = titre dans Gescomm => champ envoye a l'API).
@@ -111,6 +112,9 @@ function Read-Config {
         partners_minutes    = 15
         history_hour        = 22
         data_step_seconds   = 90
+        # bases archivees de Gescomm (1.0.11), dans le dossier de la base : verifiees toutes les heures
+        archive_pattern     = 'LaBaseN*.ib'
+        archive_minutes     = 60
     }
     foreach ($p in $raw.PSObject.Properties) { $cfg[$p.Name] = $p.Value }
     return $cfg
@@ -122,7 +126,9 @@ function Save-Config {
 
 # ---------- base InterBase (via isql, lecture seule) ----------
 
-function Invoke-Isql([string[]]$Sql) {
+# $Database : une autre base que celle de la config (la copie d'une base archivee, 1.0.11)
+function Invoke-Isql([string[]]$Sql, [string]$Database) {
+    if (-not $Database) { $Database = $cfg.database }
     $id = [guid]::NewGuid().ToString('N')
     $in = Join-Path $TmpDir "$id.sql"
     $out = Join-Path $TmpDir "$id.out"
@@ -130,7 +136,7 @@ function Invoke-Isql([string[]]$Sql) {
     # fichier en Windows-1252 : la base est en charset NONE et certains codes contiennent des caracteres > 127
     [IO.File]::WriteAllLines($in, [string[]](@($ReadOnlyTx, 'SET LIST ON;') + $Sql), $Ansi)
     try {
-        $isqlArgs = @('-q', '-i', "`"$in`"", '-o', "`"$out`"", "`"$($cfg.database)`"")
+        $isqlArgs = @('-q', '-i', "`"$in`"", '-o', "`"$out`"", "`"$Database`"")
         $p = Start-Process -FilePath $cfg.isql -ArgumentList $isqlArgs -NoNewWindow -PassThru -RedirectStandardError $err
         if (-not $p.WaitForExit(120000)) {
             try { $p.Kill() } catch { }
@@ -500,34 +506,43 @@ function Get-Today { (Get-Date).Date }
 function Format-Day([datetime]$Day) { $Day.ToString('yyyy-MM-dd', $Invariant) }
 
 # history_sets : les jeux dates dont tout l'historique est deja passe (un jeu ajoute par une mise a jour n'y est pas)
+# archives (1.0.11) : nom du fichier -> taille, date, ce qui en est fait (done, ou ce que le serveur a repondu)
 function Read-State {
     $file = Join-Path $Dir 'state.json'
-    $state = @{ history_done_at = $null; history_sets = @() }
+    $state = @{ history_done_at = $null; history_sets = @(); archives = @{} }
     if (Test-Path $file) {
         try {
             $raw = Get-Content $file -Raw -Encoding UTF8 | ConvertFrom-Json
             if ($raw.history_done_at) { $state.history_done_at = [string]$raw.history_done_at }
             if ($null -ne $raw.history_sets) { $state.history_sets = @($raw.history_sets | ForEach-Object { [string]$_ }) }
             elseif ($state.history_done_at) { $state.history_sets = $HistorySets107 }
+            if ($raw.archives) {
+                foreach ($p in $raw.archives.PSObject.Properties) {
+                    $state.archives[$p.Name] = @{ size = [long]$p.Value.size; mtime = [string]$p.Value.mtime; status = [string]$p.Value.status; exercise = $p.Value.exercise }
+                }
+            }
         } catch { }
     }
     $state
 }
 
 function Save-State {
-    try { [IO.File]::WriteAllText((Join-Path $Dir 'state.json'), (ConvertTo-Json $script:State -Depth 3), $Utf8NoBom) } catch { }
+    try { [IO.File]::WriteAllText((Join-Path $Dir 'state.json'), (ConvertTo-Json $script:State -Depth 5), $Utf8NoBom) } catch { }
 }
 
 # Les colonnes de la table (une requete sur RDB$RELATION_FIELDS)
-function Get-TableColumns([string]$Name) {
-    $lines = Invoke-Isql @(('SELECT RDB$FIELD_NAME FROM RDB$RELATION_FIELDS WHERE RDB$RELATION_NAME = ''{0}'';' -f $Name))
+function Get-TableColumns([string]$Name, [string]$Db) {
+    $lines = Invoke-Isql @(('SELECT RDB$FIELD_NAME FROM RDB$RELATION_FIELDS WHERE RDB$RELATION_NAME = ''{0}'';' -f $Name)) $Db
     @(ConvertFrom-IsqlList $lines @('RDB$FIELD_NAME') | ForEach-Object { ([string]$_['RDB$FIELD_NAME']).Trim() })
 }
 
 # Colonnes lues pour ce jeu : la cle et la date d'abord (obligatoires), puis celles de cols presentes dans cette base
-function Test-DatasetSchema($Ds) {
-    if ($script:DataCols.ContainsKey($Ds.name)) { return $script:DataCols[$Ds.name] }
-    $found = Get-TableColumns $Ds.table
+# ($Db : une base archivee, d'une version de Gescomm peut-etre plus ancienne : ses colonnes a part)
+function Test-DatasetSchema($Ds, [string]$Db) {
+    $cacheKey = $Ds.name
+    if ($Db) { $cacheKey = $Db + '|' + $Ds.name }
+    if ($script:DataCols.ContainsKey($cacheKey)) { return $script:DataCols[$cacheKey] }
+    $found = Get-TableColumns $Ds.table $Db
     # la 1re colonne ouvre chaque enregistrement dans la sortie d'isql : chaque colonne une seule fois (DATEVER est cle et date)
     $need = @($Ds.key)
     if ($Ds.date -and $need -notcontains $Ds.date) { $need += $Ds.date }
@@ -536,14 +551,14 @@ function Test-DatasetSchema($Ds) {
     $head = @($need) + @($Ds.cols.Keys | Where-Object { $found -contains $_ -and $need -notcontains $_ })
     $line = @()
     if ($Ds.lines) {
-        $lineFound = Get-TableColumns $Ds.lines
+        $lineFound = Get-TableColumns $Ds.lines $Db
         $lineNeed = @($Ds.lineKey) + @('CODEA')
         $missing = @($lineNeed | Where-Object { $lineFound -notcontains $_ })
         if ($missing.Count) { throw ("table {0} absente ou sans {1}" -f $Ds.lines, ($missing -join ', ')) }
         $line = @($Ds.lineKey) + @($Ds.lineCols.Keys | Where-Object { $lineFound -contains $_ -and $Ds.lineKey -notcontains $_ })
     }
     $cols = @{ head = $head; line = $line }
-    $script:DataCols[$Ds.name] = $cols
+    $script:DataCols[$cacheKey] = $cols
     $cols
 }
 
@@ -578,19 +593,20 @@ function Get-Bucket([string]$Key) {
 }
 
 # Les enregistrements d'un jeu, par groupe : $From / $To (jours, inclus) pour un jeu date, toute la table sinon.
+# $Db : la copie d'une base archivee (1.0.11), sinon la base de la config.
 # Retour : dictionnaire groupe -> liste d'enregistrements (avec key, digest, champs, lines)
-function Read-Dataset($Ds, [string]$From, [string]$To) {
-    $cols = Test-DatasetSchema $Ds
+function Read-Dataset($Ds, [string]$From, [string]$To, [string]$Db) {
+    $cols = Test-DatasetSchema $Ds $Db
     $where = ''
     if ($Ds.date) { $where = (" WHERE H.{0} BETWEEN CAST('{1}' AS DATE) AND CAST('{2}' AS DATE)" -f $Ds.date, $From, $To) }
     $sql = @(('SELECT {0} FROM {1} H{2};' -f (@($cols.head | ForEach-Object { "H.$_" }) -join ', '), $Ds.table, $where))
-    $heads = @(ConvertFrom-IsqlList (Invoke-Isql $sql) $cols.head)
+    $heads = @(ConvertFrom-IsqlList (Invoke-Isql $sql $Db) $cols.head)
 
     $linesByKey = @{}
     if ($Ds.lines) {
         $on = @($Ds.lineKey | ForEach-Object { "L.$_ = H.$_" }) -join ' AND '
         $sql = @(('SELECT {0} FROM {1} H JOIN {2} L ON {3}{4};' -f (@($cols.line | ForEach-Object { "L.$_" }) -join ', '), $Ds.table, $Ds.lines, $on, $where))
-        foreach ($row in (ConvertFrom-IsqlList (Invoke-Isql $sql) $cols.line)) {
+        foreach ($row in (ConvertFrom-IsqlList (Invoke-Isql $sql $Db) $cols.line)) {
             $k = Get-RowKey $row $Ds.lineKey
             if (-not $linesByKey.ContainsKey($k)) { $linesByKey[$k] = New-Object System.Collections.ArrayList }
             [void]$linesByKey[$k].Add($row)
@@ -658,6 +674,187 @@ function Get-RowCount($Records) {
     $n
 }
 
+# ---------- exercices de Gescomm (1.0.11) ----------
+#
+# A la cloture, Gescomm copie sa base sous LaBaseN<nom>.ib (meme dossier), vide les bons et les versements (procedure
+# CLOTURE1) et reporte le solde de chacun en un versement du jour "Solde Initial Client de l'exercice <nom>"
+# (INITIALISERSOLDENEW). Ce jour et ce nom sont la marque de la base : envoyee avec chaque envoi de ces jeux, le serveur
+# y voit la cloture et garde l'exercice qui se ferme. Les bases archivees partent une fois chacune (Add-DueArchive).
+$ExerciseSets = @('sales', 'purchases', 'customer_payments', 'supplier_payments')
+$MarkTables = [ordered]@{ sales = @('GC010', 'DATES'); purchases = @('GC007', 'DATEBON'); customer_payments = @('GC62', 'DATEVER'); supplier_payments = @('GC60', 'DATEVER') }
+$ArchiveDir = Join-Path $Dir 'archives'
+$script:Archive = $null                    # la base archivee en cours d'envoi
+$script:ArchiveNext = [datetime]::MinValue
+
+# Sortie "SET LIST ON" de requetes a une ligne : nom du champ -> valeur
+function ConvertFrom-IsqlValues([string[]]$Lines) {
+    $values = @{}
+    foreach ($line in $Lines) {
+        if ($line.Length -gt 32) { $label = $line.Substring(0, 32).TrimEnd(); $value = $line.Substring(32).TrimEnd() }
+        else { $label = $line.TrimEnd(); $value = '' }
+        if (-not $label -or $label -like '=*') { continue }
+        if ($value -eq '<null>') { $value = $null }
+        $values[$label] = $value
+    }
+    $values
+}
+
+# La marque d'une base : le jour de ses "Solde Initial" (clients, sinon fournisseurs) et l'exercice qu'ils reportent,
+# le premier et le dernier jour de ses bons et versements ; -Counts (une archive) : combien dans chaque jeu.
+function Get-BaseMark([string]$Db, [switch]$Counts) {
+    $sql = New-Object System.Collections.Generic.List[string]
+    foreach ($t in @('GC62', 'GC60')) {
+        $sql.Add(("SELECT MIN(DATEVER) AS {0}DAY FROM {0} WHERE OBSERVATION STARTING WITH 'Solde Initial';" -f $t))
+        $sql.Add(("SELECT MAX(OBSERVATION) AS {0}NOTE FROM {0} WHERE OBSERVATION STARTING WITH 'Solde Initial' AND DATEVER = (SELECT MIN(DATEVER) FROM {0} WHERE OBSERVATION STARTING WITH 'Solde Initial');" -f $t))
+    }
+    foreach ($name in $MarkTables.Keys) {
+        $t = $MarkTables[$name]
+        $alias = $name.ToUpper()
+        $agg = 'MIN({0}) AS {1}_A, MAX({0}) AS {1}_B' -f $t[1], $alias
+        if ($Counts) { $agg += ', COUNT(*) AS {0}_N' -f $alias }
+        $sql.Add(('SELECT {0} FROM {1};' -f $agg, $t[0]))
+    }
+    $v = ConvertFrom-IsqlValues (Invoke-Isql ([string[]]$sql) $Db)
+
+    $day = $null
+    $note = $null
+    foreach ($t in @('GC62', 'GC60')) {
+        $d = ConvertTo-IsoDay $v[$t + 'DAY']
+        if ($d -and (-not $day -or $d -lt $day)) { $day = $d; $note = $v[$t + 'NOTE'] }
+    }
+    $label = $null
+    if ($note) {
+        $m = [regex]::Match([string]$note, 'exercice\s+(.+)$', 'IgnoreCase')
+        if ($m.Success) { $label = $m.Groups[1].Value.Trim() } else { $label = ([string]$note).Trim() }
+        if ($label.Length -gt 40) { $label = $label.Substring(0, 40) }
+    }
+    $mark = [ordered]@{ opened_on = $day; label = $label; first_day = $null; last_day = $null; spans = @{} }
+    foreach ($name in $MarkTables.Keys) {
+        $alias = $name.ToUpper()
+        $a = ConvertTo-IsoDay $v[$alias + '_A']
+        $b = ConvertTo-IsoDay $v[$alias + '_B']
+        if ($a -and (-not $mark.first_day -or $a -lt $mark.first_day)) { $mark.first_day = $a }
+        if ($b -and (-not $mark.last_day -or $b -gt $mark.last_day)) { $mark.last_day = $b }
+        $n = 0
+        if ($Counts -and $v[$alias + '_N']) { $n = [int](ConvertTo-Number $v[$alias + '_N']) }
+        $mark.spans[$name] = @{ from = $a; to = $b; n = $n }
+    }
+    $mark
+}
+
+function Get-DbPath {
+    $m = [regex]::Match([string]$cfg.database, '[A-Za-z]:\\.+$')
+    if ($m.Success) { return $m.Value }
+    return $null
+}
+
+# Les bases archivees : LaBaseN*.ib (archive_pattern) dans le dossier de la base, sauf la base elle-meme
+function Get-ArchiveFiles {
+    $db = Get-DbPath
+    if (-not $db) { return @() }
+    @(Get-ChildItem -LiteralPath (Split-Path -Parent $db) -Filter '*.ib' -File -ErrorAction SilentlyContinue | Where-Object {
+        $_.Name -like [string]$cfg.archive_pattern -and $_.FullName -ne $db -and $_.Length -gt 0 } | Sort-Object LastWriteTime)
+}
+
+function Remove-ArchiveCopies {
+    Get-ChildItem -LiteralPath $ArchiveDir -File -ErrorAction SilentlyContinue | Remove-Item -Force -ErrorAction SilentlyContinue
+}
+
+# Toutes les heures (archive_minutes), et seulement si aucune n'est en cours : la premiere base archivee nouvelle ou
+# changee (taille, date) part. Une a la fois ; la suivante des que celle-ci a fini.
+function Add-DueArchive {
+    if ($script:Archive -or (Get-Date) -lt $script:ArchiveNext) { return }
+    $script:ArchiveNext = (Get-Date).AddMinutes([double]$cfg.archive_minutes)
+    foreach ($f in (Get-ArchiveFiles)) {
+        $stamp = $f.LastWriteTimeUtc.ToString('o', $Invariant)
+        $known = $script:State.archives[$f.Name]
+        if ($known -and [long]$known.size -eq $f.Length -and [string]$known.mtime -eq $stamp) { continue }
+        try {
+            if (Start-Archive $f $stamp) { return }
+        } catch {
+            Write-Log ('archive {0} : {1}' -f $f.Name, (Get-ErrorText $_)) -IsError
+            Remove-ArchiveCopies
+        }
+    }
+}
+
+# Une base archivee : copiee (InterBase n'ouvre jamais l'archive elle-meme), sa marque au serveur, qui repond son
+# exercice ; puis ses ventes, achats et versements mois par mois (prio 5 : apres tout le reste). $true : envoi commence.
+function Start-Archive($File, [string]$Stamp) {
+    New-Item -ItemType Directory -Force -Path $ArchiveDir | Out-Null
+    # un nom court : InterBase 7.5 refuse un chemin de base long (-924 "bad parameters on attach" a 140 caracteres)
+    $copy = Join-Path $ArchiveDir 'archive.ib'
+    if ($copy.Length -gt 100) { throw "chemin trop long pour InterBase : $copy" }
+    Copy-Item -LiteralPath $File.FullName -Destination $copy -Force
+    $db = 'localhost:' + $copy
+    $mark = Get-BaseMark $db -Counts
+    $counts = [ordered]@{}
+    foreach ($n in $ExerciseSets) { $counts[$n] = $mark.spans[$n].n }
+    $r = Invoke-Api 'POST' '/agent/archive' ([ordered]@{ file = $File.Name; opened_on = $mark.opened_on; label = $mark.label
+        first_day = $mark.first_day; last_day = $mark.last_day; counts = $counts })
+    if (-not $r.exercise_id) {
+        Remove-Item -LiteralPath $copy -Force -ErrorAction SilentlyContinue
+        # wait : la base en cours n'a pas encore donne sa marque (juste apres l'installation) : toutes les archives
+        # attendraient de meme, on reessaie dans 5 minutes
+        if ([string]$r.skip -eq 'wait') {
+            $script:ArchiveNext = (Get-Date).AddMinutes(5)
+            Write-Log ('ARCHIVE {0} : en attente de la marque de la base en cours' -f $File.Name)
+            return $true
+        }
+        $script:State.archives[$File.Name] = @{ size = $File.Length; mtime = $Stamp; status = [string]$r.skip; exercise = $null }
+        Save-State
+        Write-Log ('ARCHIVE {0} : rien a envoyer ({1})' -f $File.Name, $r.skip)
+        return $false
+    }
+    $steps = 0
+    foreach ($ds in @($Datasets | Where-Object { $ExerciseSets -contains $_.name })) {
+        $span = $mark.spans[$ds.name]
+        if (-not $span.from -or -not $span.to -or -not $span.n) { continue }
+        $m = [datetime]::ParseExact($span.from.Substring(0, 7) + '-01', 'yyyy-MM-dd', $Invariant)
+        $end = [datetime]::ParseExact($span.to, 'yyyy-MM-dd', $Invariant)
+        while ($m -le $end) {
+            [void]$script:DataQueue.Add(@{ ds = $ds; tier = 'archive'; prio = 5; from = (Format-Day $m); to = (Format-Day $m.AddMonths(1).AddDays(-1))
+                db = $db; exercise = [int]$r.exercise_id })
+            $steps++
+            $m = $m.AddMonths(1)
+        }
+    }
+    $script:Archive = @{ name = $File.Name; copy = $copy; exercise = [int]$r.exercise_id; left = $steps; size = $File.Length; mtime = $Stamp; t0 = Get-Date }
+    Write-Log ('ARCHIVE {0} : exercice {1} du {2} au {3}, {4} etape(s)' -f $File.Name, $r.name, $mark.first_day, $mark.last_day, $steps)
+    if (-not $steps) { Complete-ArchiveStep $null }
+    return $true
+}
+
+# Une etape de la base archivee faite ($ErrorText : elle a echoue, l'envoi s'arrete et reprendra au prochain passage).
+# La derniere le dit au serveur, retient le fichier (taille, date) et efface la copie.
+function Complete-ArchiveStep($ErrorText) {
+    $a = $script:Archive
+    if (-not $a) { return }
+    $failed = [bool]$ErrorText
+    if ($failed) {
+        foreach ($s in @($script:DataQueue | Where-Object { $_.tier -eq 'archive' })) { $script:DataQueue.Remove($s) }
+        Write-Log ('ARCHIVE {0} : arretee ({1}), reprise au prochain passage' -f $a.name, $ErrorText) -IsError
+        $a.left = 0
+    } else {
+        $a.left = $a.left - 1
+    }
+    if ($a.left -gt 0) { return }
+    if (-not $failed) {
+        try {
+            Invoke-Api 'POST' '/agent/archive' ([ordered]@{ file = $a.name; done = $true; exercise_id = $a.exercise }) | Out-Null
+            $script:State.archives[$a.name] = @{ size = $a.size; mtime = $a.mtime; status = 'done'; exercise = $a.exercise }
+            Save-State
+            Write-Log ('ARCHIVE {0} : envoyee en {1:N0} s' -f $a.name, ((Get-Date) - $a.t0).TotalSeconds)
+        } catch {
+            Write-Log (Get-ErrorText $_) -IsError
+        }
+        # la suivante tout de suite
+        $script:ArchiveNext = [datetime]::MinValue
+    }
+    Remove-Item -LiteralPath $a.copy -Force -ErrorAction SilentlyContinue
+    $script:Archive = $null
+}
+
 # Une etape : lire l'intervalle, comparer les empreintes, envoyer les groupes demandes par pages.
 # Entre deux pages, les demandes en direct (actualiser maintenant) passent d'abord. Au-dela de data_step_seconds, l'etape
 # s'arrete : les groupes pas encore envoyes different toujours, la prochaine fois reprend la ou elle s'est arretee.
@@ -665,9 +862,24 @@ function Get-RowCount($Records) {
 function Invoke-DataStep($Step) {
     $ds = $Step.ds
     $t0 = Get-Date
-    $groups = Read-Dataset $ds $Step.from $Step.to
+    # l'exercice : celui d'une base archivee (exercise_id), ou la marque de la base lue AVANT ses donnees : une cloture
+    # entre les deux fait au pire retirer ici des jours de l'exercice qui se ferme (son archive les rendra), jamais
+    # entrer l'ancien exercice dans le nouveau
+    $extra = [ordered]@{}
+    if ($Step.exercise) {
+        $extra.exercise_id = [int]$Step.exercise
+    } elseif ($ExerciseSets -contains $ds.name) {
+        try {
+            $mark = Get-BaseMark $null
+            $extra.exercise = [ordered]@{ opened_on = $mark.opened_on; label = $mark.label; first_day = $mark.first_day }
+        } catch {
+            Write-Log ('marque de la base : ' + (Get-ErrorText $_)) -IsError
+        }
+    }
+    $groups = Read-Dataset $ds $Step.from $Step.to $Step.db
     $body = [ordered]@{ dataset = $ds.name; from = $null; to = $null; groups = (Get-GroupDigests $groups) }
     if ($ds.date) { $body.from = $Step.from; $body.to = $Step.to }
+    foreach ($k in $extra.Keys) { $body[$k] = $extra[$k] }
     $r = Invoke-Api 'POST' '/agent/digest' $body
     $send = @($r.send | Where-Object { $_ })
     if (-not $send.Count) { return $true }
@@ -683,9 +895,13 @@ function Invoke-DataStep($Step) {
         $n = Get-RowCount $records
         # page pleine (un jour plus grand qu'une page part seul), ou fin de la liste
         if ($page.Count -and ($i -eq $send.Count -or $rows + $n -gt $pageRows)) {
-            $res = Invoke-Api 'POST' '/agent/records' ([ordered]@{ dataset = $ds.name; groups = $page })
+            $post = [ordered]@{ dataset = $ds.name; groups = $page }
+            foreach ($k in $extra.Keys) { $post[$k] = $extra[$k] }
+            $res = Invoke-Api 'POST' '/agent/records' $post
             $sent += $page.Count
-            Write-Log ('DONNEES {0} : {1} groupe(s), {2} ligne(s) -> {3} ecrit(s), {4} retire(s)' -f $ds.name, $page.Count, $rows, $res.written, $res.removed)
+            $what = 'DONNEES'
+            if ($Step.exercise) { $what = 'ARCHIVE' }
+            Write-Log ('{0} {1} : {2} groupe(s), {3} ligne(s) -> {4} ecrit(s), {5} retire(s)' -f $what, $ds.name, $page.Count, $rows, $res.written, $res.removed)
             $page = [ordered]@{}
             $rows = 0
             try { Invoke-PendingJobs } catch { Write-Log (Get-ErrorText $_) -IsError }
@@ -849,13 +1065,16 @@ function Set-DatasetBroken($Ds, $ErrorRecord) {
     $script:DataCols.Remove($Ds.name)
 }
 
-# Au plus une etape par tour de boucle, la plus urgente : les 7 derniers jours, puis les clients, puis le reste
+# Au plus une etape par tour de boucle, la plus urgente : les 7 derniers jours, puis les clients, puis le reste ; les
+# bases archivees (1.0.11) en dernier
 function Invoke-NextDataStep {
     Add-DueDataSteps
+    Add-DueArchive
     $now = Get-Date
     $next = $null
     foreach ($s in $script:DataQueue) {
-        if ($script:DataBroken.ContainsKey($s.ds.name) -and $now -lt $script:DataBroken[$s.ds.name]) { continue }
+        # une table en erreur dans la base en cours n'arrete pas la lecture d'une archive (autre fichier)
+        if ($s.tier -ne 'archive' -and $script:DataBroken.ContainsKey($s.ds.name) -and $now -lt $script:DataBroken[$s.ds.name]) { continue }
         if ($null -eq $next -or $s.prio -lt $next.prio) { $next = $s }
     }
     if ($null -eq $next) {
@@ -875,13 +1094,18 @@ function Invoke-NextDataStep {
     $script:DataQueue.Remove($next)
     try {
         $done = Invoke-DataStep $next
-        # etape coupee par sa limite de temps : l'historique et une demande "data" la refont tout de suite, les autres a
-        # leur prochain passage
-        if (-not $done -and ($next.tier -eq 'history' -or $next.tier -eq 'job')) { [void]$script:DataQueue.Add($next) }
+        # etape coupee par sa limite de temps : l'historique, une demande "data" et une archive la refont tout de suite,
+        # les autres a leur prochain passage
+        if (-not $done -and ($next.tier -eq 'history' -or $next.tier -eq 'job' -or $next.tier -eq 'archive')) { [void]$script:DataQueue.Add($next) }
         elseif ($next.job) { Complete-DataJobStep $next.job $null }
+        elseif ($next.tier -eq 'archive') { Complete-ArchiveStep $null }
     } catch {
-        Set-DatasetBroken $next.ds $_
-        if ($next.job) { Complete-DataJobStep $next.job 'data_failed' }
+        if ($next.tier -eq 'archive') {
+            Complete-ArchiveStep (Get-ErrorText $_)
+        } else {
+            Set-DatasetBroken $next.ds $_
+            if ($next.job) { Complete-DataJobStep $next.job 'data_failed' }
+        }
     }
 }
 
@@ -909,6 +1133,18 @@ function Test-Datasets([int]$LastDays) {
             Write-Host ('{0,-18}: ERREUR {1}' -f $ds.name, (Get-ErrorText $_)) -ForegroundColor Red
         }
     }
+    # l'exercice de la base (1.0.11) et les bases archivees qui partiront (sans les lire ici)
+    try {
+        $mark = Get-BaseMark $null
+        if ($mark.opened_on) { Write-Host ('{0,-18}: Solde Initial du {1} (exercice {2}), donnees du {3} au {4}' -f 'exercice', $mark.opened_on, $mark.label, $mark.first_day, $mark.last_day) -ForegroundColor Green }
+        else { Write-Host ('{0,-18}: pas de Solde Initial, donnees du {1} au {2}' -f 'exercice', $mark.first_day, $mark.last_day) -ForegroundColor Green }
+    } catch {
+        $ok = $false
+        Write-Host ('{0,-18}: ERREUR {1}' -f 'exercice', (Get-ErrorText $_)) -ForegroundColor Red
+    }
+    foreach ($f in (Get-ArchiveFiles)) {
+        Write-Host ('{0,-18}: {1} ({2:N0} Ko, {3:yyyy-MM-dd HH:mm})' -f 'archive', $f.Name, ($f.Length / 1KB), $f.LastWriteTime)
+    }
     $ok
 }
 
@@ -924,6 +1160,8 @@ function Start-AgentLoop {
     if (-not $owned) { Write-Log 'une autre instance tourne deja, sortie.'; return }
 
     Write-Log ("demarrage agent {0} - branche '{1}' - base {2}" -f $AgentVersion, $cfg.branch_name, $cfg.database)
+    # une copie d'archive laissee par un arret au milieu d'un envoi : elle sera refaite
+    Remove-ArchiveCopies
     $nextSync = [datetime]::MinValue
     $nextClean = [datetime]::MinValue
     $schemaOk = $false

@@ -46,6 +46,9 @@ return new class extends Migration
 
         Schema::table('document_lines', function (Blueprint $table) {
             $table->unsignedBigInteger('exercise_id')->default(0);
+            // les lignes d'un bon : MySQL a l'index de la cle etrangere, SQLite non (100 bons de la liste : 8,6 s avec
+            // les archives d'une branche) ; aussi l'ordre des lignes
+            $table->index(['document_id', 'position']);
         });
 
         Schema::table('payments', function (Blueprint $table) {
@@ -71,6 +74,7 @@ return new class extends Migration
             $table->dropColumn('exercise_id');
         });
         Schema::table('document_lines', function (Blueprint $table) {
+            $table->dropIndex(['document_id', 'position']);
             $table->dropColumn('exercise_id');
         });
         Schema::table('documents', function (Blueprint $table) {

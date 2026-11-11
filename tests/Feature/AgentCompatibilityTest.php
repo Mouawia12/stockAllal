@@ -42,6 +42,8 @@ class AgentCompatibilityTest extends TestCase
             '1.0.9' => ['1.0.9', true, true, true, true],
             // memes requetes que 1.0.9, plus la demande "data" ("إعادة الفحص", ReconcileHistoryTest)
             '1.0.10' => ['1.0.10', true, true, true, true],
+            // memes requetes, plus la marque de la base et les archives (exercices, ExerciseSyncTest)
+            '1.0.11' => ['1.0.11', true, true, true, true],
         ];
     }
 
