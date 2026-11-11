@@ -133,7 +133,8 @@
                 <span class="wb-label">{{ $P['balance'] }} <span class="pill">{{ $P['balance_side'][$kind][$balanceSide] }}</span></span>
                 <span class="wb-value">{{ $fmt($balance['value']) }}</span>
                 <small>{{ __('partners.balance_how', ['billed' => $fmt($balance['billed']), 'paid' => $fmt($balance['paid'])]) }}</small>
-                @if ($balance['as_of'])<small>{{ __('partners.balance_as_of', ['time' => $balance['as_of']->diffForHumans()]) }}</small>@endif
+                @if ($balance['closed'])<small>{{ __('exercises.balance_closed', ['name' => $balance['closed']]) }}</small>
+                @elseif ($balance['as_of'])<small>{{ __('partners.balance_as_of', ['time' => $balance['as_of']->diffForHumans()]) }}</small>@endif
             </div>
         @endif
     </section>

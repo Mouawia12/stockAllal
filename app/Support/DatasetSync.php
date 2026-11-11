@@ -28,7 +28,7 @@ final class DatasetSync
      * @param  array<string, string>  $groups
      * @return list<string>
      */
-    public static function differing(Branch $branch, array $set, array $groups, ?string $from, ?string $to): array
+    public static function differing(Branch $branch, array $set, array $groups, ?string $from, ?string $to, int $exercise = 0): array
     {
         $inRange = fn (string $group) => ($from === null || strcmp($group, $from) >= 0) && ($to === null || strcmp($group, $to) <= 0);
 
@@ -40,7 +40,7 @@ final class DatasetSync
             }
         }
 
-        $ours = self::scoped($branch, $set)
+        $ours = self::scoped($branch, $set, $exercise)
             ->when($from !== null, fn (Builder $q) => $q->where('sync_group', '>=', $from))
             ->when($to !== null, fn (Builder $q) => $q->where('sync_group', '<=', $to))
             ->groupBy('sync_group')
@@ -71,13 +71,13 @@ final class DatasetSync
      * @param  array<string, list<array<string, mixed>>>  $groups
      * @return array{written: int, removed: int}
      */
-    public static function store(Branch $branch, array $set, array $groups): array
+    public static function store(Branch $branch, array $set, array $groups, int $exercise = 0): array
     {
         $written = 0;
         $removed = 0;
-        DB::transaction(function () use ($branch, $set, $groups, &$written, &$removed) {
+        DB::transaction(function () use ($branch, $set, $groups, $exercise, &$written, &$removed) {
             foreach ($groups as $group => $records) {
-                [$w, $r] = self::replaceGroup($branch, $set, (string) $group, is_array($records) ? $records : []);
+                [$w, $r] = self::replaceGroup($branch, $set, (string) $group, is_array($records) ? $records : [], $exercise);
                 $written += $w;
                 $removed += $r;
             }
@@ -100,7 +100,7 @@ final class DatasetSync
     }
 
     /** @return array{0: int, 1: int} ecrits, retires */
-    private static function replaceGroup(Branch $branch, array $set, string $group, array $records): array
+    private static function replaceGroup(Branch $branch, array $set, string $group, array $records, int $exercise): array
     {
         $incoming = [];
         foreach ($records as $record) {
@@ -111,10 +111,11 @@ final class DatasetSync
             }
         }
 
-        $here = self::scoped($branch, $set)->where('sync_group', $group)->get(['id', 'gescomm_key', 'sync_digest'])->keyBy('gescomm_key');
+        $here = self::scoped($branch, $set, $exercise)->where('sync_group', $group)->get(['id', 'gescomm_key', 'sync_digest'])->keyBy('gescomm_key');
         // un document dont la date a change dans Gescomm arrive dans un autre jour : on le deplace
         $moved = array_values(array_diff(array_map('strval', array_keys($incoming)), $here->keys()->map(fn ($k) => (string) $k)->all()));
-        $elsewhere = $moved === [] ? collect() : self::scoped($branch, $set)->whereIn('gescomm_key', $moved)->get(['id', 'gescomm_key'])->keyBy('gescomm_key');
+        $elsewhere = $moved === [] ? collect() : self::scoped($branch, $set, $exercise)->whereIn('gescomm_key', $moved)->get(['id', 'gescomm_key'])->keyBy('gescomm_key');
+        $tag = $set['exercised'] ? ['exercise_id' => $exercise] : [];
 
         $now = now();
         $written = 0;
@@ -135,13 +136,13 @@ final class DatasetSync
                 DB::table($set['table'])->where('id', $old->id)->update($row);
                 $id = $old->id;
             } else {
-                $id = DB::table($set['table'])->insertGetId($row + ['branch_id' => $branch->id, 'origin' => 'gescomm', 'created_at' => $now] + $set['scope']);
+                $id = DB::table($set['table'])->insertGetId($row + ['branch_id' => $branch->id, 'origin' => 'gescomm', 'created_at' => $now] + $set['scope'] + $tag);
             }
             if ($set['lines']) {
                 DB::table('document_lines')->where('document_id', $id)->delete();
                 $lines = array_map(fn (array $line) => $line + [
                     'document_id' => $id, 'branch_id' => $branch->id, 'kind' => $set['scope']['kind'], 'date' => $row['date'],
-                ], AgentDatasets::lines($record));
+                ] + $tag, AgentDatasets::lines($record));
                 foreach (array_chunk($lines, 500) as $chunk) {
                     DB::table('document_lines')->insert($chunk);
                 }
@@ -160,11 +161,16 @@ final class DatasetSync
         return [$written, $gone->count()];
     }
 
-    /** Les lignes de ce jeu dans cette branche, venues de Gescomm (jamais celles saisies dans le web). */
-    private static function scoped(Branch $branch, array $set): Builder
+    /**
+     * Les lignes de ce jeu dans cette branche, venues de Gescomm (jamais celles saisies dans le web), de cet exercice
+     * (0 = celui en cours, la base que l'agent lit ; un id = une base archivee que l'agent envoie) : un envoi ne touche
+     * jamais un autre exercice, ce que la cloture a vide dans Gescomm reste ici.
+     */
+    private static function scoped(Branch $branch, array $set, int $exercise): Builder
     {
         return DB::table($set['table'])->where('branch_id', $branch->id)->where($set['scope'])
-            ->where('origin', 'gescomm')->whereNotNull('sync_group');
+            ->where('origin', 'gescomm')->whereNotNull('sync_group')
+            ->when($set['exercised'], fn (Builder $q) => $q->where('exercise_id', $exercise));
     }
 
     private static function key(mixed $value): ?string

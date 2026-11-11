@@ -12,25 +12,26 @@ use Throwable;
  * Chaque jeu va dans une table partagee avec la future branche approuvee, borne par "scope" (ventes et achats dans
  * documents...). dated : les groupes sont des jours (YYYY-MM-DD), sinon des paquets choisis par l'agent (clients).
  * Les champs recus sont tous facultatifs sauf key et digest : une colonne absente d'une version de Gescomm arrive vide.
+ * exercised : la cloture de Gescomm vide ce jeu, ses lignes portent leur exercice (App\Models\Exercise).
  */
 final class AgentDatasets
 {
     public const ALL = [
-        'sales' => ['table' => 'documents', 'scope' => ['kind' => 'sale'], 'dated' => true, 'lines' => true],
-        'purchases' => ['table' => 'documents', 'scope' => ['kind' => 'purchase'], 'dated' => true, 'lines' => true],
-        'customers' => ['table' => 'partners', 'scope' => ['kind' => 'customer'], 'dated' => false, 'lines' => false],
-        'suppliers' => ['table' => 'partners', 'scope' => ['kind' => 'supplier'], 'dated' => false, 'lines' => false],
-        'customer_payments' => ['table' => 'payments', 'scope' => ['partner_kind' => 'customer'], 'dated' => true, 'lines' => false],
-        'supplier_payments' => ['table' => 'payments', 'scope' => ['partner_kind' => 'supplier'], 'dated' => true, 'lines' => false],
-        // agent 1.0.8 : la caisse, entrees (C008) et sorties (C002)
-        'cash_in' => ['table' => 'cash_entries', 'scope' => ['direction' => 'in'], 'dated' => true, 'lines' => false],
-        'cash_out' => ['table' => 'cash_entries', 'scope' => ['direction' => 'out'], 'dated' => true, 'lines' => false],
+        'sales' => ['table' => 'documents', 'scope' => ['kind' => 'sale'], 'dated' => true, 'lines' => true, 'exercised' => true],
+        'purchases' => ['table' => 'documents', 'scope' => ['kind' => 'purchase'], 'dated' => true, 'lines' => true, 'exercised' => true],
+        'customers' => ['table' => 'partners', 'scope' => ['kind' => 'customer'], 'dated' => false, 'lines' => false, 'exercised' => false],
+        'suppliers' => ['table' => 'partners', 'scope' => ['kind' => 'supplier'], 'dated' => false, 'lines' => false, 'exercised' => false],
+        'customer_payments' => ['table' => 'payments', 'scope' => ['partner_kind' => 'customer'], 'dated' => true, 'lines' => false, 'exercised' => true],
+        'supplier_payments' => ['table' => 'payments', 'scope' => ['partner_kind' => 'supplier'], 'dated' => true, 'lines' => false, 'exercised' => true],
+        // agent 1.0.8 : la caisse, entrees (C008) et sorties (C002) ; la cloture (CLOTURE1) ne la vide pas
+        'cash_in' => ['table' => 'cash_entries', 'scope' => ['direction' => 'in'], 'dated' => true, 'lines' => false, 'exercised' => false],
+        'cash_out' => ['table' => 'cash_entries', 'scope' => ['direction' => 'out'], 'dated' => true, 'lines' => false, 'exercised' => false],
     ];
 
     /** Empreinte d'une ligne : 48 bits (12 chiffres hexadecimaux d'un SHA-1), la somme d'un groupe tient dans 64 bits. */
     public const DIGEST_MAX = 281474976710655;
 
-    /** @return array{table: string, scope: array<string, string>, dated: bool, lines: bool}|null */
+    /** @return array{table: string, scope: array<string, string>, dated: bool, lines: bool, exercised: bool}|null */
     public static function get(string $name): ?array
     {
         return self::ALL[$name] ?? null;

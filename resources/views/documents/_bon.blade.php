@@ -16,7 +16,9 @@
         <p class="bon-kind">{{ $D['bon'][$kind] }}</p>
         <h1 class="bon-number" id="bon-number">{{ $document->number }}</h1>
         <p class="bon-when">{{ $day['name'] }} <span class="num">{{ $day['date'] }}@if ($document->time) — {{ substr($document->time, 0, 5) }}@endif</span></p>
-        <p class="bon-branch"><span class="bdot" style="--bh: {{ $branch->hue() }}"></span> {{ $branch->name }}</p>
+        <p class="bon-branch"><span class="bdot" style="--bh: {{ $branch->hue() }}"></span> {{ $branch->name }}
+            {{-- un bon d'un exercice clos (ouvert par un lien du rapprochement, ou exercice ouvert dans le menu) --}}
+            @if ($document->exercise_id)<span class="pill">{{ __('exercises.pill', ['name' => $document->exercise?->name ?? '#'.$document->exercise_id]) }}</span>@endif</p>
         @if ($returns > 0)
             <div class="bon-flags"><span class="pill">{{ trans_choice('documents.return_lines', $returns, ['count' => $returns]) }}</span></div>
         @endif

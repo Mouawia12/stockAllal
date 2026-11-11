@@ -15,4 +15,6 @@ Route::middleware(['throttle:agent', 'agent'])->prefix('agent')->group(function 
     // agent 1.0.7 : ventes, achats, clients, fournisseurs, versements (agent/README.md)
     Route::post('digest', [AgentController::class, 'digest']);
     Route::post('records', [AgentController::class, 'records']);
+    // agent 1.0.11 : une base archivee de Gescomm (un exercice clos), puis son contenu par digest / records + exercise_id
+    Route::post('archive', [AgentController::class, 'archive']);
 });

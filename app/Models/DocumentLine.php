@@ -2,10 +2,13 @@
 
 namespace App\Models;
 
+use App\Models\Scopes\ExerciseScope;
+use Illuminate\Database\Eloquent\Attributes\ScopedBy;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
-/** Ligne d'un document ; branch_id, kind et date copies de l'en-tete pour la page d'un article. */
+/** Ligne d'un document ; branch_id, kind, date et exercice copies de l'en-tete pour la page d'un article. */
+#[ScopedBy([ExerciseScope::class])]
 class DocumentLine extends Model
 {
     public $timestamps = false;
@@ -27,6 +30,6 @@ class DocumentLine extends Model
 
     public function document(): BelongsTo
     {
-        return $this->belongsTo(Document::class);
+        return $this->belongsTo(Document::class)->withoutGlobalScope(ExerciseScope::class);
     }
 }

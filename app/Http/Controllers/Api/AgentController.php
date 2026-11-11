@@ -7,6 +7,7 @@ use App\Models\Branch;
 use App\Models\BranchAccess;
 use App\Models\BranchStock;
 use App\Models\BranchTask;
+use App\Models\Exercise;
 use App\Models\InstallCode;
 use App\Models\RefreshJob;
 use App\Models\User;
@@ -250,13 +251,92 @@ class AgentController extends Controller
         if (! is_array($groups) || ($groups === [] && ! $set['dated'])) {
             return $this->refuse($branch, $name, 'groups manquant ou vide');
         }
+        $exercise = $this->exerciseOf($request, $branch, $set);
+        if ($exercise === null) {
+            return $this->refuse($branch, $name, 'invalid_exercise');
+        }
 
-        $send = DatasetSync::differing($branch, $set, $groups, $from, $to);
-        if ($send === []) {
+        $send = DatasetSync::differing($branch, $set, $groups, $from, $to, $exercise);
+        if ($send === [] && $exercise === 0) {
             BranchTask::ok($branch, $name);
         }
 
         return response()->json(['send' => $send, 'page_rows' => DatasetSync::PAGE_ROWS]);
+    }
+
+    /**
+     * Agent 1.0.11 : une base archivee de Gescomm (LaBaseN<nom>.ib), lue sur une copie : sa marque, ses dates, combien de
+     * bons et de versements. Reponse : l'exercice ou envoyer son contenu (digest / records avec exercise_id), ou skip
+     * (vide, copie de la base en cours, ou "wait" : la base en cours n'a pas encore donne sa marque). done : tout est passe.
+     */
+    public function archive(Request $request): JsonResponse
+    {
+        $branch = $this->branch($request);
+        $data = $request->validate([
+            'file' => ['required', 'string', 'max:120'],
+            'opened_on' => ['nullable', 'date_format:Y-m-d'],
+            'label' => ['nullable', 'string', 'max:40'],
+            'first_day' => ['nullable', 'date_format:Y-m-d'],
+            'last_day' => ['nullable', 'date_format:Y-m-d'],
+            'counts' => ['nullable', 'array'],
+            'counts.*' => ['integer', 'min:0'],
+            'done' => ['nullable', 'boolean'],
+            'exercise_id' => ['nullable', 'integer'],
+        ]);
+        if ($request->boolean('done')) {
+            $exercise = Exercise::where('branch_id', $branch->id)->where('current', false)->find($data['exercise_id'] ?? 0);
+            $exercise?->update(['synced_at' => now()]);
+
+            return response()->json(['ok' => $exercise !== null]);
+        }
+
+        $counts = [];
+        foreach (Exercise::SETS as $set) {
+            $counts[$set] = (int) ($data['counts'][$set] ?? 0);
+        }
+        [$exercise, $skip] = Exercise::forArchive($branch, [
+            'file' => basename(str_replace('\\', '/', $data['file'])),
+            'opened_on' => $data['opened_on'] ?? null,
+            'label' => isset($data['label']) && trim($data['label']) !== '' ? trim($data['label']) : null,
+            'first_day' => $data['first_day'] ?? null,
+            'last_day' => $data['last_day'] ?? $data['first_day'] ?? null,
+            'counts' => $counts,
+        ]);
+
+        return response()->json($exercise ? ['exercise_id' => $exercise->id, 'name' => $exercise->name] : ['skip' => $skip]);
+    }
+
+    /**
+     * L'exercice d'un envoi : exercise_id = une base archivee (un exercice clos de cette branche) ; sans lui, la base en
+     * cours (0), dont la marque (exercise : opened_on, label, first_day) dit si Gescomm a cloture depuis (Exercise::forLive).
+     * null : exercice inconnu.
+     */
+    private function exerciseOf(Request $request, Branch $branch, array $set): ?int
+    {
+        $id = $request->input('exercise_id');
+        if ($id !== null) {
+            $ok = $set['exercised'] && is_numeric($id)
+                && Exercise::where('branch_id', $branch->id)->where('current', false)->whereKey((int) $id)->exists();
+
+            return $ok ? (int) $id : null;
+        }
+        if ($set['exercised']) {
+            Exercise::forLive($branch, $this->mark($request->input('exercise')));
+        }
+
+        return 0;
+    }
+
+    /** @return array{opened_on: ?string, label: ?string, first_day: ?string}|null la marque de la base en cours */
+    private function mark(mixed $mark): ?array
+    {
+        if (! is_array($mark)) {
+            return null;
+        }
+        $day = fn ($v) => is_string($v) && preg_match('/^\d{4}-\d{2}-\d{2}$/', $v) && strtotime($v) !== false ? $v : null;
+        $label = is_scalar($mark['label'] ?? null) ? mb_substr(trim((string) $mark['label']), 0, 40) : '';
+
+        return ['opened_on' => $day($mark['opened_on'] ?? null), 'label' => $label === '' ? null : $label, 'first_day' => $day($mark['first_day'] ?? null)];
     }
 
     /** Agent 1.0.7 : les groupes demandes par digest, complets ; chacun remplace le groupe du serveur. */
@@ -280,9 +360,15 @@ class AgentController extends Controller
         if (DatasetSync::rowCount($groups) > DatasetSync::MAX_ROWS) {
             return $this->refuse($branch, $name, 'too_many_rows', ['max_rows' => DatasetSync::MAX_ROWS]);
         }
+        $exercise = $this->exerciseOf($request, $branch, $set);
+        if ($exercise === null) {
+            return $this->refuse($branch, $name, 'invalid_exercise');
+        }
 
-        $result = DatasetSync::store($branch, $set, $groups);
-        BranchTask::ok($branch, $name);
+        $result = DatasetSync::store($branch, $set, $groups, $exercise);
+        if ($exercise === 0) {
+            BranchTask::ok($branch, $name);
+        }
 
         return response()->json(['ok' => true] + $result);
     }

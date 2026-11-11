@@ -10,6 +10,7 @@ use App\Http\Controllers\BranchScopeController;
 use App\Http\Controllers\CashController;
 use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\DocumentController;
+use App\Http\Controllers\ExerciseController;
 use App\Http\Controllers\HomeController;
 use App\Http\Controllers\LocaleController;
 use App\Http\Controllers\MergeAiController;
@@ -51,6 +52,8 @@ Route::middleware('auth')->group(function () {
     Route::get('palette', [StockController::class, 'palette'])->name('palette')->middleware('throttle:search');
     // selecteur de branche de la barre du haut (App\Support\BranchScope) ; un POST comme les boutons de langue
     Route::post('branch-scope', BranchScopeController::class)->name('branch-scope');
+    // un exercice clos de Gescomm (agent 1.0.11), ou retour a celui en cours
+    Route::post('exercise', ExerciseController::class)->name('exercise');
     Route::post('refresh', [StockController::class, 'refresh'])->name('stock.refresh')->middleware(['can:stock.refresh', 'throttle:refresh']);
 
     // bons de vente et d'achat, clients et fournisseurs (agent 1.0.7) : seulement les branches dont le compte voit les ventes (BranchScope::salesIds)

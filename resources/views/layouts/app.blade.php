@@ -83,6 +83,10 @@
         .pill.bad { background: var(--bad-bg); color: var(--bad); }
         .flash { padding: 10px 14px; border-radius: 8px; margin-bottom: 14px; background: var(--ok-bg); color: var(--ok); }
         .errors { padding: 10px 14px; border-radius: 8px; margin-bottom: 14px; background: var(--bad-bg); color: var(--bad); }
+        /* un exercice clos ouvert : la couleur de l'accent (ni rouge ni jaune, couleurs du stock) */
+        .exercise-banner { display: flex; align-items: center; justify-content: space-between; gap: 10px 16px; flex-wrap: wrap; padding: 10px 14px;
+            border-radius: 8px; margin-bottom: 14px; background: var(--accent-soft); color: var(--accent); border: 1px solid var(--accent); font-weight: 600; }
+        .exercise-banner button { border-color: var(--accent); color: var(--accent); background: var(--card); font-weight: 600; }
         .print-btn { display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; }
         .print-btn svg { width: 17px; height: 17px; flex: none; }
         /* Ctrl+P sur n'importe quelle page : le contenu seul (les documents ont leur propre page, layouts/print) */
@@ -156,6 +160,7 @@
             @endif
         </nav>
         <div class="tools">
+            @include('partials.exercise-switch')
             @include('partials.branch-switch')
             <button type="button" class="icon-btn palette-open" data-palette data-key="Ctrl+K F3" data-key-fallback title="{{ __('common.palette.title') }} (Ctrl+K)" aria-label="{{ __('common.palette.title') }}">
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/></svg>
@@ -165,6 +170,15 @@
     </div>
 </header>
 <main>
+    {{-- un exercice clos ouvert (App\Http\Middleware\ViewExercise) : toutes les pages le montrent, on le dit partout --}}
+    @isset($viewingExercise)
+        <form class="exercise-banner" method="post" action="{{ route('exercise') }}">
+            @csrf
+            <span>{{ __('exercises.banner', ['name' => $viewingExercise->name ?? '#'.$viewingExercise->id, 'branch' => $viewingExercise->branch->name,
+                'from' => $viewingExercise->first_day?->format('d/m/Y') ?? '…', 'to' => $viewingExercise->last_day?->format('d/m/Y') ?? '…']) }}</span>
+            <button type="submit" name="exercise_id" value="">{{ __('exercises.back') }}</button>
+        </form>
+    @endisset
     @if (session('weak_password'))
         <div class="errors">{!! __('common.weak_password', ['link' => '<a href="'.route('account.edit').'">'.e(__('common.account')).'</a>']) !!}</div>
     @endif

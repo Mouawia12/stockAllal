@@ -7,8 +7,10 @@ use App\Models\BranchStock;
 use App\Models\BranchTask;
 use App\Models\Document;
 use App\Models\DocumentLine;
+use App\Models\Exercise;
 use App\Models\Partner;
 use App\Models\Payment;
+use App\Models\Scopes\ExerciseScope;
 use App\Support\BranchScope;
 use App\Support\Highlight;
 use App\Support\PartnerInsights;
@@ -725,7 +727,9 @@ class PartnerController extends Controller
      * 15. Toujours tout l'historique (l'agent l'envoie en entier chaque nuit), quelle que soit la periode de la fiche ;
      * a jour de la derniere synchro des bons et des versements de la branche.
      *
-     * @return array{value: float, billed: float, paid: float, as_of: ?Carbon}
+     * Un exercice clos ouvert (menu "السنة المالية") : son solde a la cloture, comme en ouvrant sa base dans Gescomm.
+     *
+     * @return array{value: float, billed: float, paid: float, as_of: ?Carbon, closed: ?string}
      */
     private function balance(Partner $partner, string $kind, Branch $branch): array
     {
@@ -733,13 +737,15 @@ class PartnerController extends Controller
         $paid = round((float) $this->partnerPayments($partner, $kind, null)->sum('amount'), 2);
         $tasks = $kind === 'customer' ? ['sales', 'customer_payments'] : ['purchases', 'supplier_payments'];
         $synced = BranchTask::where('branch_id', $branch->id)->whereIn('task', $tasks)->pluck('last_ok_at')->filter();
+        $closed = ExerciseScope::$viewing ? Exercise::find(ExerciseScope::$viewing) : null;
 
         return [
             'value' => round($billed - $paid, 2),
             'billed' => $billed,
             'paid' => $paid,
             // le plus ancien des deux : les bons et les versements sont tous arrives jusque-la
-            'as_of' => $synced->count() === count($tasks) ? $synced->min() : $branch->last_sync_at,
+            'as_of' => $closed ? null : ($synced->count() === count($tasks) ? $synced->min() : $branch->last_sync_at),
+            'closed' => $closed ? ($closed->name ?? '#'.$closed->id) : null,
         ];
     }
 
