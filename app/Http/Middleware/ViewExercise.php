@@ -2,6 +2,7 @@
 
 namespace App\Http\Middleware;
 
+use App\Models\Document;
 use App\Models\Exercise;
 use App\Models\Scopes\ExerciseScope;
 use Closure;
@@ -21,6 +22,7 @@ class ViewExercise
     public function handle(Request $request, Closure $next): Response
     {
         ExerciseScope::$viewing = 0;
+        ExerciseScope::$asOf = null;
         View::share('viewingExercise', null);
         $id = $request->hasSession() ? $request->session()->get(self::KEY) : null;
         if ($id !== null) {
@@ -29,6 +31,7 @@ class ViewExercise
                 $request->session()->forget(self::KEY);
             } else {
                 ExerciseScope::$viewing = $exercise->id;
+                ExerciseScope::$asOf = self::lastDay($exercise);
                 View::share('viewingExercise', $exercise);
             }
         }
@@ -40,6 +43,21 @@ class ViewExercise
     public function terminate(Request $request, Response $response): void
     {
         ExerciseScope::$viewing = 0;
+        ExerciseScope::$asOf = null;
+    }
+
+    /**
+     * Le dernier jour de bons d'un exercice clos : l'"aujourd'hui" de ses pages (ExerciseScope::now). Sans bon : son
+     * dernier jour connu ; jamais apres la vraie date (un bon date par erreur dans le futur).
+     */
+    private static function lastDay(Exercise $exercise): ?string
+    {
+        $today = now()->toDateString();
+        $day = Document::withoutGlobalScope(ExerciseScope::class)->where('branch_id', $exercise->branch_id)
+            ->where('exercise_id', $exercise->id)->where('date', '<=', $today)->max('date');
+        $day = $day ? substr((string) $day, 0, 10) : $exercise->last_day?->toDateString();
+
+        return $day === null ? null : min($day, $today);
     }
 
     /** Un exercice clos dont le compte voit les ventes de la branche (active). */

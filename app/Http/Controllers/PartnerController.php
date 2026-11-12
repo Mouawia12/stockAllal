@@ -143,7 +143,7 @@ class PartnerController extends Controller
         $period = (string) $request->query('period', '365');
         $period = array_key_exists($period, self::LIST_PERIODS) ? $period : '365';
         $days = self::LIST_PERIODS[$period];
-        $since = $days === null ? null : now()->subDays($days - 1)->toDateString();
+        $since = $days === null ? null : ExerciseScope::now()->subDays($days - 1)->toDateString();
         $filter = in_array($request->query('f'), self::FILTERS, true) ? $request->query('f') : 'all';
         $q = trim(mb_substr((string) $request->query('q', ''), 0, 60));
         $docKind = self::DOCUMENT_KIND[$kind];
@@ -716,7 +716,7 @@ class PartnerController extends Controller
     {
         $days = ProductActivity::PERIODS[$period];
 
-        return $days === null ? null : now()->subDays($days - 1)->toDateString();
+        return $days === null ? null : ExerciseScope::now()->subDays($days - 1)->toDateString();
     }
 
     /**

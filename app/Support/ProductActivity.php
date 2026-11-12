@@ -6,6 +6,7 @@ use App\Http\Controllers\DocumentController;
 use App\Http\Controllers\PartnerController;
 use App\Models\Branch;
 use App\Models\DocumentLine;
+use App\Models\Scopes\ExerciseScope;
 use App\Models\User;
 use Illuminate\Support\Collection;
 
@@ -42,7 +43,7 @@ final class ProductActivity
         $ready = $branches->filter(fn (Branch $b) => $b->agentSupports('documents'))->values();
         $period = array_key_exists($period, self::PERIODS) ? $period : 'all';
         $days = self::PERIODS[$period];
-        $since = $window === null ? ($days === null ? null : now()->subDays($days - 1)->toDateString()) : $window['from'];
+        $since = $window === null ? ($days === null ? null : ExerciseScope::now()->subDays($days - 1)->toDateString()) : $window['from'];
         $until = $window['to'] ?? null;
         $sale = $user->can('prices.sale');
         $buy = $user->can('prices.buy');

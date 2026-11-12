@@ -227,7 +227,8 @@
         'json' => route('dashboard.calendar'),
         'rank' => $rank === 'qty' && $money ? 'qty' : null,
         'month' => $date['month'],
-        'today' => now()->toDateString(),
+        // un exercice clos ouvert : son dernier jour (App\Models\Scopes\ExerciseScope::now)
+        'today' => App\Models\Scopes\ExerciseScope::now()->toDateString(),
         // ce qui est choisi : un jour (from = to) ou des jours ; rien pour 7, 30 jours ou 12 mois
         'chosen' => in_array($kind, ['today', 'day', 'range'], true) ? ['from' => $window['from'], 'to' => $window['to']] : null,
         'mode' => $kind === 'range' ? 'range' : 'day',

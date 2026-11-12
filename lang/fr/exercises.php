@@ -6,7 +6,7 @@ return [
     'current' => 'Exercice en cours',
     'current_help' => 'ce que l’agent lit dans Gescomm',
     'closed' => 'Exercices clôturés',
-    'banner' => 'Vous consultez l’exercice clôturé « :name » de :branch (:from → :to). Toutes les pages le montrent, comme si vous ouvriez sa base dans Gescomm.',
+    'banner' => 'Vous consultez l’exercice clôturé « :name » de :branch (:from → :to). Toutes les pages le montrent, comme si vous ouvriez sa base dans Gescomm ; « 30 derniers jours » et les autres périodes se comptent jusqu’à son dernier jour.',
     'back' => 'Revenir à l’exercice en cours',
     'pill' => 'Exercice :name',
     'balance_closed' => 'à la clôture de l’exercice :name',

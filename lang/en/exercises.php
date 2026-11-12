@@ -6,7 +6,7 @@ return [
     'current' => 'Current year',
     'current_help' => 'what the agent reads in Gescomm now',
     'closed' => 'Closed years',
-    'banner' => 'You are viewing the closed year “:name” of :branch (:from → :to). Every page shows it, as if you opened its file in Gescomm.',
+    'banner' => 'You are viewing the closed year “:name” of :branch (:from → :to). Every page shows it, as if you opened its file in Gescomm; “last 30 days” and the other periods count back from its last day.',
     'back' => 'Back to the current year',
     'pill' => 'Year :name',
     'balance_closed' => 'at the closing of year :name',

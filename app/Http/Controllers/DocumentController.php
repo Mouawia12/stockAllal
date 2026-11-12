@@ -7,6 +7,7 @@ use App\Models\BranchStock;
 use App\Models\Document;
 use App\Models\DocumentLine;
 use App\Models\Partner;
+use App\Models\Scopes\ExerciseScope;
 use App\Support\BranchScope;
 use App\Support\Highlight;
 use App\Support\PrintPeriod;
@@ -91,7 +92,8 @@ class DocumentController extends Controller
         $period = (string) $request->query('period', '30');
         $period = array_key_exists($period, self::PERIODS) ? $period : '30';
         $days = self::PERIODS[$period];
-        $since = $days === null ? null : now()->subDays($days - 1)->toDateString();
+        // un exercice clos ouvert : les jours se comptent depuis son dernier jour (ExerciseScope::now)
+        $since = $days === null ? null : ExerciseScope::now()->subDays($days - 1)->toDateString();
         $filter = in_array($request->query('f'), self::FILTERS, true) ? $request->query('f') : 'all';
         $q = trim(mb_substr((string) $request->query('q', ''), 0, 60));
         $base = fn (string $f) => $this->filtered($kind, $ids, $since, $q, $f);

@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Models\Branch;
+use App\Models\Scopes\ExerciseScope;
 use App\Support\BranchScope;
 use App\Support\CashBox;
 use App\Support\SalesDashboard;
@@ -35,9 +36,9 @@ class DashboardController extends Controller
         $branches = Branch::where('active', true)->among(BranchScope::salesIds($request))->orderBy('name')->get();
         // un agent d'avant 1.0.7 n'envoie pas les ventes : sa branche est nommee, jamais comptee comme "zero vente"
         $ready = $branches->filter(fn (Branch $b) => $b->agentSupports('documents'))->values();
-        $period = SalesDashboard::period($request->query(), now());
+        $period = SalesDashboard::period($request->query(), ExerciseScope::now());
         $kind = SalesDashboard::kind($period);
-        $window = SalesDashboard::window($period, now());
+        $window = SalesDashboard::window($period, ExerciseScope::now());
         $rank = $sale && $request->query('rank') !== 'qty' ? 'amount' : 'qty';
         $rankQuery = $rank === 'qty' && $sale ? 'qty' : null;
 
@@ -177,7 +178,7 @@ class DashboardController extends Controller
     public function calendar(Request $request): JsonResponse
     {
         $user = $request->user();
-        $today = now()->startOfDay();
+        $today = ExerciseScope::now()->startOfDay();
         $asked = $request->query('month');
         $month = is_string($asked) && preg_match('/^\d{4}-(0[1-9]|1[0-2])$/', $asked) ? Carbon::parse($asked.'-01') : $today->copy()->startOfMonth();
         if ($month->gt($today)) {
@@ -234,7 +235,7 @@ class DashboardController extends Controller
     private function dateNav(string $kind, array $w, ?string $rank): array
     {
         $locale = app()->getLocale();
-        $today = now()->startOfDay();
+        $today = ExerciseScope::now()->startOfDay();
         $url = fn (array $q) => route('dashboard.index', array_filter($q + ['rank' => $rank]));
         // l'annee seulement quand ce n'est pas celle-ci
         $short = fn (Carbon $d) => $d->format($d->year === $today->year ? 'd/m' : 'd/m/Y');
@@ -259,7 +260,7 @@ class DashboardController extends Controller
             'month' => ['from' => $today->copy()->startOfMonth()->toDateString(), 'to' => $today->toDateString()],
             'last_month' => ['from' => $lastMonth->toDateString(), 'to' => $lastMonth->copy()->endOfMonth()->toDateString()],
         ];
-        $current = SalesDashboard::period(['from' => $w['from'], 'to' => $w['to']], now());
+        $current = SalesDashboard::period(['from' => $w['from'], 'to' => $w['to']], ExerciseScope::now());
 
         return [
             'label' => $label,
@@ -269,7 +270,7 @@ class DashboardController extends Controller
             'picks' => collect($picks)->map(fn (array $q, string $key) => [
                 'label' => __('dashboard.calendar.picks.'.$key),
                 'url' => $url($q),
-                'on' => in_array($kind, ['day', 'range'], true) && SalesDashboard::period($q, now()) === $current,
+                'on' => in_array($kind, ['day', 'range'], true) && SalesDashboard::period($q, ExerciseScope::now()) === $current,
             ])->values()->all(),
         ];
     }
@@ -285,7 +286,7 @@ class DashboardController extends Controller
     {
         $ready = $branches->filter(fn (Branch $b) => $b->agentSupports('cash'))->values();
         $figures = $ready->isEmpty() ? [] : CashBox::figures($ready->pluck('id')->all(), $w['from'], $w['to']);
-        $today = now()->toDateString();
+        $today = ExerciseScope::now()->toDateString();
         $rows = $ready->map(function (Branch $b) use ($figures, $today) {
             $f = $figures[$b->id];
             $last = $f['last'] ? Carbon::parse($f['last']) : null;

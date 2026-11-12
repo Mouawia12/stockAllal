@@ -2,6 +2,7 @@
 
 namespace App\Support;
 
+use App\Models\Scopes\ExerciseScope;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
 
@@ -25,14 +26,14 @@ final class PrintPeriod
         $key = (string) $request->query('period', $default);
         $days = $presets[array_key_exists($key, $presets) ? $key : $default];
 
-        return ['from' => $days === null ? null : now()->subDays($days - 1)->toDateString(), 'to' => null];
+        return ['from' => $days === null ? null : ExerciseScope::now()->subDays($days - 1)->toDateString(), 'to' => null];
     }
 
     /** @param array{from: ?string, to: ?string} $window */
     public static function label(array $window): string
     {
         $show = fn (string $day) => Carbon::parse($day)->format('d/m/Y');
-        $today = now()->toDateString();
+        $today = ExerciseScope::now()->toDateString();
         $to = $window['to'] === null || $window['to'] > $today ? $today : $window['to'];
 
         return match (true) {

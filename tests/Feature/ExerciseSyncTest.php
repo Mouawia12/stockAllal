@@ -205,6 +205,25 @@ class ExerciseSyncTest extends TestCase
             ->assertSee(__('exercises.back'))->assertSee('07/02/2026 → 22/06/2026', false);
         $this->actingAs($user)->get($benali)->assertSee('<span class="wb-value">700,00</span>', false)
             ->assertSee(__('exercises.balance_closed', ['name' => '20263']));
+        // les periodes se comptent depuis son dernier jour de bons (01/03/2026), pas depuis aujourd'hui : "30 jours"
+        // par defaut dans les bons, un an dans les clients, le tableau de bord, montrent ses donnees (stockallal,
+        // 12/11/2026 : un exercice clos ouvert ne montrait rien)
+        $this->actingAs($user)->get('/sales')->assertOk()->assertSee('700,00');
+        $this->actingAs($user)->get('/sales?period=1')->assertOk()->assertSee('700,00');
+        $this->actingAs($user)->get('/customers')->assertOk()->assertSee('Ets Benali')->assertSee('700,00');
+        $this->actingAs($user)->get(route('customers.print-card', ['partner' => Partner::where('code', 'C001')->sole(), 'period' => '30']))
+            ->assertOk()->assertSee('700,00');
+        $boss = User::factory()->admin()->create();
+        $this->actingAs($boss)->post(route('exercise'), ['exercise_id' => $id]);
+        // le tableau de bord : son "aujourd'hui" est le 01/03/2026, avec la vente de 700 (ecrite sans decimales)
+        $sold = fn (string $url) => (bool) preg_match('/\b700\b/', strip_tags(preg_replace('#<(style|script)\b.*?</\1>#s', '',
+            $this->actingAs($boss)->get($url)->assertOk()->getContent())));
+        $this->assertTrue($sold('/dashboard'), '30 days back from its last day');
+        $this->assertTrue($sold('/dashboard?period=today'), 'its last day');
+        $this->actingAs($boss)->getJson(route('dashboard.calendar'))->assertOk()->assertJson(['today' => '2026-03-01']);
+        $this->actingAs($boss)->post(route('exercise'), ['exercise_id' => null]);
+        $this->actingAs($boss)->getJson(route('dashboard.calendar'))->assertOk()->assertJson(['today' => now()->toDateString()]);
+        $this->assertFalse($sold('/dashboard?day=2026-03-01'), 'the current year has no bon that day');
 
         // retour a l'exercice en cours
         $this->actingAs($user)->post(route('exercise'), ['exercise_id' => null])->assertSessionMissing('exercise');

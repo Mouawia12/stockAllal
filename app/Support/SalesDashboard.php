@@ -8,6 +8,7 @@ use App\Models\Document;
 use App\Models\DocumentLine;
 use App\Models\Partner;
 use App\Models\ProductGroup;
+use App\Models\Scopes\ExerciseScope;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Cache;
@@ -49,7 +50,7 @@ final class SalesDashboard
     {
         sort($ids);
 
-        return Cache::remember('sales-dashboard:'.implode(',', $ids).':'.$period, self::CACHE_SECONDS, fn () => self::compute($ids, $period, now()));
+        return Cache::remember('sales-dashboard:'.implode(',', $ids).':'.$period.ExerciseScope::cacheKey(), self::CACHE_SECONDS, fn () => self::compute($ids, $period, ExerciseScope::now()));
     }
 
     /**
@@ -381,7 +382,7 @@ final class SalesDashboard
     {
         sort($ids);
 
-        return Cache::remember('sales-days:'.implode(',', $ids).':'.$from.':'.$to, self::CACHE_SECONDS, fn () => Document::query()
+        return Cache::remember('sales-days:'.implode(',', $ids).':'.$from.':'.$to.ExerciseScope::cacheKey(), self::CACHE_SECONDS, fn () => Document::query()
             ->where('kind', 'sale')->whereIn('branch_id', $ids)->whereBetween('date', [$from, $to])
             ->groupBy('date')->selectRaw('date as d, COUNT(*) as bons, SUM(amount) as amount')->get()
             ->mapWithKeys(fn ($r) => [substr((string) $r->d, 0, 10) => ['amount' => round((float) $r->amount, 2), 'bons' => (int) $r->bons]])
@@ -393,7 +394,7 @@ final class SalesDashboard
     {
         sort($ids);
 
-        return Cache::remember('sales-first-day:'.implode(',', $ids), self::CACHE_SECONDS, function () use ($ids) {
+        return Cache::remember('sales-first-day:'.implode(',', $ids).ExerciseScope::cacheKey(), self::CACHE_SECONDS, function () use ($ids) {
             $first = Document::query()->where('kind', 'sale')->whereIn('branch_id', $ids)->min('date');
 
             return $first === null ? null : substr((string) $first, 0, 10);

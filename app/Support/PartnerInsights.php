@@ -8,6 +8,7 @@ use App\Models\Document;
 use App\Models\DocumentLine;
 use App\Models\Partner;
 use App\Models\Payment;
+use App\Models\Scopes\ExerciseScope;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Cache;
@@ -64,7 +65,7 @@ final class PartnerInsights
      */
     public static function for(Partner $partner, bool $money, bool $margin, ?Carbon $now = null): array
     {
-        $now ??= now();
+        $now ??= ExerciseScope::now();
         $locale = app()->getLocale();
         $today = $now->toDateString();
         $from = $now->copy()->startOfMonth()->subMonthsNoOverflow(self::MONTHS - 1)->toDateString();
@@ -177,7 +178,7 @@ final class PartnerInsights
     /** Ce que la comparaison a besoin de savoir sur tous ceux de la branche qui ont un bon depuis $from. */
     private static function standing(int $branchId, string $docKind, string $from, string $today, Carbon $now): array
     {
-        return Cache::remember("partner-standing:{$branchId}:{$docKind}:{$from}:{$today}", self::CACHE_SECONDS, function () use ($branchId, $docKind, $from, $now) {
+        return Cache::remember("partner-standing:{$branchId}:{$docKind}:{$from}:{$today}".ExerciseScope::cacheKey(), self::CACHE_SECONDS, function () use ($branchId, $docKind, $from, $now) {
             $rows = Document::query()->where('branch_id', $branchId)->where('kind', $docKind)->where('date', '>=', $from)
                 ->whereNotNull('partner_code')->where('partner_code', '!=', '')->groupBy('partner_code')
                 ->selectRaw('partner_code as code, COUNT(*) as bons, SUM(amount) as amount, MAX(date) as last_date, COUNT(DISTINCT SUBSTR(date, 1, 7)) as months')

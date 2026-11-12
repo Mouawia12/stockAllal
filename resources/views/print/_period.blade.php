@@ -4,6 +4,6 @@
         @if (is_string($value))<input type="hidden" name="{{ $name }}" value="{{ $value }}">@endif
     @endforeach
     <label>{{ __('print.from') }} <input type="date" name="from" value="{{ $window['from'] }}"></label>
-    <label>{{ __('print.to') }} <input type="date" name="to" value="{{ $window['to'] ?? now()->toDateString() }}"></label>
+    <label>{{ __('print.to') }} <input type="date" name="to" value="{{ $window['to'] ?? App\Models\Scopes\ExerciseScope::now()->toDateString() }}"></label>
     <button type="submit">{{ __('print.apply') }}</button>
 </form>
