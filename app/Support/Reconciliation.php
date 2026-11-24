@@ -29,11 +29,17 @@ use LogicException;
  *   codes    : le meme article sous deux codes (ecrit pareil 820-AC / 820AC, meme designation, ou deduit de bons
  *              identiques a un code pres), jamais une paire dite "ليست نفس الصنف" ; puis les paires de bons par
  *              articles, montant et date (31 jours), jamais par le numero.
- *   deep     : un bon saisi en deux ou trois bons de l'autre cote ; un bon identique saisi jusqu'a 4 mois plus tard ;
- *              un bon saisi deux fois du meme cote.
+ *   deep     : deux bons restes du meme montant exact (aucun article commun : "by amount", a verifier) ; un bon saisi en
+ *              deux ou trois bons de l'autre cote ; un bon identique saisi jusqu'a 4 mois plus tard ; un bon saisi deux
+ *              fois du meme cote.
  *   others   : un bon sans pendant chez ce partenaire, retrouve de l'autre cote sous un AUTRE client ou fournisseur.
- *   payments : les versements (soldes initiaux, meme montant, faute de frappe), ceux retrouves sous un autre
- *              partenaire (peut-etre), puis le rapport et le mois ou l'ecart est apparu.
+ *   payments : les versements (matchPayments : soldes initiaux, meme montant, un versement = plusieurs de l'autre cote, la
+ *              meme somme sur les memes jours, saisi puis annule du meme cote, faute de frappe, meme montant bien plus
+ *              tard) ; puis ce qui reste des deux sortes : un bon et son retour integral du meme cote, un bon et son
+ *              versement d'un seul cote, un versement contre un bon du montant oppose ; un versement saisi deux fois le
+ *              meme jour, ou retrouve sous un autre partenaire (peut-etre) ; enfin le rapport et le mois ou l'ecart est apparu.
+ * Ce qui concorde autrement qu'un pour un n'est pas un probleme : "pay_groups" (versements scindes ou regroupes) et
+ * "cancelled" (saisi puis annule du meme cote) sont dans le rapport pour qu'on puisse les relire, sans effet.
  * Chaque probleme a son effet sur (solde A - solde B) : la somme des effets redonne exactement l'ecart. Solde =
  * bons - versements, tous types, "Autre" avec son signe ; le solde initial est un versement "Autre" negatif
  * "Solde Initial ..." (agent/tools/check-balances.ps1, 04/11/2026). L'IA (ReconciliationChat) explique ce rapport.
@@ -66,6 +72,26 @@ final class Reconciliation
 
     /** Autour de la periode : des bons lus pour trouver un pendant, jamais comptes (un bon saisi 4 mois plus tard). */
     private const MARGIN_DAYS = self::LATE_DAYS;
+
+    /**
+     * Un versement saisi en plusieurs fois de l'autre cote : au plus ce nombre de parts, chacune a SPLIT_DAYS jours au plus
+     * du versement entier, cherchees parmi les SPLIT_NEAR plus proches. Pas tout le mois : avec des montants ronds, une
+     * somme egale par hasard devient trop facile (payTotals, lui, prend tous les versements d'une fenetre).
+     */
+    private const SPLIT_PARTS = 4;
+
+    private const SPLIT_DAYS = 10;
+
+    private const SPLIT_NEAR = 20;
+
+    /** Une faute de frappe dans un montant (chiffres inverses, un chiffre faux, en trop ou en moins) : a ce nombre de jours. */
+    private const SLIP_DAYS = 3;
+
+    /** Un bon et son versement saisis d'un seul cote : le versement a ce nombre de jours du bon (31 s'il porte son numero). */
+    private const SETTLE_DAYS = 7;
+
+    /** Un versement d'un cote, un bon du montant oppose de l'autre (un retour saisi de deux facons). */
+    private const CROSS_DAYS = 15;
 
     private int $customerId;
 
@@ -114,6 +140,9 @@ final class Reconciliation
 
     /** @var array<string, true> "i:j" : paire trouvee au-dela de 31 jours */
     private array $late = [];
+
+    /** @var array<string, true> "i:j" : paire trouvee par le montant seul (aucun article commun) */
+    private array $byAmount = [];
 
     private array $dups = ['a' => [], 'b' => []];
 
@@ -221,10 +250,12 @@ final class Reconciliation
         'missing_b' => ['bon_missing_b'],
         'missing_a' => ['bon_missing_a'],
         'elsewhere' => ['bon_elsewhere_b', 'bon_elsewhere_a', 'pay_elsewhere_b', 'pay_elsewhere_a'],
-        'duplicate' => ['bon_duplicate_a', 'bon_duplicate_b'],
+        'duplicate' => ['bon_duplicate_a', 'bon_duplicate_b', 'pay_duplicate_a', 'pay_duplicate_b'],
         'amount' => ['bon_amount', 'bon_split'],
-        'payments' => ['pay_missing_b', 'pay_missing_a', 'pay_amount'],
+        'payments' => ['pay_missing_b', 'pay_missing_a', 'pay_amount', 'pay_late'],
         'opening' => ['opening'],
+        // un bon et son versement d'un seul cote, un versement contre un bon : ils s'annulent, le solde n'y perd rien
+        'offset' => ['settled_a', 'settled_b', 'pay_vs_bon'],
         'boundary' => ['bon_boundary', 'pay_boundary'],
         'lines' => ['bon_lines'],
         'other' => [],
@@ -332,6 +363,31 @@ final class Reconciliation
 
     private function deep(): void
     {
+        // deux bons restes du meme montant exact, a moins de WINDOW_DAYS jours, quels que soient leurs articles (codes
+        // jamais appris, article saisi sous un autre) : le meme bon ("memes montants, articles differents"), pas un bon
+        // manquant de chaque cote. Avant les bons scindes : un montant egal vaut mieux qu'une somme egale.
+        $candidates = [];
+        foreach ($this->restA as $i) {
+            foreach ($this->restB as $j) {
+                $days = abs($this->b[$j]['day'] - $this->a[$i]['day']);
+                if ($days <= self::WINDOW_DAYS && ! ($this->a[$i]['ctx'] && $this->b[$j]['ctx']) && abs($this->a[$i]['amount']) >= self::CENT
+                    && abs($this->a[$i]['amount'] - $this->b[$j]['amount']) < self::CENT) {
+                    $candidates[] = [$days, $i, $j];
+                }
+            }
+        }
+        sort($candidates);
+        $usedA = $usedB = [];
+        foreach ($candidates as [, $i, $j]) {
+            if (! isset($usedA[$i]) && ! isset($usedB[$j])) {
+                $usedA[$i] = $usedB[$j] = true;
+                $this->pairs[] = [$i, $j];
+                $this->byAmount["$i:$j"] = true;
+            }
+        }
+        $this->restA = array_values(array_filter($this->restA, fn ($i) => ! isset($usedA[$i])));
+        $this->restB = array_values(array_filter($this->restB, fn ($j) => ! isset($usedB[$j])));
+
         // les bons des marges (hors periode) ne servent qu'a trouver un pendant : ni bons scindes, ni doublons, ni recherche
         // ailleurs ; une paire de deux bons des marges ne compte pas
         $ctxA = array_values(array_filter($this->restA, fn ($i) => $this->a[$i]['ctx']));
@@ -375,7 +431,8 @@ final class Reconciliation
 
         $this->dups['a'] = self::duplicates($this->a, $this->restA);
         $this->dups['b'] = self::duplicates($this->b, $this->restB);
-        $this->notes['deep'] = ['splits' => count($this->splits), 'late' => count($this->late), 'dups' => count($this->dups['a']) + count($this->dups['b'])];
+        $this->notes['deep'] = ['splits' => count($this->splits), 'late' => count($this->late), 'dups' => count($this->dups['a']) + count($this->dups['b']),
+            'by_amount' => count($this->byAmount)];
     }
 
     private function others(Partner $customer, Partner $supplier): void
@@ -413,7 +470,9 @@ final class Reconciliation
                 continue;
             }
             $problems[] = ['type' => abs($delta) < self::CENT ? 'bon_lines' : 'bon_amount', 'effect' => $delta, 'date' => $x['date'],
-                'days' => $days, 'late' => $late, 'a' => [self::bonOut($x)], 'b' => [self::bonOut($y)], 'lines' => $diffs];
+                'days' => $days, 'late' => $late, 'a' => [self::bonOut($x)], 'b' => [self::bonOut($y)], 'lines' => $diffs]
+                // trouvee par le montant seul (aucun article commun) : a verifier, c'est peut-etre un autre bon
+                + (isset($this->byAmount["$i:$j"]) ? ['by' => 'amount'] : []);
         }
         foreach ($this->splits as [$is, $js]) {
             $sumA = array_sum(array_map(fn ($i) => $this->a[$i]['amount'], $is));
@@ -421,7 +480,106 @@ final class Reconciliation
             $problems[] = ['type' => 'bon_split', 'effect' => round($sumA - $sumB, 2), 'date' => $this->a[$is[0]]['date'],
                 'a' => array_map(fn ($i) => self::bonOut($this->a[$i]), $is), 'b' => array_map(fn ($j) => self::bonOut($this->b[$j]), $js)];
         }
+
+        // ---- versements : les paires, puis ceux scindes ou regroupes, puis ceux annules du meme cote ----
+        $m = self::matchPayments($this->payA, $this->payB);
+        $paySame = $payGroups = $cancelled = [];
+        foreach ($m['pairs'] as [$i, $j, $how]) {
+            $x = $this->payA[$i];
+            $y = $this->payB[$j];
+            $delta = round($x['amount'] - $y['amount'], 2);
+            $days = $y['day'] - $x['day'];
+            if ($x['ctx'] || $y['ctx']) {
+                if (! $x['ctx'] || ! $y['ctx']) {
+                    $problems[] = ['type' => 'pay_boundary', 'effect' => $x['ctx'] ? round($y['amount'], 2) : round(-$x['amount'], 2),
+                        'date' => $x['ctx'] ? $y['date'] : $x['date'], 'days' => $days, 'outside' => $x['ctx'] ? 'a' : 'b',
+                        'a' => [self::payOut($x)], 'b' => [self::payOut($y)]];
+                }
+
+                continue;
+            }
+            if ($how === 'late') {
+                // le meme montant a plus d'un mois d'ecart : peut-etre le meme versement. Rien ne le prouve (un montant rond
+                // revient souvent) : on le montre, sans effet, plutot qu'un versement manquant de chaque cote
+                $problems[] = ['type' => 'pay_late', 'effect' => 0.0, 'date' => $x['date'], 'days' => $days, 'late' => true,
+                    'a' => [self::payOut($x)], 'b' => [self::payOut($y)]];
+
+                continue;
+            }
+            if (abs($delta) < self::CENT) {
+                $paySame[] = ['a' => self::payOut($x), 'b' => self::payOut($y), 'days' => $days];
+
+                continue;
+            }
+            // un versement de plus chez A baisse le solde de A : effet = -(A - B) ; hint : la faute de frappe reconnue
+            $problems[] = ['type' => $x['opening'] ? 'opening' : 'pay_amount', 'effect' => -$delta, 'date' => $x['date'],
+                'days' => $days, 'a' => [self::payOut($x)], 'b' => [self::payOut($y)]] + (in_array($how, self::SLIPS, true) ? ['hint' => $how] : []);
+        }
+        // la meme somme des deux cotes, en un nombre different de versements : rien a corriger
+        foreach ($m['groups'] as [$is, $js, $how]) {
+            $xs = array_map(fn ($i) => $this->payA[$i], $is);
+            $ys = array_map(fn ($j) => $this->payB[$j], $js);
+            $when = array_merge(array_column($xs, 'day'), array_column($ys, 'day'));
+            $payGroups[] = ['how' => $how, 'date' => max(array_merge(array_column($xs, 'date'), array_column($ys, 'date'))),
+                'amount' => round(array_sum(array_column($xs, 'amount')), 2), 'days' => max($when) - min($when),
+                'a' => array_map(self::payOut(...), $xs), 'b' => array_map(self::payOut(...), $ys)];
+        }
+        $bons = ['a' => $this->a, 'b' => $this->b];
+        $pays = ['a' => $this->payA, 'b' => $this->payB];
+        foreach (['a', 'b'] as $s) {
+            foreach ($m['cancelled'][$s] as [$i, $k]) {
+                $cancelled[] = ['side' => $s, 'date' => max($pays[$s][$i]['date'], $pays[$s][$k]['date']), 'amount' => round(abs($pays[$s][$i]['amount']), 2),
+                    'items' => [self::payOut($pays[$s][$i]), self::payOut($pays[$s][$k])]];
+            }
+        }
+        // un versement des marges sans pendant n'est pas un probleme de la periode
+        $restP = [
+            'a' => array_values(array_filter($m['restA'], fn ($i) => ! $this->payA[$i]['ctx'])),
+            'b' => array_values(array_filter($m['restB'], fn ($j) => ! $this->payB[$j]['ctx'])),
+        ];
+
+        // ---- ce qui reste, bons et versements ensemble : chaque trouvaille ci-dessous s'annule (aucun effet) ----
+        // les bons restes dont on ne sait rien d'autre : ni doublon, ni retrouve sous un autre partenaire
+        $free = [
+            'a' => array_values(array_filter($this->restA, fn ($i) => ! isset($this->dups['a'][$i]) && ! isset($this->elsewhere['a'][$i]))),
+            'b' => array_values(array_filter($this->restB, fn ($j) => ! isset($this->dups['b'][$j]) && ! isset($this->elsewhere['b'][$j]))),
+        ];
+        $goneBon = $gonePay = ['a' => [], 'b' => []];
+        $freeBons = function (string $s) use ($free, &$goneBon) {
+            return array_values(array_filter($free[$s], fn ($i) => ! isset($goneBon[$s][$i])));
+        };
+        $freePays = function (string $s) use ($restP, $pays, &$gonePay) {
+            return array_values(array_filter($restP[$s], fn ($i) => ! isset($gonePay[$s][$i]) && ! $pays[$s][$i]['opening']));
+        };
+        foreach (['a', 'b'] as $s) {
+            // un bon et son retour integral (memes articles, quantites opposees) du meme cote, rien en face : saisi puis annule
+            foreach (self::mirrored($bons[$s], $freeBons($s)) as [$i, $k]) {
+                $goneBon[$s][$i] = $goneBon[$s][$k] = true;
+                $cancelled[] = ['side' => $s, 'date' => max($bons[$s][$i]['date'], $bons[$s][$k]['date']), 'amount' => round(abs($bons[$s][$i]['amount']), 2),
+                    'items' => array_map(fn (array $bon) => self::ref($bon) + ['amount' => round($bon['amount'], 2)], [$bons[$s][$i], $bons[$s][$k]])];
+            }
+            // un bon et son versement du meme montant, d'un seul cote : vendu et regle, jamais saisi en face
+            foreach (self::settled($bons[$s], $freeBons($s), $pays[$s], $freePays($s)) as [$i, $p]) {
+                $goneBon[$s][$i] = $gonePay[$s][$p] = true;
+                $docs = [self::bonOut($bons[$s][$i]), self::payOut($pays[$s][$p])];
+                $problems[] = ['type' => 'settled_'.$s, 'effect' => 0.0, 'date' => $bons[$s][$i]['date'], 'a' => $s === 'a' ? $docs : [], 'b' => $s === 'b' ? $docs : []];
+            }
+        }
+        // un versement d'un cote, un bon du montant oppose de l'autre : un retour (ou une correction) saisi de deux facons
+        foreach ([['a', 'b'], ['b', 'a']] as [$ps, $bs]) {
+            foreach (self::crossed($pays[$ps], $freePays($ps), $bons[$bs], $freeBons($bs)) as [$p, $i]) {
+                $gonePay[$ps][$p] = $goneBon[$bs][$i] = true;
+                $pay = $pays[$ps][$p];
+                $bon = $bons[$bs][$i];
+                $problems[] = ['type' => 'pay_vs_bon', 'effect' => 0.0, 'date' => $pay['date'], 'days' => $ps === 'a' ? $bon['day'] - $pay['day'] : $pay['day'] - $bon['day'],
+                    'a' => [$ps === 'a' ? self::payOut($pay) : self::bonOut($bon)], 'b' => [$ps === 'a' ? self::bonOut($bon) : self::payOut($pay)]];
+            }
+        }
+
         foreach ($this->restA as $i) {
+            if (isset($goneBon['a'][$i])) {
+                continue;
+            }
             $x = $this->a[$i];
             $p = ['effect' => round($x['amount'], 2), 'date' => $x['date'], 'a' => [self::bonOut($x)], 'b' => []];
             if (isset($this->dups['a'][$i])) {
@@ -434,6 +592,9 @@ final class Reconciliation
             $problems[] = $p;
         }
         foreach ($this->restB as $j) {
+            if (isset($goneBon['b'][$j])) {
+                continue;
+            }
             $y = $this->b[$j];
             $p = ['effect' => round(-$y['amount'], 2), 'date' => $y['date'], 'a' => [], 'b' => [self::bonOut($y)]];
             if (isset($this->dups['b'][$j])) {
@@ -446,46 +607,32 @@ final class Reconciliation
             $problems[] = $p;
         }
 
-        [$payPairs, $restPA, $restPB] = self::matchPayments($this->payA, $this->payB);
-        $paySame = [];
-        foreach ($payPairs as [$i, $j]) {
-            $x = $this->payA[$i];
-            $y = $this->payB[$j];
-            $delta = round($x['amount'] - $y['amount'], 2);
-            if ($x['ctx'] || $y['ctx']) {
-                if (! $x['ctx'] || ! $y['ctx']) {
-                    $problems[] = ['type' => 'pay_boundary', 'effect' => $x['ctx'] ? round($y['amount'], 2) : round(-$x['amount'], 2),
-                        'date' => $x['ctx'] ? $y['date'] : $x['date'], 'days' => $y['day'] - $x['day'], 'outside' => $x['ctx'] ? 'a' : 'b',
-                        'a' => [self::payOut($x)], 'b' => [self::payOut($y)]];
-                }
-
-                continue;
-            }
-            if (abs($delta) < self::CENT) {
-                $paySame[] = ['a' => self::payOut($x), 'b' => self::payOut($y), 'days' => $y['day'] - $x['day']];
-
-                continue;
-            }
-            // un versement de plus chez A baisse le solde de A : effet = -(A - B)
-            $problems[] = ['type' => $x['opening'] ? 'opening' : 'pay_amount', 'effect' => -$delta, 'date' => $x['date'],
-                'days' => $y['day'] - $x['day'], 'a' => [self::payOut($x)], 'b' => [self::payOut($y)]];
-        }
-        // un versement des marges sans pendant n'est pas un probleme de la periode
-        $restPA = array_values(array_filter($restPA, fn ($i) => ! $this->payA[$i]['ctx']));
-        $restPB = array_values(array_filter($restPB, fn ($j) => ! $this->payB[$j]['ctx']));
-        $otherA = $this->payElsewhere($this->payA, $restPA, $supplier->branch_id, 'supplier', $supplier->code);
-        $otherB = $this->payElsewhere($this->payB, $restPB, $customer->branch_id, 'customer', $customer->code);
+        // les versements restes : le meme saisi deux fois le meme jour (peut-etre), sous un autre partenaire (peut-etre), ou manquant
+        $restPA = array_values(array_filter($restP['a'], fn ($i) => ! isset($gonePay['a'][$i])));
+        $restPB = array_values(array_filter($restP['b'], fn ($j) => ! isset($gonePay['b'][$j])));
+        $twinA = self::payDuplicates($this->payA, $restPA);
+        $twinB = self::payDuplicates($this->payB, $restPB);
+        $otherA = $this->payElsewhere($this->payA, array_values(array_diff($restPA, array_keys($twinA))), $supplier->branch_id, 'supplier', $supplier->code);
+        $otherB = $this->payElsewhere($this->payB, array_values(array_diff($restPB, array_keys($twinB))), $customer->branch_id, 'customer', $customer->code);
         foreach ($restPA as $i) {
             $x = $this->payA[$i];
-            $type = $x['opening'] ? 'opening' : (isset($otherA[$i]) ? 'pay_elsewhere_b' : 'pay_missing_b');
-            $problems[] = ['type' => $type, 'effect' => round(-$x['amount'], 2), 'date' => $x['date'], 'a' => [self::payOut($x)], 'b' => []]
-                + (isset($otherA[$i]) ? ['other' => $otherA[$i]] : []);
+            $p = ['effect' => round(-$x['amount'], 2), 'date' => $x['date'], 'a' => [self::payOut($x)], 'b' => []];
+            $problems[] = match (true) {
+                $x['opening'] => ['type' => 'opening'] + $p,
+                isset($twinA[$i]) => ['type' => 'pay_duplicate_a', 'twin' => self::payOut($this->payA[$twinA[$i]])] + $p,
+                isset($otherA[$i]) => ['type' => 'pay_elsewhere_b'] + $p + ['other' => $otherA[$i]],
+                default => ['type' => 'pay_missing_b'] + $p,
+            };
         }
         foreach ($restPB as $j) {
             $y = $this->payB[$j];
-            $type = $y['opening'] ? 'opening' : (isset($otherB[$j]) ? 'pay_elsewhere_a' : 'pay_missing_a');
-            $problems[] = ['type' => $type, 'effect' => round($y['amount'], 2), 'date' => $y['date'], 'a' => [], 'b' => [self::payOut($y)]]
-                + (isset($otherB[$j]) ? ['other' => $otherB[$j]] : []);
+            $p = ['effect' => round($y['amount'], 2), 'date' => $y['date'], 'a' => [], 'b' => [self::payOut($y)]];
+            $problems[] = match (true) {
+                $y['opening'] => ['type' => 'opening'] + $p,
+                isset($twinB[$j]) => ['type' => 'pay_duplicate_b', 'twin' => self::payOut($this->payB[$twinB[$j]])] + $p,
+                isset($otherB[$j]) => ['type' => 'pay_elsewhere_a'] + $p + ['other' => $otherB[$j]],
+                default => ['type' => 'pay_missing_a'] + $p,
+            };
         }
 
         // le plus gros effet d'abord ; a effet egal (0 : articles, bons regroupes), le plus recent
@@ -499,7 +646,9 @@ final class Reconciliation
         $count = fn (string $type) => count(array_filter($problems, fn ($p) => $p['type'] === $type));
         $types = ['bon_amount', 'bon_lines', 'bon_split', 'bon_missing_b', 'bon_missing_a', 'bon_elsewhere_b', 'bon_elsewhere_a',
             'bon_duplicate_a', 'bon_duplicate_b', 'bon_boundary', 'pay_amount', 'pay_missing_b', 'pay_missing_a', 'pay_elsewhere_b',
-            'pay_elsewhere_a', 'pay_boundary', 'opening'];
+            'pay_elsewhere_a', 'pay_boundary', 'opening', 'pay_late', 'pay_duplicate_a', 'pay_duplicate_b', 'settled_a', 'settled_b', 'pay_vs_bon'];
+        usort($payGroups, fn ($x, $y) => $y['date'] <=> $x['date']);
+        usort($cancelled, fn ($x, $y) => $y['date'] <=> $x['date']);
 
         $this->report = [
             'period' => $this->period,
@@ -509,20 +658,26 @@ final class Reconciliation
             // l'ecart au debut de la periode, plus l'effet de chaque probleme de la periode
             'gap_start' => $gapStart,
             'explained' => round($gapStart + array_sum(array_column($problems, 'effect')), 2),
-            'counts' => ['same' => count($same), 'late' => count($this->late), 'codes' => count($this->learned), 'pay_same' => count($paySame)]
+            'counts' => ['same' => count($same), 'late' => count($this->late), 'codes' => count($this->learned), 'pay_same' => count($paySame),
+                'pay_groups' => count($payGroups), 'cancelled' => count($cancelled)]
                 + array_combine($types, array_map($count, $types)),
             'problems' => array_slice($problems, 0, self::MAX_LISTED),
             'more_problems' => max(0, count($problems) - self::MAX_LISTED),
             // les plus recents d'abord
             'same' => array_slice(array_reverse($same), 0, self::MAX_LISTED),
             'pay_same' => array_slice(array_reverse($paySame), 0, self::MAX_LISTED),
+            // la meme somme des deux cotes en un nombre different de versements ("split" : un = plusieurs ; "total" : les
+            // memes jours), et ce qui a ete saisi puis annule du meme cote (versements, bons) : rien a corriger
+            'pay_groups' => array_slice($payGroups, 0, self::MAX_LISTED),
+            'cancelled' => array_slice($cancelled, 0, self::MAX_LISTED),
             'codes' => $this->codesOut($customer->branch_id, $supplier->branch_id),
             'timeline' => self::timeline($problems, $gapStart),
             'names' => self::names(array_merge($this->a, $this->b), [$customer->branch_id, $supplier->branch_id]),
             'steps' => $this->notes,
             'analyzed_at' => now()->toIso8601String(),
         ];
-        $this->notes['payments'] = ['same' => count($paySame), 'problems' => count($problems) - count(array_filter($problems, fn ($p) => str_starts_with($p['type'], 'bon_')))];
+        $this->notes['payments'] = ['same' => count($paySame), 'groups' => count($payGroups), 'cancelled' => count($cancelled),
+            'problems' => count($problems) - count(array_filter($problems, fn ($p) => str_starts_with($p['type'], 'bon_')))];
         $this->report['steps'] = $this->notes;
     }
 
@@ -1286,10 +1441,12 @@ final class Reconciliation
             ->when($from, fn (Builder $q) => $q->where('date', '>=', Carbon::parse($from)->subDays(self::WINDOW_DAYS)->toDateString()))
             ->when($to, fn (Builder $q) => $q->where('date', '<=', Carbon::parse($to)->addDays(self::WINDOW_DAYS)->toDateString()))
             ->orderBy('date')->orderBy('time')->orderBy('number')->orderBy('id')
-            ->get(['id', 'number', 'date', 'type', 'amount', 'note', 'exercise_id'])
+            ->get(['id', 'number', 'date', 'type', 'amount', 'note', 'exercise_id', 'document_number'])
             ->map(fn (Payment $p) => [
                 'id' => $p->id,
                 'number' => $p->number,
+                // le bon que ce versement regle, quand Gescomm le dit (NUMEROBON) : settled()
+                'bon' => $p->document_number,
                 'date' => $p->date?->format('Y-m-d'),
                 'day' => $p->date ? intdiv($p->date->getTimestamp(), 86400) : 0,
                 'type' => $p->type,
@@ -1303,31 +1460,46 @@ final class Reconciliation
             ->values()->all();
     }
 
+    /** Les fautes de frappe reconnues dans un montant (slip()) : chiffres voisins inverses, un chiffre faux, un en trop ou en moins. */
+    public const SLIPS = ['swap', 'digit', 'length'];
+
     /**
-     * Les soldes initiaux entre eux (le plus proche en date), puis les versements de meme montant a moins de
-     * WINDOW_DAYS jours, puis ceux d'un montant different a moins de 2 jours (faute de frappe : au plus 25 % d'ecart).
+     * Les versements des deux cotes, du plus sur au moins sur, chacun une seule fois :
+     *  1. les soldes initiaux entre eux (le plus proche en date) ;
+     *  2. le meme montant a moins de WINDOW_DAYS jours (le plus proche d'abord) ;
+     *  3. un versement = 2 a SPLIT_PARTS versements de l'autre cote (paySplits) : regle ou saisi en plusieurs fois ;
+     *  4. un versement et son contraire du meme cote (payCancelled) : saisi puis annule, l'autre cote n'a rien a y voir ;
+     *  5. la meme somme des deux cotes sur les memes jours, en un nombre different de versements (payTotals) ;
+     *  6. une faute de frappe dans le montant a SLIP_DAYS jours (slip), puis un montant voisin (25 %) a 2 jours ;
+     *  7. le meme montant jusqu'a LATE_DAYS jours : peut-etre le meme (le rapport le montre, sans effet).
+     * Avant ces passes, un versement scinde donnait "le meme versement, deux montants" + "un versement manquant".
+     * 3 a 5 et 7 : seulement dans la periode (un versement des marges ne sert qu'a trouver une paire).
      *
-     * @return array{0: list<array{0: int, 1: int}>, 1: list<int>, 2: list<int>}
+     * @return array{pairs: list<array{0: int, 1: int, 2: ?string}>, groups: list<array{0: list<int>, 1: list<int>, 2: string}>,
+     *               cancelled: array{a: list<array{0: int, 1: int}>, b: list<array{0: int, 1: int}>}, restA: list<int>, restB: list<int>}
      */
     private static function matchPayments(array $a, array $b): array
     {
         $pairs = [];
         $usedA = $usedB = [];
-        $passes = [
-            fn ($x, $y) => $x['opening'] && $y['opening'] && abs($x['day'] - $y['day']) <= 366,
-            fn ($x, $y) => ! $x['opening'] && ! $y['opening'] && abs($x['amount'] - $y['amount']) < self::CENT && abs($x['day'] - $y['day']) <= self::WINDOW_DAYS,
-            fn ($x, $y) => ! $x['opening'] && ! $y['opening'] && abs($x['day'] - $y['day']) <= 2
-                && abs($x['amount'] - $y['amount']) <= 0.25 * max(abs($x['amount']), abs($y['amount'])),
-        ];
-        foreach ($passes as $fits) {
+        // Une passe : les versements encore libres des deux cotes a $days jours au plus qui vont ensemble ($fits), les plus
+        // proches d'abord. $opening : entre soldes initiaux, sinon jamais eux. $how : ce qui lie la paire quand ce n'est
+        // pas le montant exact dans le mois (une faute de frappe, "near", "late"). Les deux listes sont triees par date :
+        // chaque versement ne regarde que sa fenetre de jours (des milliers de versements, pas des millions de paires).
+        $nb = count($b);
+        $pass = function (int $days, callable $fits, ?callable $how = null, bool $opening = false) use ($a, $b, $nb, &$usedA, &$usedB, &$pairs) {
             $candidates = [];
+            $lo = 0;
             foreach ($a as $i => $x) {
-                if (isset($usedA[$i])) {
+                while ($lo < $nb && $b[$lo]['day'] < $x['day'] - $days) {
+                    $lo++;
+                }
+                if (isset($usedA[$i]) || $x['opening'] !== $opening) {
                     continue;
                 }
-                foreach ($b as $j => $y) {
-                    if (! isset($usedB[$j]) && $fits($x, $y)) {
-                        $candidates[] = [abs($x['day'] - $y['day']), abs($x['amount'] - $y['amount']), $i, $j];
+                for ($j = $lo; $j < $nb && $b[$j]['day'] <= $x['day'] + $days; $j++) {
+                    if (! isset($usedB[$j]) && $b[$j]['opening'] === $opening && $fits($x, $b[$j])) {
+                        $candidates[] = [abs($x['day'] - $b[$j]['day']), abs($x['amount'] - $b[$j]['amount']), $i, $j];
                     }
                 }
             }
@@ -1335,16 +1507,384 @@ final class Reconciliation
             foreach ($candidates as [, , $i, $j]) {
                 if (! isset($usedA[$i]) && ! isset($usedB[$j])) {
                     $usedA[$i] = $usedB[$j] = true;
-                    $pairs[] = [$i, $j];
+                    $pairs[] = [$i, $j, $how === null ? null : $how($a[$i], $b[$j])];
+                }
+            }
+        };
+        $same = fn ($x, $y) => abs($x['amount'] - $y['amount']) < self::CENT;
+
+        $pass(366, fn () => true, null, true);
+        $pass(self::WINDOW_DAYS, $same);
+        $groups = self::paySplits($a, $b, $usedA, $usedB);
+        $cancelled = ['a' => self::payCancelled($a, $usedA), 'b' => self::payCancelled($b, $usedB)];
+        $groups = [...$groups, ...self::payTotals($a, $b, $usedA, $usedB)];
+        $pass(self::SLIP_DAYS, fn ($x, $y) => self::slip($x['amount'], $y['amount']) !== null, fn ($x, $y) => self::slip($x['amount'], $y['amount']));
+        $pass(2, fn ($x, $y) => abs($x['amount'] - $y['amount']) <= 0.25 * max(abs($x['amount']), abs($y['amount'])), fn () => 'near');
+        $pass(self::LATE_DAYS, fn ($x, $y) => ! $x['ctx'] && ! $y['ctx'] && abs($x['amount']) >= self::CENT && $same($x, $y), fn () => 'late');
+
+        return [
+            'pairs' => $pairs,
+            'groups' => $groups,
+            'cancelled' => $cancelled,
+            'restA' => array_values(array_filter(array_keys($a), fn ($i) => ! isset($usedA[$i]))),
+            'restB' => array_values(array_filter(array_keys($b), fn ($j) => ! isset($usedB[$j]))),
+        ];
+    }
+
+    /**
+     * Les versements encore libres d'un cote, de la periode, qui ne sont ni un solde initial ni nuls : ceux qu'on peut
+     * regrouper (un versement des marges ne sert qu'a trouver une paire).
+     *
+     * @return list<int>
+     */
+    private static function freePays(array $rows, array $used): array
+    {
+        return array_values(array_filter(array_keys($rows),
+            fn ($i) => ! isset($used[$i]) && ! $rows[$i]['ctx'] && ! $rows[$i]['opening'] && abs($rows[$i]['amount']) >= self::CENT));
+    }
+
+    /**
+     * Un versement d'un cote = deux a SPLIT_PARTS versements de l'autre (meme somme au centime, chacun a SPLIT_DAYS
+     * jours au plus) : regle en plusieurs fois, ou saisi en detail d'un cote et en total de l'autre. D'abord en deux
+     * parts, puis trois, puis quatre, dans les deux sens ; les parts les plus proches en date d'abord.
+     *
+     * @return list<array{0: list<int>, 1: list<int>, 2: string}> les versements de A, ceux de B, "split"
+     */
+    private static function paySplits(array $a, array $b, array &$usedA, array &$usedB): array
+    {
+        $groups = [];
+        for ($size = 2; $size <= self::SPLIT_PARTS; $size++) {
+            foreach (['a', 'b'] as $whole) {
+                [$one, $two] = $whole === 'a' ? [$a, $b] : [$b, $a];
+                foreach (self::freePays($one, $whole === 'a' ? $usedA : $usedB) as $i) {
+                    $near = array_values(array_filter(self::freePays($two, $whole === 'a' ? $usedB : $usedA),
+                        fn ($j) => abs($two[$j]['day'] - $one[$i]['day']) <= self::SPLIT_DAYS));
+                    if (count($near) < $size) {
+                        continue;
+                    }
+                    usort($near, fn ($p, $q) => [abs($two[$p]['day'] - $one[$i]['day']), $p] <=> [abs($two[$q]['day'] - $one[$i]['day']), $q]);
+                    // a quatre parts, moins de candidats : le nombre de combinaisons reste petit meme avec des centaines de restes
+                    $near = array_slice($near, 0, $size < 4 ? self::SPLIT_NEAR : 14);
+                    $parts = self::subset(array_map(fn ($j) => $two[$j]['amount'], $near), $one[$i]['amount'], $size);
+                    if ($parts === null) {
+                        continue;
+                    }
+                    $js = array_map(fn ($n) => $near[$n], $parts);
+                    sort($js);
+                    if ($whole === 'a') {
+                        $usedA[$i] = true;
+                        $usedB += array_fill_keys($js, true);
+                        $groups[] = [[$i], $js, 'split'];
+                    } else {
+                        $usedB[$i] = true;
+                        $usedA += array_fill_keys($js, true);
+                        $groups[] = [$js, [$i], 'split'];
+                    }
                 }
             }
         }
 
-        return [
-            $pairs,
-            array_values(array_filter(array_keys($a), fn ($i) => ! isset($usedA[$i]))),
-            array_values(array_filter(array_keys($b), fn ($j) => ! isset($usedB[$j]))),
-        ];
+        return $groups;
+    }
+
+    /**
+     * $size montants parmi $amounts dont la somme fait $target au centime : leurs positions (les premieres trouvees,
+     * donc les plus proches en date quand la liste est triee ainsi), null si aucune.
+     *
+     * @param  list<float>  $amounts
+     * @return list<int>|null
+     */
+    private static function subset(array $amounts, float $target, int $size, int $from = 0): ?array
+    {
+        $n = count($amounts);
+        for ($k = $from; $k <= $n - $size; $k++) {
+            if ($size === 1) {
+                if (abs($amounts[$k] - $target) < self::CENT) {
+                    return [$k];
+                }
+
+                continue;
+            }
+            $rest = self::subset($amounts, $target - $amounts[$k], $size - 1, $k + 1);
+            if ($rest !== null) {
+                return [$k, ...$rest];
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * Un versement et son contraire (+X, -X) du meme cote, a moins de WINDOW_DAYS jours, tous deux sans pendant : saisi
+     * puis annule. Ils ne sont plus cherches en face.
+     *
+     * @return list<array{0: int, 1: int}>
+     */
+    private static function payCancelled(array $rows, array &$used): array
+    {
+        $free = self::freePays($rows, $used);
+        $candidates = [];
+        foreach ($free as $n => $i) {
+            foreach (array_slice($free, $n + 1) as $k) {
+                $days = abs($rows[$i]['day'] - $rows[$k]['day']);
+                if ($days <= self::WINDOW_DAYS && abs($rows[$i]['amount'] + $rows[$k]['amount']) < self::CENT) {
+                    $candidates[] = [$days, $i, $k];
+                }
+            }
+        }
+        $out = self::pick($candidates, true);
+        foreach ($out as [$i, $k]) {
+            $used[$i] = $used[$k] = true;
+        }
+
+        return $out;
+    }
+
+    /**
+     * La meme somme des deux cotes sur les memes jours, en un nombre different de versements (deux d'un cote, trois de
+     * l'autre) : tous les versements encore libres d'une fenetre de jours, la plus courte d'abord (le meme jour, puis
+     * deux jours... jusqu'a WINDOW_DAYS). Tous ceux de la fenetre, jamais un choix parmi eux : une somme egale par hasard
+     * devient tres improbable.
+     *
+     * @return list<array{0: list<int>, 1: list<int>, 2: string}>
+     */
+    private static function payTotals(array $a, array $b, array &$usedA, array &$usedB): array
+    {
+        $groups = [];
+        for ($span = 0; $span <= self::WINDOW_DAYS; $span++) {
+            $freeA = self::freePays($a, $usedA);
+            $freeB = self::freePays($b, $usedB);
+            if ($freeA === [] || $freeB === []) {
+                break;
+            }
+            // jour => [ceux de A, ceux de B] : une fenetre ne relit que ses jours
+            $at = [];
+            foreach ($freeA as $i) {
+                $at[$a[$i]['day']][0][] = $i;
+            }
+            foreach ($freeB as $j) {
+                $at[$b[$j]['day']][1][] = $j;
+            }
+            ksort($at);
+            $days = array_keys($at);
+            $count = count($days);
+            foreach ($days as $n => $d) {
+                $is = $js = [];
+                for ($k = $n; $k < $count && $days[$k] <= $d + $span; $k++) {
+                    foreach ($at[$days[$k]][0] ?? [] as $i) {
+                        if (! isset($usedA[$i])) {
+                            $is[] = $i;
+                        }
+                    }
+                    foreach ($at[$days[$k]][1] ?? [] as $j) {
+                        if (! isset($usedB[$j])) {
+                            $js[] = $j;
+                        }
+                    }
+                }
+                if ($is === [] || $js === [] || count($is) + count($js) < 3) {
+                    continue;
+                }
+                $sum = array_sum(array_map(fn ($i) => $a[$i]['amount'], $is)) - array_sum(array_map(fn ($j) => $b[$j]['amount'], $js));
+                if (abs($sum) < self::CENT) {
+                    $usedA += array_fill_keys($is, true);
+                    $usedB += array_fill_keys($js, true);
+                    $groups[] = [$is, $js, 'total'];
+                }
+            }
+        }
+
+        return $groups;
+    }
+
+    /**
+     * La faute de frappe qui fait passer d'un montant a l'autre, lue sur leurs chiffres (au centime) : "swap" = deux
+     * chiffres voisins inverses (19 000 / 91 000), "digit" = un seul chiffre different (125 000 / 135 000), "length" = un
+     * chiffre en trop ou en moins (50 000 / 500 000, 45 000 / 4 000). null : rien de tel, ou des signes opposes.
+     * "digit" demande au moins deux chiffres non nuls de chaque cote : 100 000 et 200 000 sont deux montants ronds
+     * differents, pas une faute de frappe reconnaissable.
+     */
+    private static function slip(float $x, float $y): ?string
+    {
+        if ($x * $y <= 0) {
+            return null;
+        }
+        $p = number_format(abs($x), 2, '', '');
+        $q = number_format(abs($y), 2, '', '');
+        if ($p === $q) {
+            return null;
+        }
+        if (strlen($p) === strlen($q)) {
+            $diff = [];
+            for ($k = 0, $n = strlen($p); $k < $n; $k++) {
+                if ($p[$k] !== $q[$k]) {
+                    $diff[] = $k;
+                }
+            }
+            $figures = fn (string $s) => strlen($s) - substr_count($s, '0');
+
+            return match (true) {
+                count($diff) === 1 && $figures($p) >= 2 && $figures($q) >= 2 => 'digit',
+                count($diff) === 2 && $diff[1] === $diff[0] + 1 && $p[$diff[0]] === $q[$diff[1]] && $p[$diff[1]] === $q[$diff[0]] => 'swap',
+                default => null,
+            };
+        }
+        [$long, $short] = strlen($p) > strlen($q) ? [$p, $q] : [$q, $p];
+        if (strlen($long) - strlen($short) === 1) {
+            for ($k = 0, $n = strlen($long); $k < $n; $k++) {
+                if (substr($long, 0, $k).substr($long, $k + 1) === $short) {
+                    return 'length';
+                }
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * Des candidats [..., i, j] (les deux derniers : ce qu'on apparie), les meilleurs d'abord une fois tries : chaque i et
+     * chaque j une seule fois. $oneSet : i et j viennent de la meme liste (un versement et son contraire).
+     *
+     * @param  list<list<int|float>>  $candidates
+     * @return list<array{0: int, 1: int}>
+     */
+    private static function pick(array $candidates, bool $oneSet = false): array
+    {
+        sort($candidates);
+        $left = $right = $out = [];
+        foreach ($candidates as $c) {
+            [$i, $j] = array_slice($c, -2);
+            if (isset($left[$i]) || isset($right[$j]) || ($oneSet && (isset($left[$j]) || isset($right[$i])))) {
+                continue;
+            }
+            $left[$i] = $right[$j] = true;
+            $out[] = [$i, $j];
+        }
+
+        return $out;
+    }
+
+    /**
+     * Un versement reste, et le meme jour un autre versement du meme montant du meme cote : peut-etre saisi deux fois. Le
+     * jumeau est un versement apparie, ou un reste plus ancien (le premier reste "manquant", le second est le doublon).
+     * Le meme jour seulement : un montant rond paye deux jours de suite n'est pas un doublon.
+     *
+     * @return array<int, int> indice => indice du jumeau
+     */
+    private static function payDuplicates(array $pays, array $rest): array
+    {
+        $isRest = array_fill_keys($rest, true);
+        $out = [];
+        foreach ($rest as $i) {
+            $x = $pays[$i];
+            if ($x['opening'] || abs($x['amount']) < self::CENT) {
+                continue;
+            }
+            foreach ($pays as $k => $other) {
+                if ($k === $i || $other['opening'] || $other['day'] !== $x['day'] || abs($other['amount'] - $x['amount']) >= self::CENT) {
+                    continue;
+                }
+                if ((! isset($isRest[$k]) || $k < $i) && ! isset($out[$k])) {
+                    $out[$i] = $k;
+                    break;
+                }
+            }
+        }
+
+        return $out;
+    }
+
+    // ---------- bons et versements ensemble ----------
+
+    /** Les memes articles, en quantites opposees : un bon et son retour integral. */
+    private static function mirror(array $x, array $y): bool
+    {
+        if ($x['lines'] === [] || count($x['lines']) !== count($y['lines'])) {
+            return false;
+        }
+        foreach ($x['lines'] as $key => $line) {
+            if (! isset($y['lines'][$key]) || abs($line['qty'] + $y['lines'][$key]['qty']) >= self::CENT) {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    /**
+     * Deux bons restes du meme cote qui s'annulent : montants opposes, memes articles en quantites opposees, a moins de
+     * WINDOW_DAYS jours. Saisi puis annule par un retour : l'autre cote n'a rien a saisir.
+     *
+     * @return list<array{0: int, 1: int}>
+     */
+    private static function mirrored(array $bons, array $free): array
+    {
+        $candidates = [];
+        foreach ($free as $n => $i) {
+            foreach (array_slice($free, $n + 1) as $k) {
+                $days = abs($bons[$i]['day'] - $bons[$k]['day']);
+                if ($days <= self::WINDOW_DAYS && abs($bons[$i]['amount']) >= self::CENT && abs($bons[$i]['amount'] + $bons[$k]['amount']) < self::CENT
+                    && self::mirror($bons[$i], $bons[$k])) {
+                    $candidates[] = [$days, $i, $k];
+                }
+            }
+        }
+
+        return self::pick($candidates, true);
+    }
+
+    /**
+     * Un bon reste et un versement reste du meme cote, du meme montant au centime : le bon et son reglement saisis d'un
+     * seul cote (une vente au comptant jamais saisie en face). Le versement porte le numero du bon (NUMEROBON de Gescomm) a
+     * moins de WINDOW_DAYS jours, sinon il est a SETTLE_DAYS jours au plus. Un montant de bon n'est presque jamais rond :
+     * l'egalite au centime ne doit rien au hasard.
+     *
+     * @return list<array{0: int, 1: int}> [bon, versement]
+     */
+    private static function settled(array $bons, array $freeBons, array $pays, array $freePays): array
+    {
+        $candidates = [];
+        foreach ($freeBons as $i) {
+            $x = $bons[$i];
+            if (abs($x['amount']) < self::CENT) {
+                continue;
+            }
+            foreach ($freePays as $p) {
+                $y = $pays[$p];
+                $days = abs($y['day'] - $x['day']);
+                $linked = $y['bon'] !== null && (int) $y['bon'] === (int) $x['number'];
+                if (abs($y['amount'] - $x['amount']) < self::CENT && $days <= ($linked ? self::WINDOW_DAYS : self::SETTLE_DAYS)) {
+                    $candidates[] = [$linked ? 0 : 1, $days, $i, $p];
+                }
+            }
+        }
+
+        return self::pick($candidates);
+    }
+
+    /**
+     * Un versement reste d'un cote et, de l'autre, un bon reste du montant oppose (a CROSS_DAYS jours) : un retour ou une
+     * correction saisi comme un versement d'un cote et comme un bon de l'autre. Leurs effets s'annulent exactement.
+     *
+     * @return list<array{0: int, 1: int}> [versement, bon]
+     */
+    private static function crossed(array $pays, array $freePays, array $bons, array $freeBons): array
+    {
+        $candidates = [];
+        foreach ($freePays as $p) {
+            $y = $pays[$p];
+            if (abs($y['amount']) < self::CENT) {
+                continue;
+            }
+            foreach ($freeBons as $i) {
+                $days = abs($bons[$i]['day'] - $y['day']);
+                if ($days <= self::CROSS_DAYS && abs($bons[$i]['amount'] + $y['amount']) < self::CENT) {
+                    $candidates[] = [$days, $p, $i];
+                }
+            }
+        }
+
+        return self::pick($candidates);
     }
 
     /**

@@ -94,6 +94,40 @@ class ReconcilePageTest extends TestCase
             ->assertSee(__('reconcile.steps.sync'));
     }
 
+    public function test_the_page_shows_split_payments_as_matching_and_what_offsets(): void
+    {
+        $pay = fn (Branch $b, string $kind, string $partner, int $n, string $date, float $amount) => Payment::forceCreate(['branch_id' => $b->id,
+            'partner_kind' => $kind, 'partner_code' => $partner, 'number' => $n, 'date' => $date, 'type' => 'Espéce', 'amount' => $amount,
+            'gescomm_key' => $kind.$n.'x', 'sync_group' => $date]);
+        // les 1 000 recus par Blida : Oran les a payes en 600 + 400
+        $pay($this->oran, 'supplier', 'BLIDA', 1, '2026-10-10', 600);
+        $pay($this->oran, 'supplier', 'BLIDA', 2, '2026-10-11', 400);
+        // un bon et son versement chez Blida seulement
+        $this->bon($this->blida, 'sale', 'ORAN', 103, '2026-10-12', 'Q3', 3, 123.45);
+        $pay($this->blida, 'customer', 'ORAN', 2, '2026-10-12', 370.35);
+        // saisi deux fois le meme jour chez Blida, une fois chez Oran
+        $pay($this->blida, 'customer', 'ORAN', 3, '2026-10-15', 55);
+        $pay($this->blida, 'customer', 'ORAN', 4, '2026-10-15', 55);
+        $pay($this->oran, 'supplier', 'BLIDA', 3, '2026-10-15', 55);
+        // saisi puis annule chez Oran
+        $pay($this->oran, 'supplier', 'BLIDA', 4, '2026-10-20', 90);
+        $pay($this->oran, 'supplier', 'BLIDA', 5, '2026-10-20', -90);
+        $admin = User::factory()->admin()->create();
+        $this->analyze($admin);
+
+        // Blida 2 190, Oran 45 : l'ecart 2 145 = le bon 101 jamais saisi chez Oran (2 200) - le versement saisi deux fois (55)
+        $html = $this->actingAs($admin)->get("/reconcile?ca={$this->customer->id}&sb={$this->supplier->id}")->assertOk()->getContent();
+        foreach (['+2 145,00', __('reconcile.grouped_payments', ['count' => 1]), __('reconcile.cancelled', ['count' => 1]),
+            __('reconcile.types.settled_a', ['a' => 'Blida', 'b' => 'Oran']), __('reconcile.types.pay_duplicate_a', ['a' => 'Blida', 'b' => 'Oran']),
+            __('reconcile.groups.offset.title'), __('reconcile.groups.duplicate.title'),
+            __('reconcile.found.payments', ['same' => 1, 'groups' => 1, 'cancelled' => 1, 'problems' => 2])] as $text) {
+            $this->assertStringContainsString(e($text), $html, $text);
+        }
+        // le versement scinde n'est plus "manquant", ni "le meme versement, deux montants"
+        $this->assertStringNotContainsString(e(__('reconcile.types.pay_missing_b', ['a' => 'Blida', 'b' => 'Oran'])), $html);
+        $this->assertStringNotContainsString(e(__('reconcile.types.pay_amount')), $html);
+    }
+
     public function test_a_step_out_of_order_or_a_lost_state_asks_to_start_again(): void
     {
         $admin = User::factory()->admin()->create();

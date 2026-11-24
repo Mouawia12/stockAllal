@@ -5,7 +5,8 @@
 --}}
 @php
     $oSide = isset($p['other']) ? (in_array($p['type'], ['bon_elsewhere_b', 'pay_elsewhere_b'], true) ? 'b' : 'a') : null;
-    $tSide = isset($p['twin']) ? ($p['type'] === 'bon_duplicate_a' ? 'a' : 'b') : null;
+    // le jumeau d'un doublon (bon ou versement) est du meme cote que lui : bon_duplicate_a, pay_duplicate_a
+    $tSide = isset($p['twin']) ? (str_ends_with($p['type'], '_a') ? 'a' : 'b') : null;
     $label = fn (array $x) => empty($x['payment']) ? $T['bon'] : (! empty($x['opening']) ? $T['opening_payment'] : $T['payment']);
 
     // les bons de la ligne (A455 B202) : un lien {A:455} de l'IA ouvre ce probleme
@@ -16,7 +17,7 @@
         }
     }
     if ($oSide && empty($p['other']['payment'])) { $refs[] = strtoupper($oSide).$p['other']['number']; }
-    if ($tSide) { $refs[] = strtoupper($tSide).$p['twin']['number']; }
+    if ($tSide && empty($p['twin']['payment'])) { $refs[] = strtoupper($tSide).$p['twin']['number']; }
 
     // les lignes a colorer dans chaque bon : chez B, aussi les codes appris (77-X chez A = 77X chez B)
     $codesA = array_values(array_unique(array_map('strval', array_column($p['lines'] ?? [], 'code'))));
@@ -38,6 +39,11 @@
     };
     if (! empty($p['late'])) {
         $what .= ($what !== '' ? ' · ' : '').__('reconcile.late_pair', ['days' => abs($p['days'])]);
+    }
+    // ce que l'analyse a reconnu : la faute de frappe d'un montant, ou une paire trouvee par le montant seul (a verifier)
+    $clue = isset($p['hint']) ? __('reconcile.hints.'.$p['hint']) : (isset($p['by']) ? $T['by_amount'] : null);
+    if ($clue !== null) {
+        $what = $clue.($what !== '' ? ' · '.$what : '');
     }
 
     // ce que la recherche du rapport trouve : numeros, codes, montants (12300.00 et 12 300,00), partenaire
@@ -86,7 +92,7 @@
                     <span class="small">({{ $p['other']['sure'] ? $T['other_sure'] : $T['other_maybe'] }})</span></div>
             @endif
             @if ($tSide === $s)
-                <div class="muted small">{{ $T['twin'] }} <a class="bref" href="{{ $url($s, $p['twin']) }}"><bdi class="num">#{{ $p['twin']['number'] }}</bdi></a></div>
+                <div class="muted small">{{ $T['twin'] }} @if (empty($p['twin']['payment']))<a class="bref" href="{{ $url($s, $p['twin']) }}"><bdi class="num">#{{ $p['twin']['number'] }}</bdi></a>@else<bdi class="num">#{{ $p['twin']['number'] }}</bdi>@endif</div>
             @endif
             @if ($p[$s] === [] && $oSide !== $s && $tSide !== $s)
                 <span class="muted">—</span>
@@ -112,6 +118,9 @@
         @endif
         @if (isset($p['outside']))
             <p class="small">{{ __('reconcile.outside', ['branch' => $side($p['outside'])['name']]) }}</p>
+        @endif
+        @if ($clue !== null)
+            <p class="small">{{ $clue }}</p>
         @endif
         @if (isset($p['other']))
             <p class="small">{{ __('reconcile.other', ['branch' => $side($oSide)['name'], 'partner' => $otherName]) }}

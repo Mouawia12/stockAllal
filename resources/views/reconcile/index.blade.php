@@ -627,7 +627,8 @@
                 <summary>{{ $T['checked'] }}</summary>
                 <ul class="small">
                     @foreach ($report['steps'] as $step => $found)
-                        <li><b>{{ $T['steps'][$step] ?? $step }}</b> — <span class="muted">{{ __("reconcile.found.{$step}", $found) }}</span></li>
+                        {{-- un rapport d'avant les versements scindes n'a pas ces nombres : 0 --}}
+                        <li><b>{{ $T['steps'][$step] ?? $step }}</b> — <span class="muted">{{ __("reconcile.found.{$step}", $found + ['groups' => 0, 'cancelled' => 0, 'by_amount' => 0]) }}</span></li>
                     @endforeach
                     @if (! empty($ai['text']))
                         <li><b>{{ $T['steps']['ai'] }}</b> — <span class="muted">{{ __('reconcile.found.ai', ['name' => App\Support\AiProviders::name($ai['provider'])]) }}</span></li>
@@ -734,6 +735,59 @@
                                 <td><bdi class="num">#{{ $s['b']['number'] }}</bdi></td>
                                 <td class="num">{{ $money($s['a']['amount']) }}</td>
                                 <td class="num">{{ $s['days'] }}</td>
+                            </tr>
+                        @endforeach
+                    </tbody>
+                </table>
+            </details>
+        @endif
+        {{-- la meme somme des deux cotes en un nombre different de versements : ils concordent (un ancien rapport n'en a pas) --}}
+        @if (! empty($report['pay_groups']))
+            <details class="more">
+                <summary>{{ __('reconcile.grouped_payments', ['count' => $report['counts']['pay_groups'] ?? count($report['pay_groups'])]) }}</summary>
+                <p class="muted small">{{ $T['grouped_help'] }}</p>
+                <table>
+                    <thead><tr><th>{{ $T['date'] }}</th><th>{{ $nameA }}</th><th>{{ $nameB }}</th><th>{{ $T['amount'] }}</th><th>{{ $T['days'] }}</th></tr></thead>
+                    <tbody>
+                        @foreach ($report['pay_groups'] as $g)
+                            <tr>
+                                <td class="num">{{ $date($g['date']) }}</td>
+                                @foreach (['a', 'b'] as $s)
+                                    <td>@foreach ($g[$s] as $x)<div><bdi class="num">#{{ $x['number'] }}</bdi> <span class="num muted">{{ $money($x['amount']) }}</span></div>@endforeach</td>
+                                @endforeach
+                                <td class="num">{{ $money($g['amount']) }}</td>
+                                <td class="num">{{ $g['days'] }}</td>
+                            </tr>
+                        @endforeach
+                    </tbody>
+                </table>
+            </details>
+        @endif
+        {{-- saisi puis annule du meme cote (un versement et son contraire, un bon et son retour) : l'autre cote n'a rien a saisir --}}
+        @if (! empty($report['cancelled']))
+            <details class="more">
+                <summary>{{ __('reconcile.cancelled', ['count' => $report['counts']['cancelled'] ?? count($report['cancelled'])]) }}</summary>
+                <p class="muted small">{{ $T['cancelled_help'] }}</p>
+                <table>
+                    <thead><tr><th>{{ $T['date'] }}</th><th>{{ $T['branch'] }}</th><th></th><th>{{ $T['amount'] }}</th></tr></thead>
+                    <tbody>
+                        @foreach ($report['cancelled'] as $c)
+                            <tr>
+                                <td class="num">{{ $date($c['date']) }}</td>
+                                <td>{{ $side($c['side'])['name'] }}</td>
+                                <td>
+                                    @foreach ($c['items'] as $x)
+                                        <div>
+                                            @if (empty($x['payment']))
+                                                <a class="bref" href="{{ $url($c['side'], $x) }}">{{ $T['bon'] }} <bdi class="num">#{{ $x['number'] }}</bdi></a>
+                                            @else
+                                                {{ $T['payment'] }} <bdi class="num">#{{ $x['number'] }}</bdi>
+                                            @endif
+                                            <span class="num muted">{{ $money($x['amount']) }}</span>
+                                        </div>
+                                    @endforeach
+                                </td>
+                                <td class="num">{{ $money($c['amount']) }}</td>
                             </tr>
                         @endforeach
                     </tbody>

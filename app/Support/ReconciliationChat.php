@@ -59,6 +59,12 @@ Reading the report:
   - bon_duplicate_a / bon_duplicate_b: a bon with no counterpart that is identical to another bon of the same branch a few days apart ("twin"): most likely entered twice.
   - pay_elsewhere_b / pay_elsewhere_a: a payment with no counterpart, while a payment of the same amount within 3 days exists on the other side under another partner ("other"). Only a possibility: round amounts repeat.
   - bon_boundary / pay_boundary: the same bon or payment, inside the period on one side and dated before (or after) it on the other ("outside": the side where it is outside). Not a mistake: it is already in that side's start balance, and its effect offsets that part of gap_at_start.
+  - pay_late: the same amount on both sides, more than a month apart ("days"): maybe the same payment recorded late. Only a possibility (round amounts repeat); effect 0.
+  - pay_duplicate_a / pay_duplicate_b: a payment with no counterpart, identical to another payment of the same branch on the same day ("twin"): maybe entered twice.
+  - settled_a / settled_b: a bon and a payment of exactly the same amount that exist in that branch only: most likely a sale paid on the spot that the other branch never entered. They offset (effect 0), but the other branch should enter both.
+  - pay_vs_bon: a payment on one side and a bon of the opposite amount on the other: most likely a return or a correction entered as a payment by one branch and as a bon by the other. They offset (effect 0).
+- On a problem: "slip" (pay_amount) is the keying mistake recognised between the two amounts: swap (two neighbouring digits swapped), digit (one digit differs), length (one digit too many or missing). "matched_by": "amount" (bon_lines) means the two bons were paired only because their amounts are exactly equal, with no item in common: they may be two different bons, tell the user to check.
+- "split_payments" are NOT problems: the same money recorded in a different number of payments ("how": split = one payment on one side equals two to four on the other; total = the same total over the same days). "cancelled_in_one_branch" are NOT problems either: a payment and its opposite, or a bon and its full return, entered then cancelled inside one branch. Never report these as missing.
 - "days" on a pair: how many days after {A} the other side entered it; "late": found more than a month apart (identical bon entered late).
 - "items" gives the designation of each item code that appears in a problem.
 - "item_codes": the same item under a different code in each branch, learned from the code written differently, the same designation, or bons identical but for that code ("how": code, name, bons). The matching already counts them as one item; they should be merged in the page "دمج الأصناف".
@@ -100,7 +106,13 @@ TXT;
                 $out['since_previous_check'] = $p['status'];
             }
             if (isset($p['twin'])) {
-                $out['twin'] = '{'.(str_ends_with($p['type'], '_a') ? 'A' : 'B').':'.$p['twin']['number'].'}';
+                $out['twin'] = empty($p['twin']['payment']) ? '{'.(str_ends_with($p['type'], '_a') ? 'A' : 'B').':'.$p['twin']['number'].'}' : 'payment '.$p['twin']['number'];
+            }
+            if (isset($p['hint'])) {
+                $out['slip'] = $p['hint'];
+            }
+            if (isset($p['by'])) {
+                $out['matched_by'] = $p['by'];
             }
             if (isset($p['other'])) {
                 // le bon ou le versement trouve sous un autre partenaire : de l'autre cote, sans son nom
@@ -147,6 +159,17 @@ TXT;
             'identical_payments' => array_map(fn (array $s) => [
                 'date' => $s['a']['date'], 'amount' => $s['a']['amount'], 'days' => $s['days'],
             ], array_slice($r['pay_same'], 0, self::MAX_SAME)),
+            // ce qui concorde autrement qu'un pour un (un rapport d'avant ne les a pas)
+            'split_payments' => array_map(fn (array $g) => [
+                'how' => $g['how'], 'total' => $g['amount'], 'days' => $g['days'],
+                'A' => array_map(fn (array $x) => ['payment' => $x['number'], 'date' => $x['date'], 'amount' => $x['amount']], $g['a']),
+                'B' => array_map(fn (array $x) => ['payment' => $x['number'], 'date' => $x['date'], 'amount' => $x['amount']], $g['b']),
+            ], array_slice($r['pay_groups'] ?? [], 0, self::MAX_SAME)),
+            'cancelled_in_one_branch' => array_map(fn (array $c) => [
+                'branch' => $c['side'] === 'a' ? '{A}' : '{B}', 'amount' => $c['amount'],
+                'entries' => array_map(fn (array $x) => (empty($x['payment']) ? ['bon' => '{'.strtoupper($c['side']).':'.$x['number'].'}'] : ['payment' => $x['number']])
+                    + ['date' => $x['date'], 'amount' => $x['amount']], $c['items']),
+            ], array_slice($r['cancelled'] ?? [], 0, self::MAX_SAME)),
             'items' => array_intersect_key($r['names'], $codes),
             'item_codes' => array_map(fn (array $c) => [
                 'code_in_A' => $c['a'], 'name_in_A' => $c['name_a'], 'code_in_B' => $c['b'], 'name_in_B' => $c['name_b'], 'how' => $c['how'], 'bons' => $c['bons'],
@@ -173,7 +196,7 @@ TXT;
         .'If there is a "previous_check", start with what changed since then: what was fixed, the gap then and now, and what is still open or new. '
         .'Work out what really explains the gap: the gap at the start of the period if it is not 0 (its causes are earlier), then '
         .'group the problems by cause (bons never entered, entered for another partner, entered twice, different quantities or '
-        .'prices, items under two codes, payments, opening balance, bons at the edge of the period) with the total effect of each '
+        .'prices, items under two codes, payments, opening balance, entries that offset each other, bons at the edge of the period) with the total effect of each '
         .'cause, biggest first, and check that the start gap and the effects add up to the gap. Say in which branch each fix must be made and '
         .'exactly what to enter or correct, citing the bons. Point out anything suspicious, and from the timeline the month the '
         .'gap appeared or grew. End with a short checklist for {A} and one for {B}.';

@@ -12,6 +12,7 @@ use App\Models\Partner;
 use App\Models\Payment;
 use App\Models\ProductGroup;
 use App\Support\Reconciliation;
+use App\Support\ReconciliationChat;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 use Tests\TestCase;
@@ -287,6 +288,212 @@ class ReconciliationTest extends TestCase
         $this->assertNotSame($other->id, null);
     }
 
+    /**
+     * Le cas rapporte (24/11/2026) : un versement regle ou saisi en plusieurs fois de l'autre cote. Avant, 500 000 contre
+     * 400 000 + 100 000 donnait "le meme versement, deux montants" (400 000 est a moins de 25 % de 500 000) et "un
+     * versement manquant" : deux faux problemes pour des comptes justes.
+     */
+    public function test_a_payment_split_or_grouped_on_the_other_side_matches_instead_of_missing(): void
+    {
+        // un versement d'Oran = deux de Blida le meme jour
+        $this->pay($this->oran, 'supplier', 'BLIDA', 1, '2026-10-05', 500000);
+        $this->pay($this->blida, 'customer', 'ORAN', 1, '2026-10-05', 400000);
+        $this->pay($this->blida, 'customer', 'ORAN', 2, '2026-10-05', 100000);
+        // un versement de Blida = trois d'Oran sur une semaine
+        $this->pay($this->blida, 'customer', 'ORAN', 3, '2026-10-12', 90000);
+        $this->pay($this->oran, 'supplier', 'BLIDA', 2, '2026-10-12', 20000);
+        $this->pay($this->oran, 'supplier', 'BLIDA', 3, '2026-10-14', 30000);
+        $this->pay($this->oran, 'supplier', 'BLIDA', 4, '2026-10-18', 40000);
+        // deux d'un cote, trois de l'autre, la meme somme sur les memes jours (aucun n'est la somme des autres)
+        $this->pay($this->blida, 'customer', 'ORAN', 4, '2026-10-25', 7000);
+        $this->pay($this->blida, 'customer', 'ORAN', 5, '2026-10-26', 5000);
+        $this->pay($this->oran, 'supplier', 'BLIDA', 5, '2026-10-25', 6000);
+        $this->pay($this->oran, 'supplier', 'BLIDA', 6, '2026-10-25', 4000);
+        $this->pay($this->oran, 'supplier', 'BLIDA', 7, '2026-10-26', 2000);
+        // un vrai versement manquant reste un probleme
+        $this->pay($this->blida, 'customer', 'ORAN', 6, '2026-10-28', 1234);
+
+        $r = Reconciliation::run($this->customer, $this->supplier);
+
+        $this->assertSame([['pay_missing_b', -1234.0]], array_map(fn ($p) => [$p['type'], $p['effect']], $r['problems']));
+        $this->assertSame([-1234.0, -1234.0], [$r['gap'], $r['explained']]);
+        $this->assertSame(3, $r['counts']['pay_groups']);
+        $groups = collect($r['pay_groups'])->keyBy('amount');
+        $numbers = fn (array $g) => [array_column($g['a'], 'number'), array_column($g['b'], 'number'), $g['how'], $g['days']];
+        $this->assertSame([[1, 2], [1], 'split', 0], $numbers($groups['500000']));
+        $this->assertSame([[3], [2, 3, 4], 'split', 6], $numbers($groups['90000']));
+        $this->assertSame([[4, 5], [5, 6, 7], 'total', 1], $numbers($groups['12000']));
+        $this->assertSame(['same' => 0, 'groups' => 3, 'cancelled' => 0, 'problems' => 1], $r['steps']['payments']);
+        // l'IA les recoit comme des versements qui concordent, pas comme des problemes
+        $sent = ReconciliationChat::data($r);
+        $this->assertSame(['split', 'split', 'total'], collect($sent['split_payments'])->sortBy('total')->pluck('how')->sort()->values()->all());
+        $this->assertStringContainsString('"split_payments" are NOT problems', ReconciliationChat::system($r, 'ar'));
+    }
+
+    public function test_keying_slips_a_payment_entered_twice_cancelled_or_late_are_told_apart(): void
+    {
+        // deux chiffres voisins inverses le lendemain ; un zero de trop trois jours apres (bien plus de 25 % d'ecart)
+        $this->pay($this->blida, 'customer', 'ORAN', 1, '2026-09-01', 19000);
+        $this->pay($this->oran, 'supplier', 'BLIDA', 1, '2026-09-02', 91000);
+        $this->pay($this->blida, 'customer', 'ORAN', 2, '2026-09-10', 50000);
+        $this->pay($this->oran, 'supplier', 'BLIDA', 2, '2026-09-13', 500000);
+        // saisi deux fois le meme jour chez Blida, une seule fois chez Oran
+        $this->pay($this->blida, 'customer', 'ORAN', 3, '2026-09-20', 7700);
+        $this->pay($this->blida, 'customer', 'ORAN', 4, '2026-09-20', 7700);
+        $this->pay($this->oran, 'supplier', 'BLIDA', 3, '2026-09-20', 7700);
+        // saisi puis annule chez Oran : Blida n'a rien a saisir
+        $this->pay($this->oran, 'supplier', 'BLIDA', 4, '2026-09-22', 3300);
+        $this->pay($this->oran, 'supplier', 'BLIDA', 5, '2026-09-23', -3300, 'Autre');
+        // le meme montant deux mois plus tard : peut-etre le meme, montre sans effet plutot que deux versements manquants
+        $this->pay($this->blida, 'customer', 'ORAN', 5, '2026-06-01', 64250);
+        $this->pay($this->oran, 'supplier', 'BLIDA', 6, '2026-08-05', 64250);
+        // un seul chiffre different le lendemain ; mais deux montants ronds differents ne sont pas une faute de frappe
+        $this->pay($this->blida, 'customer', 'ORAN', 6, '2026-05-02', 125000);
+        $this->pay($this->oran, 'supplier', 'BLIDA', 7, '2026-05-03', 135000);
+        $this->pay($this->blida, 'customer', 'ORAN', 7, '2026-04-01', 100000);
+        $this->pay($this->oran, 'supplier', 'BLIDA', 8, '2026-04-01', 200000);
+
+        $r = Reconciliation::run($this->customer, $this->supplier);
+        $byType = collect($r['problems'])->groupBy('type');
+
+        $this->assertSame(['pay_amount', 'pay_duplicate_a', 'pay_late', 'pay_missing_a', 'pay_missing_b'], $byType->keys()->sort()->values()->all());
+        $slips = $byType['pay_amount']->keyBy('hint');
+        $this->assertSame([72000.0, 1], [$slips['swap']['effect'], $slips['swap']['a'][0]['number']]);
+        $this->assertSame([450000.0, 2], [$slips['length']['effect'], $slips['length']['a'][0]['number']]);
+        $this->assertSame([10000.0, 6], [$slips['digit']['effect'], $slips['digit']['a'][0]['number']]);
+        $this->assertSame([[-100000.0], [200000.0]], [$byType['pay_missing_b']->pluck('effect')->all(), $byType['pay_missing_a']->pluck('effect')->all()]);
+        $twice = $byType['pay_duplicate_a'][0];
+        $this->assertSame([-7700.0, 4, 3, true], [$twice['effect'], $twice['a'][0]['number'], $twice['twin']['number'], $twice['twin']['payment']]);
+        $late = $byType['pay_late'][0];
+        $this->assertSame([0.0, 65, true], [$late['effect'], $late['days'], $late['late']]);
+        $this->assertSame([['b', 3300.0, [4, 5]]], array_map(fn ($c) => [$c['side'], $c['amount'], array_column($c['items'], 'number')], $r['cancelled']));
+        $this->assertSame(1, $r['counts']['pay_same']);
+        $this->assertSame([624300.0, 624300.0], [$r['gap'], $r['explained']]);
+        // le rapport par groupes : le doublon avec les doublons, le reste avec les versements
+        $this->assertSame(['duplicate' => 1, 'payments' => 6], array_column(Reconciliation::groups($r), 'count', 'key'));
+        // d'une analyse a l'autre, un probleme garde sa cle, versements jumeaux compris
+        $this->assertStringStartsWith('pay_duplicate_a|p', Reconciliation::problemKey($twice));
+        $this->assertSame('payment 3', collect(ReconciliationChat::data($r)['problems'])->firstWhere('type', 'pay_duplicate_a')['twin']);
+    }
+
+    public function test_a_bon_with_its_payment_on_one_side_a_return_entered_two_ways_and_bons_matched_by_amount(): void
+    {
+        // vendu et regle au comptant chez Blida, jamais saisi chez Oran : le bon et son versement s'annulent
+        $this->bon($this->blida, 'sale', 'ORAN', 800, '2026-07-01', [['K1', 3, 411.5]]);
+        $this->pay($this->blida, 'customer', 'ORAN', 1, '2026-07-02', 1234.5);
+        // chez Oran seulement, le versement trois semaines apres : il porte le numero de son bon
+        $this->bon($this->oran, 'purchase', 'BLIDA', 40, '2026-07-05', [['K2', 2, 350]]);
+        $this->pay($this->oran, 'supplier', 'BLIDA', 1, '2026-07-26', 700, 'Espéce', null, 40);
+        // un retour : un bon negatif chez Blida, un "versement" chez Oran
+        $this->bon($this->blida, 'sale', 'ORAN', 801, '2026-07-10', [['K3', -2, 480]]);
+        $this->pay($this->oran, 'supplier', 'BLIDA', 2, '2026-07-12', 960, 'Autre');
+        // le meme bon sous des codes que rien ne relie, dix jours plus tard : le meme montant au centime
+        $this->bon($this->blida, 'sale', 'ORAN', 802, '2026-07-15', [['AA1', 3, 1111], ['AA2', 1, 250.75]]);
+        $this->bon($this->oran, 'purchase', 'BLIDA', 41, '2026-07-25', [['ZZ9', 1, 3583.75]]);
+        // saisi puis annule par un retour integral chez Blida
+        $this->bon($this->blida, 'sale', 'ORAN', 803, '2026-07-20', [['K4', 5, 100], ['K5', 1, 60]]);
+        $this->bon($this->blida, 'sale', 'ORAN', 804, '2026-07-21', [['K4', -5, 100], ['K5', -1, 60]]);
+
+        $r = Reconciliation::run($this->customer, $this->supplier);
+        $byType = collect($r['problems'])->keyBy('type');
+
+        // rien ne manque, rien ne bouge le solde : quatre trouvailles sans effet
+        $this->assertSame(['bon_lines', 'pay_vs_bon', 'settled_a', 'settled_b'], $byType->keys()->sort()->values()->all());
+        $this->assertSame([0.0, 0.0, 0.0, 0.0], array_column($r['problems'], 'effect'));
+        $this->assertSame([0.0, 0.0], [$r['gap'], $r['explained']]);
+        $docs = fn (array $xs) => array_map(fn ($x) => (empty($x['payment']) ? 'bon ' : 'pay ').$x['number'], $xs);
+        $this->assertSame([['bon 800', 'pay 1'], []], [$docs($byType['settled_a']['a']), $docs($byType['settled_a']['b'])]);
+        $this->assertSame([[], ['bon 40', 'pay 1']], [$docs($byType['settled_b']['a']), $docs($byType['settled_b']['b'])]);
+        $this->assertSame([['bon 801'], ['pay 2'], 2], [$docs($byType['pay_vs_bon']['a']), $docs($byType['pay_vs_bon']['b']), $byType['pay_vs_bon']['days']]);
+        $this->assertSame([802, 41, 'amount', 10], [$byType['bon_lines']['a'][0]['number'], $byType['bon_lines']['b'][0]['number'], $byType['bon_lines']['by'], $byType['bon_lines']['days']]);
+        $this->assertSame([['a', 560.0, [803, 804]]], array_map(fn ($c) => [$c['side'], $c['amount'], array_column($c['items'], 'number')], $r['cancelled']));
+        $this->assertSame(['offset' => 3, 'lines' => 1], array_column(Reconciliation::groups($r), 'count', 'key'));
+        $this->assertSame(1, $r['steps']['deep']['by_amount']);
+        $this->assertSame('amount', collect(ReconciliationChat::data($r)['problems'])->firstWhere('type', 'bon_lines')['matched_by']);
+    }
+
+    /**
+     * Des comptes au hasard, avec tout ce qui arrive (versements scindes, fautes de frappe, doublons, annulations, bons
+     * manquants ou saisis d'un seul cote avec leur versement) : quoi que l'analyse en dise, chaque bon et chaque versement
+     * est compte une seule fois, et les effets des problemes redonnent l'ecart au centime.
+     */
+    public function test_whatever_the_books_every_entry_is_counted_once_and_the_effects_give_the_gap(): void
+    {
+        foreach ([3, 11, 29, 47, 71, 97] as $seed) {
+            mt_srand($seed);
+            Payment::query()->delete();
+            DocumentLine::query()->delete();
+            Document::query()->delete();
+            $day = fn (int $plus = 0) => date('Y-m-d', strtotime('2026-03-01 +'.(mt_rand(0, 70) + $plus).' days'));
+            $amount = fn () => mt_rand(1, 3) === 1 ? mt_rand(1, 20) * 50000 : mt_rand(1000, 900000) + mt_rand(0, 99) / 100;
+            $n = ['a' => 0, 'b' => 0];
+            $payA = function (string $date, float $v) use (&$n) {
+                $this->pay($this->blida, 'customer', 'ORAN', ++$n['a'], $date, $v);
+            };
+            $payB = function (string $date, float $v) use (&$n) {
+                $this->pay($this->oran, 'supplier', 'BLIDA', ++$n['b'], $date, $v);
+            };
+            for ($k = 0; $k < 45; $k++) {
+                $d = $day();
+                $v = $amount();
+                $later = date('Y-m-d', strtotime($d.' +'.mt_rand(0, 3).' days'));
+                match (mt_rand(1, 9)) {
+                    1, 2 => [$payA($d, $v), $payB($later, $v)],
+                    3 => $payA($d, $v),
+                    4 => $payB($d, $v),
+                    // scinde en deux ou trois de l'autre cote
+                    5 => [$payA($d, $v), $payB($d, $part = round($v * mt_rand(2, 7) / 10, 2)), $payB($later, round($v - $part, 2))],
+                    6 => [$payB($d, $v), $payA($d, $p1 = round($v * 0.3, 2)), $payA($later, $p2 = round($v * 0.5, 2)), $payA($later, round($v - $p1 - $p2, 2))],
+                    // un zero de trop, un doublon, une annulation
+                    7 => [$payA($d, $v), $payB($later, $v * 10)],
+                    8 => [$payA($d, $v), $payA($d, $v), $payB($d, $v)],
+                    9 => [$payB($d, $v), $payB($later, -$v)],
+                };
+            }
+            $bons = 500;
+            for ($k = 0; $k < 20; $k++) {
+                $d = $day();
+                $lines = [['R'.mt_rand(1, 9), mt_rand(1, 20), mt_rand(100, 9000) / 4], ['S'.mt_rand(1, 9), mt_rand(1, 5), mt_rand(100, 900)]];
+                $total = array_sum(array_map(fn ($l) => $l[1] * $l[2], $lines));
+                match (mt_rand(1, 6)) {
+                    1, 2 => [$this->bon($this->blida, 'sale', 'ORAN', ++$bons, $d, $lines), $this->bon($this->oran, 'purchase', 'BLIDA', ++$bons, $d, $lines)],
+                    3 => $this->bon($this->blida, 'sale', 'ORAN', ++$bons, $d, $lines),
+                    4 => $this->bon($this->oran, 'purchase', 'BLIDA', ++$bons, $d, $lines),
+                    // vendu et regle d'un seul cote ; une quantite differente
+                    5 => [$this->bon($this->blida, 'sale', 'ORAN', ++$bons, $d, $lines), $payA($d, $total)],
+                    6 => [$this->bon($this->blida, 'sale', 'ORAN', ++$bons, $d, $lines),
+                        $this->bon($this->oran, 'purchase', 'BLIDA', ++$bons, $d, [[$lines[0][0], $lines[0][1] + 1, $lines[0][2]], $lines[1]])],
+                };
+            }
+
+            $r = Reconciliation::run($this->customer, $this->supplier);
+
+            $this->assertSame($r['gap'], $r['explained'], "seed $seed: the effects give the gap");
+            $this->assertSame(0, $r['more_problems']);
+            // chaque piece une seule fois : identique, dans un groupe, annulee, ou dans un probleme (son jumeau n'y compte pas)
+            $seen = ['d' => [], 'p' => []];
+            $count = function (array $x) use (&$seen) {
+                $kind = empty($x['payment']) ? 'd' : 'p';
+                $seen[$kind][$x['id']] = ($seen[$kind][$x['id']] ?? 0) + 1;
+            };
+            foreach ($r['problems'] as $p) {
+                array_map($count, [...$p['a'], ...$p['b']]);
+            }
+            foreach ([...$r['same'], ...$r['pay_same']] as $s) {
+                array_map($count, [$s['a'], $s['b']]);
+            }
+            foreach ($r['pay_groups'] as $g) {
+                $this->assertEqualsWithDelta(array_sum(array_column($g['a'], 'amount')), array_sum(array_column($g['b'], 'amount')), 0.001, "seed $seed: a group has the same total on both sides");
+                array_map($count, [...$g['a'], ...$g['b']]);
+            }
+            foreach ($r['cancelled'] as $c) {
+                array_map($count, $c['items']);
+            }
+            $this->assertSame([], array_filter($seen['d'], fn ($times) => $times !== 1) + array_filter($seen['p'], fn ($times) => $times !== 1), "seed $seed: nothing counted twice");
+            $this->assertSame([Document::count(), Payment::count()], [count($seen['d']), count($seen['p'])], "seed $seed: nothing forgotten");
+        }
+    }
+
     public function test_the_steps_run_one_by_one_from_a_saved_state_give_the_same_result(): void
     {
         $this->bon($this->blida, 'sale', 'ORAN', 700, '2026-03-01', [['A1', 3, 100]]);
@@ -404,11 +611,12 @@ class ReconciliationTest extends TestCase
             'designation' => $designation, 'stock' => 1, 'seen_at' => now(), 'updated_at' => now()]);
     }
 
-    private function pay(Branch $branch, string $kind, string $partner, int $number, string $date, float $amount, string $type = 'Espéce', ?string $note = null): void
+    /** $forBon : le numero du bon que ce versement regle (NUMEROBON de Gescomm). */
+    private function pay(Branch $branch, string $kind, string $partner, int $number, string $date, float $amount, string $type = 'Espéce', ?string $note = null, ?int $forBon = null): void
     {
         Payment::forceCreate([
             'branch_id' => $branch->id, 'partner_kind' => $kind, 'partner_code' => $partner, 'number' => $number, 'date' => $date,
-            'type' => $type, 'amount' => $amount, 'note' => $note, 'gescomm_key' => $kind.$number, 'sync_group' => $date,
+            'type' => $type, 'amount' => $amount, 'note' => $note, 'gescomm_key' => $kind.$number, 'sync_group' => $date, 'document_number' => $forBon,
         ]);
     }
 }
