@@ -47,7 +47,7 @@ final class Reports
     public const FILTERS = [
         'products' => ['all', 'a', 'b', 'c', 'returned', 'loss'],
         'dormant' => ['all', 'never'],
-        'reorder' => ['all', 'zero', 'negative', 'low'],
+        'reorder' => ['all', 'zero', 'negative', 'low', 'elsewhere', 'nowhere'],
         'stock' => ['available', 'negative', 'all'],
         'bought' => ['all', 'returned'],
         'receivable' => ['all', 'owes', 'credit'],
@@ -116,13 +116,27 @@ final class Reports
     }
 
     /**
-     * Les filtres (?f=) d'un rapport pour ce compte, le premier par defaut : "vendus a perte" demande la marge.
+     * Les filtres (?f=) d'un rapport pour ce compte, le premier par defaut : "vendus a perte" demande la marge,
+     * "ailleurs" / "nulle part" le stock d'une autre branche ($else, comme la colonne : seesElsewhere()).
      *
      * @return list<string>
      */
-    public static function filters(string $report, bool $sale, bool $buy): array
+    public static function filters(string $report, bool $sale, bool $buy, bool $else = false): array
     {
-        return array_values(array_filter(self::FILTERS[$report] ?? [], fn (string $f) => $f !== 'loss' || ($sale && $buy)));
+        return array_values(array_filter(self::FILTERS[$report] ?? [], fn (string $f) => match ($f) {
+            'loss' => $sale && $buy,
+            'elsewhere', 'nowhere' => $else,
+            default => true,
+        }));
+    }
+
+    /**
+     * Ce rapport dit-il ou trouver l'article ailleurs ? Seulement "النواقص", et quand le compte voit le stock d'au
+     * moins une autre branche que celle de la ligne ($c['else_ids'] : toutes celles dont il voit le stock).
+     */
+    public static function seesElsewhere(string $report, array $c): bool
+    {
+        return $report === 'reorder' && count($c['else_ids']) > 1;
     }
 
     /**
@@ -274,6 +288,8 @@ final class Reports
                 self::col('bons', 'int'),
                 $stock,
                 self::col('alert', 'qty'),
+                // ou le trouver : ce qu'en ont les autres branches dont le compte voit le stock
+                self::seesElsewhere($report, $c) ? self::col('else_qty', 'elsewhere', ['label' => 'elsewhere', 'sm' => true]) : null,
                 self::col('last_sale', 'date'),
                 self::col('last_purchase', 'date'),
             ],
@@ -322,14 +338,16 @@ final class Reports
      * Les lignes et les chiffres d'un rapport : gardes une minute, par branches, periode et droits du compte.
      *
      * @param  array<string, mixed>  $c  ids (branches dont l'agent envoie les ventes), stock_ids (celles-la dont le compte
-     *                                   voit le stock), shelf_ids (toutes celles affichees dont il voit le stock), from, to,
-     *                                   today, sale, buy, several, days, unit
+     *                                   voit le stock), shelf_ids (toutes celles affichees dont il voit le stock), else_ids
+     *                                   (toutes celles dont il voit le stock, quelle que soit la branche choisie en haut),
+     *                                   else_sales (celles-la dont il voit aussi les ventes), from, to, today, sale, buy,
+     *                                   several, days, unit
      * @return array{rows: list<array<string, mixed>>, tiles: list<array<string, mixed>>}
      */
     public static function data(string $report, array $c): array
     {
         $key = 'report:'.$report.':'.md5(json_encode([$c['ids'], $c['stock_ids'], $c['shelf_ids'], $c['from'], $c['to'], $c['today'],
-            $c['sale'], $c['buy'], $c['days'], $c['unit']])).ExerciseScope::cacheKey();
+            $c['sale'], $c['buy'], $c['days'], $c['unit'], $c['else_ids'], $c['else_sales']])).ExerciseScope::cacheKey();
         $cached = Cache::get($key);
         if (is_array($cached)) {
             return $cached;
@@ -811,13 +829,100 @@ final class Reports
                 'flags' => $state === null ? [] : [$state],
             ];
         }
+        $else = self::seesElsewhere('reorder', $c);
+        if ($else) {
+            $rows = self::elsewhere($c, $rows);
+        }
+        $there = count(array_filter($rows, fn (array $r) => ($r['else'] ?? []) !== []));
 
-        return ['rows' => $rows, 'tiles' => $rows === [] ? [] : [
+        return ['rows' => $rows, 'tiles' => $rows === [] ? [] : array_values(array_filter([
             self::tile('items', 'int', count($rows)),
             self::tile('zero', 'int', $count['zero']),
             self::tile('negative', 'int', $count['negative']),
             self::tile('low', 'int', $count['low']),
-        ]];
+            $else ? self::tile('elsewhere', 'int', $there, ['key' => 'nowhere', 'type' => 'int', 'value' => count($rows) - $there]) : null,
+        ]))];
+    }
+
+    /**
+     * Ou trouver ailleurs ce qui manque ici : pour chaque ligne, les autres branches dont le compte voit le stock
+     * ($c['else_ids'] : toutes, meme quand une seule est choisie en haut) qui en ont maintenant, la plus fournie d'abord.
+     * Les codes fusionnes ("دمج الأصناف") comptent pour un seul article : 820Z ici, 820-Z la-bas. Ce que la branche en
+     * a vendu dans la periode n'est dit que si le compte voit ses ventes ($c['else_sales']) : sinon null, pas zero.
+     * Chaque ligne recoit else (la liste), else_qty (leur somme, pour le tri) et le filtre "elsewhere" ou "nowhere".
+     *
+     * @param  list<array<string, mixed>>  $rows
+     * @return list<array<string, mixed>>
+     */
+    private static function elsewhere(array $c, array $rows): array
+    {
+        $leaders = self::leaders();
+        // une cle de tableau faite de chiffres ("1640") devient un entier : toujours la relire en texte
+        $lead = fn (int|string $key): string => (string) ($leaders[(string) $key] ?? $key);
+        $wanted = [];
+        foreach ($rows as $r) {
+            $wanted[$lead($r['key'])] = true;
+        }
+        $codes = array_map('strval', array_keys($wanted));
+        foreach ($leaders as $code => $leader) {
+            if (isset($wanted[(string) $leader])) {
+                $codes[] = (string) $code;
+            }
+        }
+        $codes = array_values(array_unique($codes));
+
+        $shelf = [];
+        $sold = [];
+        foreach (array_chunk($codes, 500) as $chunk) {
+            $stock = DB::table('branch_stock')->whereIn('branch_id', $c['else_ids'])->whereIn('code_key', $chunk)->where('stock', '>', 0.005)
+                ->orderBy('code_key')->get(['branch_id', 'code_key', 'code_raw', 'stock', 'stock_alert']);
+            foreach ($stock as $s) {
+                $at = &$shelf[$lead($s->code_key)][(int) $s->branch_id];
+                // deux ecritures du meme article dans la branche : leur somme, sous la premiere
+                $at = [
+                    'stock' => ($at['stock'] ?? 0.0) + (float) $s->stock,
+                    'code' => $at['code'] ?? trim((string) $s->code_raw),
+                    'alert' => $at['alert'] ?? ($s->stock_alert === null ? null : (float) $s->stock_alert),
+                ];
+                unset($at);
+            }
+            if ($c['else_sales'] === []) {
+                continue;
+            }
+            $lines = DocumentLine::query()->where('kind', 'sale')->whereIn('branch_id', $c['else_sales'])->whereBetween('date', [$c['from'], $c['to']])
+                ->whereIn('code_key', $chunk)->groupBy('branch_id', 'code_key')->selectRaw('branch_id, code_key, SUM(qty) as sold')->toBase()->get();
+            foreach ($lines as $l) {
+                $key = $lead($l->code_key);
+                $sold[$key][(int) $l->branch_id] = ($sold[$key][(int) $l->branch_id] ?? 0.0) + (float) $l->sold;
+            }
+        }
+
+        foreach ($rows as &$r) {
+            $key = $lead($r['key']);
+            $list = [];
+            foreach ($shelf[$key] ?? [] as $branchId => $at) {
+                if ($branchId === $r['branch_id']) {
+                    continue;
+                }
+                $stock = round($at['stock'], 2);
+                $list[] = [
+                    'branch_id' => $branchId,
+                    'stock' => $stock,
+                    'state' => StockState::of($stock, $at['alert']),
+                    'alert' => $at['alert'] === null ? null : round($at['alert'], 2),
+                    // le code tel que cette branche l'ecrit, quand ce n'est pas celui de la ligne
+                    'code' => mb_strtoupper($at['code']) === mb_strtoupper($r['code']) ? null : $at['code'],
+                    'sold' => in_array($branchId, $c['else_sales'], true) ? round($sold[$key][$branchId] ?? 0.0, 2) : null,
+                ];
+            }
+            usort($list, fn (array $a, array $b) => $b['stock'] <=> $a['stock'] ?: $a['branch_id'] <=> $b['branch_id']);
+            $r['else'] = $list;
+            $r['else_qty'] = round(array_sum(array_column($list, 'stock')), 2);
+            $r['flags'][] = $list === [] ? 'nowhere' : 'elsewhere';
+        }
+        unset($r);
+
+        return $rows;
     }
 
     /** Le stock de maintenant, article par article et branche par branche, et ce qu'il vaut (achat, detail). */

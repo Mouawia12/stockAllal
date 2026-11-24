@@ -23,7 +23,9 @@
     $when = fn (string $key) => strlen($key) === 7
         ? Carbon::parse($key.'-01')->locale($locale)->translatedFormat('F Y')
         : Carbon::parse($key)->locale($locale)->translatedFormat('l d/m/Y');
-    $numeric = fn (array $col) => ! in_array($col['type'], ['item', 'partner', 'text', 'branch', 'period', 'class'], true);
+    $numeric = fn (array $col) => ! in_array($col['type'], ['item', 'partner', 'text', 'branch', 'period', 'class', 'elsewhere'], true);
+    // ou trouver l'article ailleurs : "Setif 40 · Blida 12"
+    $where = fn (array $r) => collect($r['else'] ?? [])->map(fn (array $e) => ($others->get($e['branch_id'])?->name ?? '').' '.$qty($e['stock']))->join(' · ');
     // une valeur ecrite comme sa colonne (les lignes, puis le total)
     $write = fn (array $col, $v) => match ($col['type']) {
         'int' => $n0($v),
@@ -42,11 +44,12 @@
     };
     // les cellules d'une ligne, sans les blancs du gabarit : une liste de milliers de lignes pese trois fois moins
     // (lignes instables : chaque octet compte). Tout texte passe par e().
-    $cells = function (array $r) use ($columns, $names, $write, $when, $R) {
+    $cells = function (array $r) use ($columns, $names, $write, $when, $where, $R) {
         $html = '';
         foreach ($columns as $col) {
             $v = $r[$col['key']] ?? null;
             $html .= match ($col['type']) {
+                'elsewhere' => '<td><bdi>'.e($where($r)).'</bdi></td>',
                 'item' => '<td class="k"><span class="code ltr">'.e($r['code']).'</span></td><td><bdi>'.e($r['designation']).'</bdi></td>',
                 'partner' => '<td class="k"><span class="code ltr">'.e($r['code']).'</span></td><td><bdi>'.e($r['name']).'</bdi></td>',
                 'branch' => '<td><bdi>'.e($names[$r['branch_id']] ?? '').'</bdi></td>',

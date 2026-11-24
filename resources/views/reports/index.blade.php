@@ -103,6 +103,25 @@
     .abc.a { background: var(--accent); color: var(--on-accent); }
     .abc.b { background: var(--accent-soft); color: var(--accent); }
     .strong { font-weight: 700; }
+    /* "النواقص" : ou trouver l'article ailleurs. Chaque branche a sa pastille, son nom et ce qu'elle en a ; un clic = le detail */
+    button.else { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 3px 12px; padding: 2px 8px; margin: -2px -8px; font: inherit; color: inherit;
+        text-align: start; background: none; border: 1px solid transparent; border-radius: 8px; cursor: pointer; }
+    button.else:hover, button.else:focus-visible { background: var(--card); border-color: var(--accent); }
+    .else .where { gap: 5px; }
+    .else .more { color: var(--muted); font-size: 12.5px; font-weight: 600; }
+    .modal-bg { position: fixed; inset: 0; background: rgba(0, 0, 0, .45); display: none; align-items: flex-start; justify-content: center; padding: 8vh 12px; z-index: 10; overflow: auto; }
+    .modal-bg.open { display: flex; }
+    .modal { width: 100%; max-width: 640px; padding: 14px 18px 12px; background: var(--card); border: 1px solid var(--border); border-radius: 12px; box-shadow: var(--shadow), 0 18px 44px rgba(0, 0, 0, .2); }
+    .modal-head { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; }
+    .modal-head h2 { margin: 0; font-size: 15px; color: var(--muted); font-weight: 600; }
+    .modal-head .grow { flex: 1; }
+    .else-what { margin: 0; font-size: 18px; line-height: 1.35; }
+    .else-what .code { color: var(--muted); font-size: 15px; font-weight: 400; }
+    .else-here { margin: 2px 0 10px; }
+    table.else-list th.n, table.else-list td.n { text-align: end; }
+    table.else-list td .code { display: block; color: var(--muted); font-size: 13px; padding-inline-start: 15px; }
+    table.else-list tfoot td { border-top: 2px solid var(--border); border-bottom: 0; font-weight: 700; }
+    .else-foot { display: flex; justify-content: space-between; align-items: center; gap: 8px 14px; flex-wrap: wrap; margin: 12px 0 0; }
     .pager { display: flex; justify-content: space-between; align-items: center; gap: 8px; margin-top: 12px; }
     .empty { padding: 26px; text-align: center; color: var(--muted); }
 
@@ -115,6 +134,10 @@
         .tile .value { font-size: 24px; }
         .tabs { flex-wrap: nowrap; overflow-x: auto; }
         table.rep td.item { min-width: 0; }
+        /* sur telephone : la pastille de la branche et sa quantite, le nom est dans la fenetre */
+        table.rep .else .where bdi { display: none; }
+        /* un titre de colonne tient sur deux lignes plutot que de faire defiler la liste */
+        table.rep th { white-space: normal; }
         .bars { height: 100px; gap: 2px; }
     }
 </style>
@@ -245,6 +268,21 @@
 @if ($searchable)
     @include('partials.live-search')
 @endif
+
+@if ($elsewhere)
+    {{-- "النواقص" : ou trouver l'article ailleurs, branche par branche ; rempli par le <template> de la ligne (reports/_list) --}}
+    <div class="modal-bg" id="else-bg">
+        <div class="modal" role="dialog" aria-modal="true" aria-labelledby="else-title">
+            <div class="modal-head">
+                <h2 id="else-title">{{ $R['else']['title'] }}</h2>
+                <span class="grow"></span>
+                <button type="button" class="link" id="else-close" title="{{ $R['else']['close'] }} (Échap)" aria-label="{{ $R['else']['close'] }}">✕</button>
+            </div>
+            <div id="else-body"></div>
+            <p class="muted small else-foot"><span>{{ $R['else']['fresh'] }}</span><span>{{ $R['else']['hint'] }}</span></p>
+        </div>
+    </div>
+@endif
 @endsection
 
 @push('scripts')
@@ -279,6 +317,43 @@
         const i = list.indexOf(link) + (e.key === 'ArrowDown' ? 1 : -1);
         if (i < 0) input?.focus();
         else list[Math.min(i, list.length - 1)].focus();
+    });
+
+    // "النواقص" : un clic sur "في فروع أخرى" ouvre le detail de la ligne (son <template>). Dans la fenetre : ↑ ↓ la
+    // ligne precedente / suivante qui en a un, Echap ferme et rend le clavier a la ligne.
+    const bg = document.getElementById('else-bg');
+    if (!bg) return;
+    const body = document.getElementById('else-body');
+    const closeBtn = document.getElementById('else-close');
+    const buttons = () => [...results.querySelectorAll('[data-else]')];
+    let shown = null;
+    function show(btn) {
+        const tpl = btn.parentElement.querySelector('template');
+        if (!tpl) return;
+        shown = btn;
+        body.replaceChildren(tpl.content.cloneNode(true));
+        if (!bg.classList.contains('open')) { bg.classList.add('open'); closeBtn.focus(); }
+    }
+    function close() {
+        bg.classList.remove('open');
+        body.replaceChildren();
+        if (shown?.isConnected) { shown.focus(); shown.scrollIntoView({block: 'nearest'}); }
+        shown = null;
+    }
+    results.addEventListener('click', e => {
+        const btn = e.target.closest('[data-else]');
+        if (btn) show(btn);
+    });
+    closeBtn.addEventListener('click', close);
+    bg.addEventListener('click', e => { if (e.target === bg) close(); });
+    document.addEventListener('keydown', e => {
+        if (!bg.classList.contains('open')) return;
+        if (e.key === 'Escape') { e.preventDefault(); close(); return; }
+        if (e.key !== 'ArrowDown' && e.key !== 'ArrowUp') return;
+        e.preventDefault();
+        const list = buttons();
+        const next = list[list.indexOf(shown) + (e.key === 'ArrowDown' ? 1 : -1)];
+        if (next) show(next);
     });
 })();
 </script>

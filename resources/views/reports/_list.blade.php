@@ -15,7 +15,11 @@
     $pct = fn ($v) => $v === null ? '' : number_format($v, 1, ',', ' ').'%';
     $date = fn ($v) => $v === null ? '' : Carbon::parse($v)->format('d/m/Y');
     $url = fn (array $change = []) => route('dashboard.reports', ['report' => $report] + array_filter(array_merge($periodState, $listState, $change), fn ($v) => $v !== null && $v !== ''));
-    $numeric = fn (array $col) => ! in_array($col['type'], ['item', 'partner', 'text', 'branch', 'period', 'class'], true);
+    $numeric = fn (array $col) => ! in_array($col['type'], ['item', 'partner', 'text', 'branch', 'period', 'class', 'elsewhere'], true);
+    // un nombre dans une phrase : isole de gauche a droite, sinon "33 230" s'affiche "230 33" en arabe
+    $iso = fn (string $s) => "\u{2066}{$s}\u{2069}";
+    // "النواقص" : les branches affichees d'emblee dans la cellule "ailleurs" ; les autres sont dans sa fenetre
+    $elseShown = 2;
     // les classes d'une cellule : n = un nombre (aligne a la fin), hide-sm = cachee sur telephone
     $cls = fn (array $col, array $more = []) => implode(' ', array_keys(array_filter(['n' => $numeric($col), 'hide-sm' => ! $col['sm']] + $more)));
     $partnerRoute = in_array($report, ['customers', 'receivable'], true) ? 'customers.show' : 'suppliers.show';
@@ -103,6 +107,48 @@
                                     @break
                                 @case('stock')
                                     @if ($v === null)<span class="muted">—</span>@else<span class="qty {{ $r['state'] ?? '' }}">{{ $qty($v) }}</span>@endif
+                                    @break
+                                @case('elsewhere')
+                                    {{-- ou le trouver : les autres branches qui en ont, la plus fournie d'abord ; un clic = le detail --}}
+                                    @php
+                                        $else = $r['else'] ?? [];
+                                        $soldThere = collect($else)->contains(fn (array $e) => $e['sold'] !== null);
+                                    @endphp
+                                    @if ($else === [])
+                                        <span class="muted" title="{{ $R['else']['none'] }}">—</span>
+                                    @else
+                                        <button type="button" class="else" data-else aria-haspopup="dialog" title="{{ $R['else']['open'] }}">@foreach (array_slice($else, 0, $elseShown) as $e)<span class="where" style="--bh: {{ App\Models\Branch::hueFor($e['branch_id']) }}"><span class="bdot"></span><bdi>{{ $others->get($e['branch_id'])?->name }}</bdi><span class="qty {{ $e['state'] ?? '' }}">{{ $qty($e['stock']) }}</span></span>@endforeach @if (count($else) > $elseShown)<span class="more">+{{ count($else) - $elseShown }}</span>@endif</button>
+                                        <template>
+                                            <p class="else-what"><b><bdi>{{ $r['designation'] ?? $r['code'] }}</bdi></b>@if ($r['designation']) <span class="code ltr">{{ $r['code'] }}</span>@endif</p>
+                                            <p class="else-here muted small">{{ __('reports.else.here', ['branch' => $names[$r['branch_id']] ?? '', 'stock' => $iso($qty($r['stock'])), 'sold' => $iso($qty($r['sold']))]) }}</p>
+                                            <table class="list else-list">
+                                                <thead>
+                                                <tr>
+                                                    <th scope="col">{{ $R['cols']['branch'] }}</th>
+                                                    <th scope="col" class="n">{{ $R['else']['qty'] }}</th>
+                                                    <th scope="col" class="n hide-sm">{{ $R['cols']['alert'] }}</th>
+                                                    @if ($soldThere)<th scope="col" class="n">{{ $R['else']['sold'] }}</th>@endif
+                                                    <th scope="col" class="hide-sm">{{ $R['else']['synced'] }}</th>
+                                                </tr>
+                                                </thead>
+                                                <tbody>
+                                                @foreach ($else as $e)
+                                                    <tr class="bt" style="--bh: {{ App\Models\Branch::hueFor($e['branch_id']) }}">
+                                                        <td><span class="where"><span class="bdot"></span><bdi>{{ $others->get($e['branch_id'])?->name }}</bdi></span>@if ($e['code'])<span class="code ltr" title="{{ $R['else']['code'] }}">{{ $e['code'] }}</span>@endif</td>
+                                                        <td class="n"><span class="qty {{ $e['state'] ?? '' }}">{{ $qty($e['stock']) }}</span></td>
+                                                        <td class="n hide-sm"><span class="num muted">{{ $qty($e['alert']) }}</span></td>
+                                                        @if ($soldThere)<td class="n">@if ($e['sold'] === null)<span class="muted" title="{{ $R['else']['sales_unseen'] }}">—</span>@else<span class="num">{{ $qty($e['sold']) }}</span>@endif</td>@endif
+                                                        <td class="hide-sm"><span class="muted small">{{ $others->get($e['branch_id'])?->last_sync_at?->diffForHumans() ?? '—' }}</span></td>
+                                                    </tr>
+                                                @endforeach
+                                                </tbody>
+                                                @if (count($else) > 1)
+                                                    <tfoot><tr><td>{{ $R['total'] }}</td><td class="n"><span class="num">{{ $qty($v) }}</span></td><td class="hide-sm"></td>@if ($soldThere)<td></td>@endif<td class="hide-sm"></td></tr></tfoot>
+                                                @endif
+                                            </table>
+                                            <p class="else-foot"><a class="btn" href="{{ route('stock.item', ['code' => $r['key']]) }}">{{ $R['else']['item'] }}</a></p>
+                                        </template>
+                                    @endif
                                     @break
                                 @case('share')
                                     <span class="share-cell"><span class="num">{{ $pct($v) }}</span><span class="share" aria-hidden="true"><i style="--w: {{ min(100, max(0, (float) $v)) }}%"></i></span></span>

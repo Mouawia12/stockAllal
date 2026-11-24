@@ -3,6 +3,7 @@
 namespace Tests\Feature;
 
 use App\Models\Branch;
+use App\Models\BranchAccess;
 use App\Models\BranchStock;
 use App\Models\InstallCode;
 use App\Models\Partner;
@@ -218,6 +219,85 @@ class ReportsTest extends TestCase
         $this->assertStringNotContainsString('COUDE PVC', $table);
         $table = $this->table($this->actingAs($boss)->get('/dashboard/reports/stock?f=negative')->assertOk()->getContent());
         $this->assertMatchesRegularExpression('/COUDE PVC.*class="qty negative">-2</s', $table);
+    }
+
+    public function test_the_shortages_say_where_else_the_item_is_in_the_branches_whose_stock_the_account_sees(): void
+    {
+        [, $oran] = $this->oran();
+        [$setifToken, $setif] = $this->register('Setif');
+        [, $blida] = $this->register('Blida', '1.0.6');
+        [, $alger] = $this->register('Alger');
+        // le boulon manque a Oran : 40 a Setif (ecrit 820z, sous son seuil de 50), 12,5 a Blida sous un code fusionne,
+        // 987 a Alger. Le tube (5 a Oran, sous son seuil) : 0 a Setif, donc nulle part.
+        $this->stock($setif, '820z', 'BOULON 8X20', 40, 250, 300, 50);
+        $this->stock($setif, 'BTH', 'TUBE CUIVRE 14', 0);
+        $this->stock($blida, '820-Z', 'BOULON 8-20', 12.5);
+        $this->stock($alger, '820Z', 'BOULON ALGER', 987);
+        ProductGroup::merge(['820Z', '820-Z'], null);
+        $this->send($setifToken, 'sales', ['2026-11-02' => [$this->bon(900, '11:00:00', 'C001', [['code' => '820Z', 'qty' => 6, 'price' => 300, 'total' => 1800, 'position' => 1]])]]);
+        $all = [$oran->id, $setif->id, $blida->id, $alger->id];
+        // Oran voit le stock de Setif et de Blida, plus celui d'Alger
+        BranchAccess::set($oran->id, 'stock', [$setif->id, $blida->id], $all);
+        $karim = $this->boss($oran);
+
+        // le boulon : Setif 40 (en vert, sous son seuil) puis Blida 12,5 et son code la-bas ; le tube : nulle part
+        $html = $this->actingAs($karim)->get('/dashboard/reports/reorder')->assertOk()->getContent();
+        $this->assertMatchesRegularExpression('/BOULON 8\*20.*data-else.*Setif.*class="qty low">40<.*Blida.*class="qty ">12,50<.*<template>.*820-Z.*>52,50<.*TUBE CUIVRE 14/s', $html);
+        foreach ([__('reports.cols.elsewhere'), __('reports.tiles.elsewhere'), __('reports.notes.nowhere', ['v' => "\u{2066}1\u{2069}"]), __('reports.else.title'),
+            __('reports.else.here', ['branch' => 'Oran', 'stock' => "\u{2066}0\u{2069}", 'sold' => "\u{2066}34\u{2069}"]), __('reports.else.none')] as $text) {
+            $this->assertStringContainsString(e($text), $html, $text);
+        }
+        $this->assertSame(1, substr_count($html, 'class="else" data-else'));
+        // ni la branche dont il ne voit pas le stock, ni les ventes de Setif (il n'en voit que le stock)
+        foreach (['Alger', '987', 'BOULON ALGER', __('reports.else.sold')] as $secret) {
+            $this->assertStringNotContainsString(e($secret), $html, $secret);
+        }
+
+        // les filtres et le tri par ce qu'il y a ailleurs
+        $html = $this->actingAs($karim)->get('/dashboard/reports/reorder?f=elsewhere')->assertOk()->getContent();
+        $this->assertStringContainsString('BOULON 8*20', $html);
+        $this->assertStringNotContainsString('TUBE CUIVRE', $html);
+        $html = $this->actingAs($karim)->get('/dashboard/reports/reorder?f=nowhere')->assertOk()->getContent();
+        $this->assertStringContainsString('TUBE CUIVRE', $html);
+        $this->assertStringNotContainsString('BOULON 8*20', $html);
+        $html = $this->actingAs($karim)->get('/dashboard/reports/reorder?sort=else_qty&dir=asc')->assertOk()->getContent();
+        $this->assertMatchesRegularExpression('/TUBE CUIVRE 14.*BOULON 8\*20/s', $html);
+
+        // Oran seule choisie en haut : ce sont justement les autres qu'on cherche
+        $this->actingAs($karim)->post('/branch-scope', ['branch_id' => $oran->id]);
+        $this->actingAs($karim)->get('/dashboard/reports/reorder')->assertOk()->assertSee('class="qty low">40<', false);
+        $this->actingAs($karim)->post('/branch-scope', ['branch_id' => '']);
+
+        // sur papier et dans le fichier pour Excel
+        $html = $this->actingAs($karim)->get('/dashboard/reports/reorder/print')->assertOk()->getContent();
+        foreach (['Autres succursales', 'Setif 40 · Blida 12,50'] as $text) {
+            $this->assertStringContainsString($text, $html, $text);
+        }
+        $this->assertStringNotContainsString('Alger', $html);
+        $csv = $this->actingAs($karim)->withCookie('print', json_encode(['lang' => 'fr']))->get('/dashboard/reports/reorder/export')->assertOk()->streamedContent();
+        $this->assertStringContainsString('"Quantité ailleurs";"Autres succursales"', $csv);
+        $this->assertStringContainsString(';52,50;"Setif: 40 | Blida: 12,50";', $csv);
+        $this->assertStringNotContainsString('Alger', $csv);
+
+        // le directeur voit aussi les ventes de Setif : elle en a vendu 6 dans la periode ; Blida (agent 1.0.6) : inconnu
+        $owner = User::factory()->owner()->create();
+        $owner->branches()->attach([$oran->id, $setif->id, $blida->id]);
+        $html = $this->actingAs($owner)->get('/dashboard/reports/reorder?f=zero')->assertOk()->getContent();
+        $this->assertMatchesRegularExpression('/BOULON 8\*20.*<template>.*'.preg_quote(e(__('reports.else.sold')), '/').'.*Setif.*>40<.*class="num">6<.*Blida.*'
+            .preg_quote(e(__('reports.else.sales_unseen')), '/').'/s', $html);
+        $this->assertStringNotContainsString('Alger', $html);
+
+        // un compte qui ne voit que le stock de sa branche : ni colonne, ni filtre, ni tri
+        BranchAccess::set($oran->id, 'stock', [], $all);
+        foreach (['', '?f=elsewhere', '?sort=else_qty&dir=asc'] as $query) {
+            $html = $this->actingAs($karim)->get('/dashboard/reports/reorder'.$query)->assertOk()->getContent();
+            $this->assertMatchesRegularExpression('/BOULON 8\*20.*TUBE CUIVRE 14/s', $this->table($html));
+            foreach (['class="else"', 'id="else-bg"', 'Setif', 'Blida', __('reports.cols.elsewhere'), __('reports.filters.elsewhere'), __('reports.tiles.elsewhere')] as $absent) {
+                $this->assertStringNotContainsString(e($absent), $html, $query.' '.$absent);
+            }
+        }
+        $csv = $this->actingAs($karim)->get('/dashboard/reports/reorder/export')->assertOk()->streamedContent();
+        $this->assertStringNotContainsString('Setif', $csv);
     }
 
     public function test_customers_suppliers_their_debts_days_and_sellers(): void

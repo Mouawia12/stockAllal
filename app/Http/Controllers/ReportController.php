@@ -85,21 +85,27 @@ class ReportController extends Controller
         $text = fn (?string $v) => $v !== null && $v !== '' && str_contains("=+-@\t\r", $v[0]) ? "'".$v : (string) $v;
         $day = fn (?string $v) => $v === null ? '' : (strlen($v) === 10 ? Carbon::parse($v)->format('d/m/Y') : $v);
 
+        // ou trouver l'article ailleurs : "Setif: 40 | Blida: 12,5"
+        $where = fn (array $row) => collect($row['else'] ?? [])
+            ->map(fn (array $e) => ($page['others']->get($e['branch_id'])?->name ?? '').': '.$number($e['stock'], abs($e['stock'] - round($e['stock'])) < 0.005 ? 0 : 2))->join(' | ');
+
         $head = [];
         foreach ($page['columns'] as $col) {
             match ($col['type']) {
                 'item' => array_push($head, __('reports.cols.code'), __('reports.cols.designation')),
                 'partner' => array_push($head, __('reports.cols.code'), __('reports.cols.'.$col['label'])),
+                'elsewhere' => array_push($head, __('reports.cols.elsewhere_qty'), __('reports.cols.elsewhere')),
                 default => $head[] = __('reports.cols.'.$col['label']),
             };
         }
-        $cells = function (array $row) use ($page, $names, $number, $text, $day) {
+        $cells = function (array $row) use ($page, $names, $number, $text, $day, $where) {
             $out = [];
             foreach ($page['columns'] as $col) {
                 $v = $row[$col['key']] ?? null;
                 match ($col['type']) {
                     'item' => array_push($out, $text($row['code']), $text($row['designation'])),
                     'partner' => array_push($out, $text($row['code']), $text($row['name'])),
+                    'elsewhere' => array_push($out, $number($v), $text($where($row))),
                     'branch' => $out[] = $text($names[$row['branch_id']] ?? ''),
                     'text' => $out[] = $text($v),
                     'period', 'date' => $out[] = $day($v),
@@ -118,6 +124,7 @@ class ReportController extends Controller
             $first = $i === 0 ? [__('reports.total')] : [''];
             match (true) {
                 in_array($col['type'], ['item', 'partner'], true) => array_push($totals, ...$first, ...['']),
+                $col['type'] === 'elsewhere' => array_push($totals, '', ''),
                 $i === 0 => array_push($totals, ...$first),
                 default => $totals[] = $total === null ? '' : $number($total, $col['type'] === 'int' ? 0 : 2),
             };
@@ -171,10 +178,19 @@ class ReportController extends Controller
         $askedUnit = in_array($request->query('unit'), ['day', 'month'], true) ? $request->query('unit') : null;
         $unit = $askedUnit ?? ($span <= 62 ? 'day' : 'month');
 
+        // "النواقص" dit ou trouver l'article ailleurs : dans toutes les branches dont le compte voit le stock, meme quand
+        // une seule est choisie en haut (c'est justement les autres qu'on cherche) ; ce qu'elles en vendent, seulement
+        // de celles dont il voit aussi les ventes
+        $others = $report === 'reorder' ? BranchScope::choices($user) : collect();
+        $salesIds = $user->salesBranchIds();
+
         $c = [
             'ids' => $ready->pluck('id')->all(),
             'stock_ids' => $ready->filter($sees)->pluck('id')->values()->all(),
             'shelf_ids' => $branches->filter($sees)->pluck('id')->values()->all(),
+            'else_ids' => $others->pluck('id')->sort()->values()->all(),
+            'else_sales' => $others->filter(fn (Branch $b) => $b->agentSupports('documents') && ($salesIds === null || in_array($b->id, $salesIds, true)))
+                ->pluck('id')->sort()->values()->all(),
             'from' => $window['from'],
             'to' => $window['to'],
             'today' => $now->toDateString(),
@@ -206,7 +222,8 @@ class ReportController extends Controller
             });
         }
 
-        $filters = Reports::filters($report, $sale, $buy);
+        $elsewhere = Reports::seesElsewhere($report, $c);
+        $filters = Reports::filters($report, $sale, $buy, $elsewhere);
         $filter = in_array($request->query('f'), $filters, true) ? $request->query('f') : ($filters[0] ?? 'all');
         $passes = fn (string $f) => fn (array $r) => $f === 'all' || in_array($f, $r['flags'], true);
         $counts = collect($filters)->mapWithKeys(fn (string $f) => [$f => $rows->filter($passes($f))->count()])->all();
@@ -255,6 +272,9 @@ class ReportController extends Controller
             'totals' => $totals,
             'tiles' => $data['tiles'],
             'names' => $names,
+            // les branches ou "النواقص" cherche l'article (leur nom, leur couleur, leur derniere synchronisation)
+            'elsewhere' => $elsewhere,
+            'others' => $others->keyBy('id'),
             'scope' => $scope,
             'several' => $c['several'],
             'selected' => BranchScope::selected($request),
