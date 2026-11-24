@@ -124,6 +124,8 @@
         default => null,
     };
     $currentApp = $current ? config("apps.{$current}") : null;
+    // لوحة القيادة : le rapport ouvert (App\Support\Reports), pour allumer son menu
+    $reportNow = $current === 'dashboard' ? request()->route('report') : null;
 @endphp
 <header>
     <div class="in">
@@ -134,7 +136,13 @@
             <a class="app-title" href="{{ route('home') }}">@include('partials.app-icon', ['name' => 'logo']){{ __('common.app_name') }}</a>
         @endif
         <nav>
-            @if ($current === 'stock')
+            @if ($current === 'dashboard')
+                {{-- la vue d'ensemble, puis les rapports par menu (le premier que le compte peut ouvrir) --}}
+                <a href="{{ route('dashboard.index') }}" class="{{ $reportNow === null ? 'on' : '' }}">{{ __('reports.nav.overview') }}</a>
+                @foreach (App\Support\Reports::menu($user->can('prices.sale'), $user->can('prices.buy')) as $menuGroup => $menuReport)
+                    <a href="{{ route('dashboard.reports', ['report' => $menuReport]) }}" class="{{ $reportNow !== null && App\Support\Reports::groupOf($reportNow) === $menuGroup ? 'on' : '' }}">{{ __("reports.groups.{$menuGroup}") }}</a>
+                @endforeach
+            @elseif ($current === 'stock')
                 <a href="{{ route('stock.index') }}" class="{{ request()->routeIs('stock.*') ? 'on' : '' }}">{{ __('common.nav.search') }}</a>
                 @can('merge.manage')
                     <a href="{{ route('merge.index') }}" class="{{ request()->routeIs('merge.*') ? 'on' : '' }}">{{ __('common.nav.merge') }}</a>

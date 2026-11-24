@@ -12,6 +12,11 @@
         $u->can('merge.manage') ? ['label' => __('merge_ai.title'), 'hint' => __('common.apps.stock'), 'url' => route('merge.ai')] : null,
         $u->can('branches.view') ? ['label' => __('common.nav.branches'), 'hint' => __('common.apps.stock'), 'url' => route('branches.index')] : null,
         $u->can('sales.view') ? ['label' => __('dashboard.title'), 'hint' => __('common.apps.dashboard'), 'url' => route('dashboard.index')] : null,
+        // les rapports de "لوحة القيادة" que le compte peut ouvrir (App\Support\Reports)
+        ...($u->can('sales.view') ? collect(App\Support\Reports::all())
+            ->filter(fn (string $r) => App\Support\Reports::allowed($r, $u->can('prices.sale'), $u->can('prices.buy')))
+            ->map(fn (string $r) => ['label' => __("reports.titles.{$r}"), 'hint' => __('reports.groups.'.App\Support\Reports::groupOf($r)), 'url' => route('dashboard.reports', ['report' => $r])])
+            ->values()->all() : []),
         $u->can('sales.view') ? ['label' => __('documents.title.sale'), 'hint' => __('common.apps.sales'), 'url' => route('sales.index')] : null,
         $u->can('sales.view') ? ['label' => __('documents.title.purchase'), 'hint' => __('common.apps.purchases'), 'url' => route('purchases.index')] : null,
         $u->can('sales.view') ? ['label' => __('partners.title.customer'), 'hint' => __('common.apps.customers'), 'url' => route('customers.index')] : null,

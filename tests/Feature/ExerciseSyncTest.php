@@ -221,7 +221,12 @@ class ExerciseSyncTest extends TestCase
         $this->assertTrue($sold('/dashboard'), '30 days back from its last day');
         $this->assertTrue($sold('/dashboard?period=today'), 'its last day');
         $this->actingAs($boss)->getJson(route('dashboard.calendar'))->assertOk()->assertJson(['today' => '2026-03-01']);
+        // les rapports aussi : "30 jours" par defaut = les 30 derniers jours de cet exercice, et son solde a la cloture
+        $this->actingAs($boss)->get('/dashboard/reports/customers')->assertOk()->assertSee('Ets Benali')->assertSee('01/03/2026');
+        $this->actingAs($boss)->get('/dashboard/reports/receivable')->assertOk()->assertSee('700,00')->assertDontSee('100,00');
         $this->actingAs($boss)->post(route('exercise'), ['exercise_id' => null]);
+        $this->actingAs($boss)->get('/dashboard/reports/customers?day=2026-03-01')->assertOk()->assertDontSee('Ets Benali');
+        $this->actingAs($boss)->get('/dashboard/reports/receivable')->assertOk()->assertSee('100,00')->assertDontSee('700,00');
         $this->actingAs($boss)->getJson(route('dashboard.calendar'))->assertOk()->assertJson(['today' => now()->toDateString()]);
         $this->assertFalse($sold('/dashboard?day=2026-03-01'), 'the current year has no bon that day');
 

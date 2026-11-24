@@ -114,6 +114,11 @@
     .dash h2 { margin: 0; font-size: 16px; }
     .dash .help { margin: 2px 0 0; color: var(--muted); font-size: 13px; }
     .card-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 8px 12px; flex-wrap: wrap; margin-bottom: 12px; }
+    /* "عرض الكل" : la meme liste en entier, dans les rapports (ReportController) */
+    .card-head .side { display: flex; align-items: center; gap: 8px 12px; flex-wrap: wrap; }
+    .more { font-size: 13.5px; font-weight: 600; white-space: nowrap; }
+    .more:hover { text-decoration: underline; text-underline-offset: 3px; }
+    @media print { .more { display: none; } }
     .fig { font-family: var(--font-code); font-weight: 700; letter-spacing: .01em; font-variant-numeric: tabular-nums; direction: ltr; unicode-bidi: isolate; white-space: nowrap; }
 
     /* le chiffre de la periode et sa courbe : le seul element fort de la page */
@@ -694,14 +699,17 @@
         <section class="card">
             <div class="card-head">
                 <h2>{{ $D['top_title'] }}</h2>
-                @if ($money)
-                    <nav class="chips" aria-label="{{ $D['rank'] }}">
-                        @foreach (App\Http\Controllers\DashboardController::RANKS as $r)
-                            <a href="{{ route('dashboard.index', array_filter($here + ['rank' => $r === 'amount' ? null : $r])) }}"
-                               @class(['chip', 'on' => $rank === $r]) @if ($rank === $r) aria-current="true" @endif>{{ $D['ranks'][$r] }}</a>
-                        @endforeach
-                    </nav>
-                @endif
+                <div class="side">
+                    @if ($money)
+                        <nav class="chips" aria-label="{{ $D['rank'] }}">
+                            @foreach (App\Http\Controllers\DashboardController::RANKS as $r)
+                                <a href="{{ route('dashboard.index', array_filter($here + ['rank' => $r === 'amount' ? null : $r])) }}"
+                                   @class(['chip', 'on' => $rank === $r]) @if ($rank === $r) aria-current="true" @endif>{{ $D['ranks'][$r] }}</a>
+                            @endforeach
+                        </nav>
+                    @endif
+                    <a class="more" href="{{ route('dashboard.reports', array_filter(['report' => 'products', 'sort' => $rank === 'qty' && $money ? 'net' : null] + $here)) }}">{{ __('reports.see_all') }}</a>
+                </div>
             </div>
             @if ($products->isEmpty())
                 <p class="empty">{{ $D['no_sales'] }}</p>
@@ -738,7 +746,8 @@
             @if ($several)
                 {{-- la part de chaque branche --}}
                 <section class="card">
-                    <div class="card-head"><div><h2>{{ $D['branches_title'] }}</h2><p class="help">{{ $D['branches_help'][$metric] }}</p></div></div>
+                    <div class="card-head"><div><h2>{{ $D['branches_title'] }}</h2><p class="help">{{ $D['branches_help'][$metric] }}</p></div>
+                        <a class="more" href="{{ route('dashboard.reports', array_filter(['report' => 'branches'] + $here)) }}">{{ __('reports.see_all') }}</a></div>
                     @foreach ($perBranch as $b)
                         @php($t = $trend($b['trend']))
                         <div class="branch-row" style="--bh: {{ $b['hue'] }}">
@@ -755,7 +764,8 @@
 
             {{-- les meilleurs clients --}}
             <section class="card">
-                <div class="card-head"><h2>{{ $D['customers_title'] }}</h2></div>
+                <div class="card-head"><h2>{{ $D['customers_title'] }}</h2>
+                    <a class="more" href="{{ route('dashboard.reports', array_filter(['report' => 'customers'] + $here)) }}">{{ __('reports.see_all') }}</a></div>
                 @if ($customers->isEmpty())
                     <p class="empty">{{ $D['no_sales'] }}</p>
                 @else
@@ -781,7 +791,8 @@
     <div class="pair">
         {{-- vendus puis epuises : les couleurs du stock de Gescomm (0 rouge, negatif jaune) --}}
         <section class="card">
-            <div class="card-head"><div><h2>{{ $D['sold_out_title'] }}</h2><p class="help">{{ $D['sold_out_help'] }}</p></div></div>
+            <div class="card-head"><div><h2>{{ $D['sold_out_title'] }}</h2><p class="help">{{ $D['sold_out_help'] }}</p></div>
+                @if ($dormant['seen'])<a class="more" href="{{ route('dashboard.reports', array_filter(['report' => 'reorder'] + $here)) }}">{{ __('reports.see_all') }}</a>@endif</div>
             @if (! $dormant['seen'])
                 <p class="empty">{{ $D['stock_unseen'] }}</p>
             @elseif ($soldOut->isEmpty())
@@ -807,7 +818,8 @@
 
         {{-- le stock dormant --}}
         <section class="card">
-            <div class="card-head"><div><h2>{{ $D['dormant_title'] }}</h2><p class="help">{{ __('dashboard.dormant_help', ['days' => App\Support\SalesDashboard::DORMANT_DAYS]) }}</p></div></div>
+            <div class="card-head"><div><h2>{{ $D['dormant_title'] }}</h2><p class="help">{{ __('dashboard.dormant_help', ['days' => App\Support\SalesDashboard::DORMANT_DAYS]) }}</p></div>
+                @if ($dormant['seen'])<a class="more" href="{{ route('dashboard.reports', ['report' => 'dormant']) }}">{{ __('reports.see_all') }}</a>@endif</div>
             @if (! $dormant['seen'])
                 <p class="empty">{{ $D['stock_unseen'] }}</p>
             @elseif ($dormant['count'] === 0)

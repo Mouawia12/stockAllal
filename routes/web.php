@@ -17,10 +17,12 @@ use App\Http\Controllers\MergeAiController;
 use App\Http\Controllers\PartnerController;
 use App\Http\Controllers\ProductGroupController;
 use App\Http\Controllers\ReconcileController;
+use App\Http\Controllers\ReportController;
 use App\Http\Controllers\StockController;
 use App\Http\Controllers\UserController;
 use App\Http\Middleware\PrintPreferences;
 use App\Support\AiProviders;
+use App\Support\Reports;
 use Illuminate\Support\Facades\Route;
 
 // Langue de l'interface, pour tous (page de connexion comprise).
@@ -60,6 +62,9 @@ Route::middleware('auth')->group(function () {
     Route::middleware('can:sales.view')->group(function () {
         Route::get('dashboard', [DashboardController::class, 'index'])->name('dashboard.index')->middleware('throttle:search');
         Route::get('dashboard/calendar', [DashboardController::class, 'calendar'])->name('dashboard.calendar')->middleware('throttle:search');
+        // "التقارير" : chaque liste du tableau de bord en entier (App\Support\Reports), triee, cherchee, imprimee, exportee
+        Route::get('dashboard/reports/{report?}', [ReportController::class, 'show'])->name('dashboard.reports')
+            ->whereIn('report', Reports::all())->middleware('throttle:search');
         Route::get('sales', [DocumentController::class, 'sales'])->name('sales.index')->middleware('throttle:search');
         Route::get('sales/{document}', [DocumentController::class, 'sale'])->name('sales.show')->whereNumber('document');
         Route::get('purchases', [DocumentController::class, 'purchases'])->name('purchases.index')->middleware('throttle:search');
@@ -84,6 +89,9 @@ Route::middleware('auth')->group(function () {
             Route::get('suppliers/payments/print', [PartnerController::class, 'supplierPaymentsPrint'])->name('suppliers.print-payments');
             Route::get('suppliers/{partner}/print', [PartnerController::class, 'supplierPrint'])->name('suppliers.print-card')->whereNumber('partner');
             Route::get('cash/print', [CashController::class, 'print'])->name('cash.print')->middleware('can:cash.view');
+            Route::get('dashboard/reports/{report}/print', [ReportController::class, 'print'])->name('dashboard.reports.print')->whereIn('report', Reports::all());
+            // le CSV pour Excel : dans la langue des impressions, comme le papier
+            Route::get('dashboard/reports/{report}/export', [ReportController::class, 'export'])->name('dashboard.reports.export')->whereIn('report', Reports::all());
         });
 
         // "المطابقة" : les comptes de deux branches qui commercent (Reconciliation), et l'IA qui les explique

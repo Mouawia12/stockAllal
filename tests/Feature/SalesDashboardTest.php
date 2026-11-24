@@ -215,9 +215,11 @@ class SalesDashboardTest extends TestCase
         $this->assertStringContainsString(e(__('dashboard.chart.bons.day')), $html);
         $this->assertStringContainsString('BOULON 8*20', $html);
         $this->assertStringContainsString('Ets Benali', $html);
-        foreach (['11 250', '10 200', '10 050', '12 025', '2 100', __('dashboard.dormant_value', ['value' => "\u{2066}600\u{2069}"]), __('dashboard.margin'), __('dashboard.purchases'), __('dashboard.ranks.amount')] as $text) {
+        foreach (['11 250', '10 200', '10 050', '12 025', '2 100', __('dashboard.dormant_value', ['value' => "\u{2066}600\u{2069}"]), __('dashboard.margin'), __('dashboard.ranks.amount')] as $text) {
             $this->assertStringNotContainsString(e($text), $html, $text);
         }
+        // la carte des achats (le menu "تقارير المشتريات" de la barre du haut, lui, reste : il mene aux quantites)
+        $this->assertStringNotContainsString('<h2 class="label">'.e(__('dashboard.purchases')).'</h2>', $html);
 
         // sans sales.view : ni l'application, ni la page
         $nobody = User::factory()->inBranch($oran)->withPermissions([])->create();
