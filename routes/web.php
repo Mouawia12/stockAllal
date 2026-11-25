@@ -46,6 +46,8 @@ Route::middleware('auth')->group(function () {
     Route::get('stock', [StockController::class, 'index'])->name('stock.index')->middleware('throttle:search');
     Route::get('product', [StockController::class, 'product'])->name('stock.product');
     Route::get('stock/item', [StockController::class, 'item'])->name('stock.item');
+    // F9 de la recherche : la "Fiche de Stock" de Gescomm dans une fenetre (ventes et achats de l'article, ligne par ligne)
+    Route::get('stock/card', [StockController::class, 'card'])->name('stock.card')->middleware(['can:sales.view', 'throttle:search']);
     Route::middleware([PrintPreferences::class, 'throttle:search'])->group(function () {
         Route::get('stock/print', [StockController::class, 'printList'])->name('stock.print');
         Route::get('stock/item/print', [StockController::class, 'printItem'])->name('stock.print-item');

@@ -71,6 +71,31 @@ class StockController extends Controller
     }
 
     /**
+     * F9 de la recherche : la "Fiche de Stock d'un Produit" de Gescomm dans une fenetre (stock/_card), pour l'article
+     * designe : son stock et ses prix, ce qui s'en est achete et vendu, puis les lignes de l'onglet demande
+     * (?tab=sale|purchase), bon par bon, avec le jour, l'heure, le client ou le fournisseur. ?who= : les lignes d'un
+     * client (chaque mot dans son nom, ou au debut de son code) et ce qu'il en a pris ; ?all=1 : toutes les lignes
+     * (jusqu'a ProductActivity::CARD_ALL) au lieu des dernieres. Toujours un morceau de page, jamais une page.
+     * Memes branches et memes droits que la page de l'article : sales.view (la route), et les montants selon prices.*.
+     */
+    public function card(Request $request): View
+    {
+        $data = $this->productData($request, (string) $request->query('code', ''), '');
+        // un article que le compte ne voit dans aucune branche affichee n'existe pas pour lui
+        abort_if($data['designation'] === null, 404);
+        $shown = Branch::where('active', true)->among(BranchScope::ids($request))->orderBy('name')->get();
+        $tab = $request->query('tab') === 'purchase' ? 'purchase' : 'sale';
+        $all = $request->boolean('all');
+
+        return view('stock._card', $data + [
+            'tab' => $tab,
+            'all' => $all,
+            'activity' => ProductActivity::for($request->user(), $data['codes'], $shown, 'all', $all ? ProductActivity::CARD_ALL : ProductActivity::CARD_LIMIT,
+                null, $tab, (string) $request->query('who', '')),
+        ]);
+    }
+
+    /**
      * L'etat du stock sur papier : tout ce que la recherche et le filtre trouvent (sans mot : tout le catalogue affiche),
      * le stock de chaque branche et les prix que le compte peut voir. ?mode=count : la fiche d'inventaire, sans prix, avec
      * une colonne vide pour ce qui est compte.

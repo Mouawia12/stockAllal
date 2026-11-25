@@ -61,6 +61,48 @@
     @media (max-width: 700px), (hover: none) { .modal .m-hint { display: none; } }
     .wait::before { content: ""; display: inline-block; width: 10px; height: 10px; margin-inline-end: 6px; border: 2px solid var(--muted); border-top-color: transparent; border-radius: 50%; animation: spin .8s linear infinite; vertical-align: -1px; }
     @keyframes spin { to { transform: rotate(360deg); } }
+
+    /* F9 : la "Fiche de Stock" de Gescomm (stock/_card). Plus large que l'apercu : des lignes de bons, avec l'heure et le client */
+    .modal.card-modal { max-width: 1080px; padding-bottom: 12px; }
+    .modal.card-modal:focus { outline: none; }
+    .card-modal .modal-head h2 { margin: 0; font-size: 15px; color: var(--muted); font-weight: 600; }
+    .card-modal .modal-head .btn { display: inline-flex; align-items: center; gap: 6px; }
+    #fc-body { transition: opacity .15s; min-height: 120px; }
+    #fc-body.loading { opacity: .6; }
+    .fc-title { margin: 0 0 10px; font-size: 17px; font-weight: 600; line-height: 1.4; }
+    .fc-title .code { font-size: 24px; margin-inline-end: 6px; }
+    .fc-title .pill { font-family: var(--font-code); font-size: 13px; font-weight: 400; }
+    /* les chiffres de l'article : un libelle, sa valeur dessous, comme les cases de la fiche de Gescomm */
+    .fc-facts { display: grid; grid-template-columns: repeat(auto-fit, minmax(116px, 1fr)); gap: 8px; margin: 0 0 12px; }
+    .fc-facts div { padding: 7px 10px; border: 1px solid var(--border); border-radius: 8px; background: var(--bg); }
+    .fc-facts dt { color: var(--muted); font-size: 12.5px; }
+    .fc-facts dd { margin: 2px 0 0; font: 700 19px/1.25 var(--font-code); letter-spacing: .01em; }
+    .fc-facts .qty { display: inline-block; }
+    .fc-note { margin: 0 0 12px; padding: 8px 12px; border-radius: 8px; background: var(--warn-bg); color: var(--warn); font-size: 14px; }
+    .fc-bar { display: flex; align-items: flex-end; gap: 8px 14px; flex-wrap: wrap; border-bottom: 1px solid var(--border); }
+    .fc-tabs { display: flex; gap: 6px; flex: 1; }
+    .fc-tabs button { border: 0; border-bottom: 2px solid transparent; border-radius: 0; background: none; color: var(--muted); padding: 8px 12px; margin-bottom: -1px; display: inline-flex; gap: 8px; align-items: center; }
+    .fc-tabs button[aria-selected=true] { color: var(--text); border-bottom-color: var(--accent); font-weight: 600; }
+    .fc-bar input { width: min(280px, 100%); margin-bottom: 6px; padding: 6px 10px; }
+    .fc-found { display: flex; gap: 6px 18px; flex-wrap: wrap; align-items: baseline; margin: 10px 0 8px; font-size: 14px; }
+    .fc-found b { font: 700 17px/1 var(--font-code); margin-inline-start: 4px; }
+    .fc-none { margin: 18px 0; text-align: center; }
+    /* la liste defile dans la fenetre, ses titres restent en vue */
+    .fc-scroll { max-height: min(52vh, 560px); overflow: auto; border: 1px solid var(--border); border-radius: 8px; }
+    .fc-lines { margin: 0; }
+    .fc-lines thead th { position: sticky; top: 0; background: var(--card); z-index: 1; box-shadow: 0 1px 0 var(--border); }
+    .fc-lines td, .fc-lines th { padding: 6px 10px; white-space: nowrap; }
+    .fc-lines td:has(bdi) { white-space: normal; min-width: 150px; }
+    .fc-lines .n { text-align: end; }
+    .fc-lines tr.back td { color: var(--muted); }
+    .fc-lines a.bon-link { color: inherit; text-decoration: underline dotted var(--muted); text-underline-offset: 3px; }
+    .fc-lines a.bon-link:hover { color: var(--accent); }
+    .fc-more { margin: 8px 0 0; }
+    @media (max-width: 700px) {
+        .fc-facts { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+        .fc-bar input { width: 100%; }
+        .fc-lines td, .fc-lines th { padding: 6px 7px; }
+    }
 </style>
 @endpush
 
@@ -70,6 +112,9 @@
     @include('partials.key', ['keys' => [__('common.keys.enter')], 'label' => __('common.keys.open')])
     @include('partials.key', ['keys' => [__('common.keys.space')], 'label' => $merge ? __('common.keys.pick') : __('stock.preview')])
     @include('partials.key', ['keys' => ['F2'], 'label' => __('stock.preview')])
+    @can('sales.view')
+        @include('partials.key', ['keys' => ['F9'], 'label' => __('stock.card.key')])
+    @endcan
     @include('partials.key', ['keys' => ['Alt', '1…4'], 'label' => __('stock.filters.label')])
     @unless ($merge)
         @include('partials.key', ['keys' => ['Alt', 'P'], 'run' => 'Alt+P', 'label' => __('print.print')])
@@ -111,6 +156,10 @@
             <span class="code ltr" id="m-code"></span>
             <span class="grow"></span>
             <a class="btn" id="m-page" href="{{ route('stock.item') }}">{{ __('stock.item.open_page') }}</a>
+            @can('sales.view')
+                {{-- F9 sans clavier : la fiche de stock de l'article de l'apercu --}}
+                <button type="button" id="m-card" title="{{ __('stock.card.title') }} (F9)">{{ __('stock.card.key') }}</button>
+            @endcan
             @can('stock.refresh')
                 <button type="button" class="primary" id="m-refresh" data-key="Alt+R">{{ __('stock.refresh_now') }}</button>
             @endcan
@@ -141,6 +190,24 @@
         <p class="muted small m-hint">{{ __('stock.preview_hint') }}</p>
     </div>
 </div>
+
+@can('sales.view')
+    {{-- F9 : la "Fiche de Stock" de l'article designe (stock/_card, charge a la demande) : a qui il s'est vendu, de qui
+         il s'est achete, quand et a quel prix. ↑ ↓ l'article precedent / suivant de la liste, F9 ou Echap ferme. --}}
+    <div class="modal-bg" id="card-bg">
+        <div class="modal card-modal" role="dialog" aria-modal="true" aria-labelledby="fc-heading" tabindex="-1">
+            <div class="modal-head">
+                <h2 id="fc-heading">{{ __('stock.card.title') }}</h2>
+                <span class="grow"></span>
+                <a class="btn print-btn" id="fc-print" href="{{ route('stock.print-item') }}" target="_blank" data-key="Alt+P" title="{{ __('print.print') }} (Alt+P)">@include('partials.app-icon', ['name' => 'print']){{ __('print.print') }}</a>
+                <a class="btn" id="fc-page" href="{{ route('stock.item') }}">{{ __('stock.item.open_page') }}</a>
+                <button type="button" class="link" id="fc-close" title="{{ __('stock.close') }} (Échap)" aria-label="{{ __('stock.close') }}">✕</button>
+            </div>
+            <div id="fc-body" aria-live="polite"></div>
+            <p class="muted small m-hint">{{ __('stock.card.hint') }}</p>
+        </div>
+    </div>
+@endcan
 @endsection
 
 @push('scripts')
@@ -166,8 +233,10 @@
     const mPage = document.getElementById('m-page');
     const PAGE_URL = @json(route('stock.item'));
     let current = null, timer = null, startedAt = 0;
+    // la fiche de stock ouverte (F9) : {code, tab, who, all}
+    let card = null;
 
-    const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'}[c]));
+    const esc =s => String(s ?? '').replace(/[&<>"']/g, c => ({'&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'}[c]));
     const fmt = n => n === null || n === undefined ? '—'
         : Number(n).toLocaleString('fr-FR', {minimumFractionDigits: 2, maximumFractionDigits: 2});
 
@@ -329,7 +398,7 @@
     // Apercu ouvert : ses touches a lui (plus bas)
     results.addEventListener('keydown', e => {
         const cell = e.target.closest('tbody a.code, button[data-code]');
-        if (!cell || current) return;
+        if (!cell || current || card) return;
         const row = cell.closest('tr');
         if (e.key === 'Escape') { e.preventDefault(); input.focus(); return; }
         if (e.key === ' ' && cell.matches('a.code')) {
@@ -360,10 +429,140 @@
         open(btn.dataset.code, btn.dataset.designation);
     }
 
+    // ---------- F9 : la "Fiche de Stock" de Gescomm pour l'article designe (stock/_card, un morceau de page) ----------
+    // Comme F2 : l'article designe en dernier, au clavier ou sous la souris. Dans la fenetre : Alt+1 / Alt+2 les ventes ou
+    // les achats, F3 le nom d'un client (seule la liste est remplacee pendant la frappe), ↑ ↓ l'article precedent /
+    // suivant, F9 ou Echap ferme. Une reponse arrivee en retard (cToken) n'ecrase jamais une plus recente.
+    const cardBg = document.getElementById('card-bg');
+    const cBody = document.getElementById('fc-body');
+    const CARD_URL = @json(route('stock.card'));
+    const PRINT_URL = @json(route('stock.print-item'));
+    const cardCache = new Map();
+    let cToken = 0, whoTimer = null;
+
+    function cardUrl(c) {
+        const url = new URL(CARD_URL, location.href);
+        url.searchParams.set('code', c.code);
+        if (c.tab !== 'sale') url.searchParams.set('tab', c.tab);
+        if (c.who) url.searchParams.set('who', c.who);
+        if (c.all) url.searchParams.set('all', '1');
+        return url.toString();
+    }
+    function fetchCard(url) {
+        if (!cardCache.has(url)) {
+            const page = fetchRetry(url, {headers: {Accept: 'text/html'}})
+                .then(res => { if (!res.ok) throw new Error('HTTP ' + res.status); return res.text(); });
+            cardCache.set(url, page);
+            page.catch(() => cardCache.delete(url));
+        }
+        return cardCache.get(url);
+    }
+    // listOnly : seulement les lignes (le champ ou l'on tape le nom garde sa place et son curseur)
+    async function showCard(listOnly) {
+        const mine = ++cToken;
+        cBody.classList.add('loading');
+        try {
+            const html = await fetchCard(cardUrl(card));
+            if (mine !== cToken) return;
+            const tpl = document.createElement('template');
+            tpl.innerHTML = html;
+            const now = cBody.querySelector('.fc-list'), next = tpl.content.querySelector('.fc-list');
+            if (listOnly && now && next) now.replaceWith(next);
+            else cBody.replaceChildren(tpl.content);
+        } catch (e) {
+            if (mine === cToken) cBody.textContent = t(T.load_failed, {error: e.message});
+        } finally {
+            if (mine === cToken) cBody.classList.remove('loading');
+        }
+    }
+    function openCard(btn) {
+        // l'apercu (F2) ouvert laisse la place
+        if (current) close();
+        clearTimeout(whoTimer);
+        pointed = btn;
+        lastPreview = btn.closest('tr').querySelector('a.code') || btn;
+        card = {code: btn.dataset.code, tab: 'sale', who: '', all: false};
+        const query = '?code=' + encodeURIComponent(card.code);
+        document.getElementById('fc-page').href = PAGE_URL + query;
+        document.getElementById('fc-print').href = PRINT_URL + query;
+        if (!cardBg.classList.contains('open')) {
+            cBody.innerHTML = '<p class="muted"><span class="wait">' + esc(T.loading) + '</span></p>';
+            cardBg.classList.add('open');
+            // le clavier quitte la recherche de la page : ce qu'on tape ne relance pas la liste derriere la fenetre
+            cardBg.querySelector('.modal').focus();
+        }
+        showCard(false);
+    }
+    function closeCard() {
+        clearTimeout(whoTimer);
+        cToken++;
+        card = null;
+        cardBg.classList.remove('open');
+        cBody.replaceChildren();
+        // la prochaine ouverture relit les chiffres : une synchronisation a pu passer
+        cardCache.clear();
+        if (lastPreview && results.contains(lastPreview)) lastPreview.focus();
+    }
+    function setWho(value) {
+        if (!card || value === card.who) return;
+        card.who = value;
+        card.all = false;
+        showCard(true);
+    }
+    if (cardBg) {
+        cBody.addEventListener('click', e => {
+            const tab = e.target.closest('button[data-tab]');
+            if (tab) {
+                if (tab.dataset.tab === card.tab) return;
+                clearTimeout(whoTimer);
+                card = {code: card.code, tab: tab.dataset.tab, who: '', all: false};
+                showCard(false);
+                return;
+            }
+            if (e.target.closest('button[data-all]')) { card.all = true; showCard(true); }
+        });
+        cBody.addEventListener('input', e => {
+            if (!e.target.matches('input[name=who]')) return;
+            clearTimeout(whoTimer);
+            const value = e.target.value.trim();
+            whoTimer = setTimeout(() => setWho(value), 250);
+        });
+        document.getElementById('fc-close').addEventListener('click', closeCard);
+        cardBg.addEventListener('click', e => { if (e.target === cardBg) closeCard(); });
+        // sans clavier : le bouton de l'apercu ouvre la fiche du meme article
+        document.getElementById('m-card')?.addEventListener('click', () => {
+            const btn = rowButton(lastPreview) || [...results.querySelectorAll('button[data-code]')].find(b => b.dataset.code === current);
+            if (btn) openCard(btn);
+        });
+    }
+
     mRefresh?.addEventListener('click', refresh);
     document.getElementById('m-close').addEventListener('click', close);
     bg.addEventListener('click', e => { if (e.target === bg) close(); });
     document.addEventListener('keydown', e => {
+        const plain = !e.altKey && !e.ctrlKey && !e.metaKey && !e.shiftKey;
+        if (card) {
+            // la fiche ouverte : ses touches seulement. Echap vide d'abord le nom tape, puis ferme
+            const typing = e.target.closest?.('#card-bg input');
+            if (e.key === 'Escape') {
+                e.preventDefault();
+                if (typing && typing.value) { typing.value = ''; clearTimeout(whoTimer); setWho(''); } else closeCard();
+            } else if (e.key === 'F9' && plain) {
+                e.preventDefault();
+                closeCard();
+            } else if (!typing && plain && (e.key === 'ArrowDown' || e.key === 'ArrowUp')) {
+                e.preventDefault();
+                const list = [...results.querySelectorAll('button[data-code]')];
+                const next = list[list.indexOf(rowButton(lastPreview)) + (e.key === 'ArrowDown' ? 1 : -1)];
+                if (next) openCard(next);
+            }
+            return;
+        }
+        if (e.key === 'F9' && plain && cardBg) {
+            const btn = (current && rowButton(lastPreview)) || (pointed?.isConnected && pointed) || results.querySelector('button[data-code]');
+            if (btn) { e.preventDefault(); openCard(btn); }
+            return;
+        }
         if (e.key === 'Escape' && current) { e.preventDefault(); close(); return; }
         if (e.key === 'F2' && !e.altKey && !e.ctrlKey && !e.metaKey && !e.shiftKey) {
             if (current) { e.preventDefault(); close(); return; }
